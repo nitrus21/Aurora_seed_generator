@@ -1,0 +1,11 @@
+.pio/
+.vscode/
+sources/
+tmp/
+.agents/
+.codex/
+AGENTS.md
+
+*.log
+.DS_Store
+Thumbs.db
