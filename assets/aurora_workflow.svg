@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="560" viewBox="0 0 1200 560" role="img" aria-labelledby="title desc">
+  <title id="title">Parcours du firmware AURORA Seed Generator</title>
+  <desc id="desc">Les trois parcours disponibles depuis l'accueil : nouveau portefeuille, ouverture d'un fichier Aurora Wallet et restauration d'une seed.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#08090b"/>
+      <stop offset="1" stop-color="#121820"/>
+    </linearGradient>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#f7931a"/>
+    </marker>
+    <style>
+      .box { fill:#16181d; stroke:#49515b; stroke-width:2; rx:14; }
+      .choice { fill:#24190e; stroke:#f7931a; stroke-width:2; rx:14; }
+      .safe { fill:#10210f; stroke:#69c552; stroke-width:2; rx:14; }
+      .title { fill:#ffffff; font:700 25px Arial, sans-serif; }
+      .text { fill:#e8eaed; font:18px Arial, sans-serif; }
+      .small { fill:#aeb4bc; font:15px Arial, sans-serif; }
+      .orange { fill:#f7931a; }
+      .line { fill:none; stroke:#f7931a; stroke-width:3; marker-end:url(#arrow); }
+    </style>
+  </defs>
+  <rect width="1200" height="560" rx="24" fill="url(#bg)"/>
+  <text x="600" y="44" text-anchor="middle" class="title">AURORA — parcours hors ligne</text>
+
+  <rect x="420" y="70" width="360" height="72" class="choice"/>
+  <text x="600" y="101" text-anchor="middle" class="title orange">ACCUEIL</text>
+  <text x="600" y="127" text-anchor="middle" class="small">Choisissez une action</text>
+
+  <path d="M500 142 C390 175 250 168 210 205" class="line"/>
+  <path d="M600 142 L600 205" class="line"/>
+  <path d="M700 142 C810 175 950 168 990 205" class="line"/>
+
+  <rect x="35" y="210" width="350" height="74" class="choice"/>
+  <text x="210" y="244" text-anchor="middle" class="title">Nouveau portefeuille</text>
+  <text x="210" y="269" text-anchor="middle" class="small">BIP39 + RNG matériel + tactile</text>
+
+  <rect x="425" y="210" width="350" height="74" class="choice"/>
+  <text x="600" y="244" text-anchor="middle" class="title">Ouvrir Aurora Wallet</text>
+  <text x="600" y="269" text-anchor="middle" class="small">Fichier .aurora chiffré sur microSD</text>
+
+  <rect x="815" y="210" width="350" height="74" class="choice"/>
+  <text x="990" y="244" text-anchor="middle" class="title">Restaurer une seed</text>
+  <text x="990" y="269" text-anchor="middle" class="small">Saisie BIP39 avec autocomplétion</text>
+
+  <path d="M210 284 L210 330" class="line"/>
+  <path d="M600 284 L600 330" class="line"/>
+  <path d="M990 284 L990 330" class="line"/>
+
+  <rect x="35" y="335" width="350" height="92" class="box"/>
+  <text x="210" y="365" text-anchor="middle" class="text">Configuration → entropie</text>
+  <text x="210" y="392" text-anchor="middle" class="text">phrase → vérification</text>
+  <text x="210" y="416" text-anchor="middle" class="small">12/15/18/21/24 mots · BIP44/49/84/86</text>
+
+  <rect x="425" y="335" width="350" height="92" class="box"/>
+  <text x="600" y="365" text-anchor="middle" class="text">Mot de passe → AES-256-GCM</text>
+  <text x="600" y="392" text-anchor="middle" class="text">recalcul et comparaison</text>
+  <text x="600" y="416" text-anchor="middle" class="small">Refus si le fichier est faux ou altéré</text>
+
+  <rect x="815" y="335" width="350" height="92" class="box"/>
+  <text x="990" y="365" text-anchor="middle" class="text">Checksum → passphrase</text>
+  <text x="990" y="392" text-anchor="middle" class="text">choix de la dérivation</text>
+  <text x="990" y="416" text-anchor="middle" class="small">Aucun enregistrement automatique</text>
+
+  <path d="M210 427 C310 465 430 455 510 476" class="line"/>
+  <path d="M600 427 L600 470" class="line"/>
+  <path d="M990 427 C890 465 770 455 690 476" class="line"/>
+
+  <rect x="360" y="475" width="480" height="62" class="safe"/>
+  <text x="600" y="502" text-anchor="middle" class="title">Informations · QR · export microSD</text>
+  <text x="600" y="525" text-anchor="middle" class="small">Puis EFFACER : écrasement des tampons sensibles et retour à l'accueil</text>
+</svg>
