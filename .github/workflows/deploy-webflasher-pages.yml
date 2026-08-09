@@ -1,0 +1,41 @@
+name: Deploy AURORA Web Flasher to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "webflasher/**"
+      - ".github/workflows/deploy-webflasher-pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Récupérer le dépôt
+        uses: actions/checkout@v6
+
+      - name: Configurer GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Préparer le Web Flasher
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: ./webflasher
+
+      - name: Publier sur GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
