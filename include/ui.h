@@ -31,6 +31,7 @@ class AuroraUI {
   void buildRestoring(); void updateRestoreSuggestions(); bool acceptRestoreWord(const char *word);
   bool restoreEnteredWallet(); bool rederiveManualWallet(AddressKind kind);
   void buildSetup(); void buildPassphrase(); void buildEntropy();
+  void updateEntropyPreview(uint32_t token);
   void buildGenerating(); void buildFileProcessing();
   void buildGenerationError(); void buildSecurityError();
   void buildMnemonic(); void buildPassphraseReveal(); void buildVerify();
@@ -56,6 +57,8 @@ class AuroraUI {
   WalletSelfTest selfTestResult_ = WalletSelfTest::Ok;
   uint32_t selfTestDueMs_ = 0;
   uint32_t generationDueMs_ = 0;
+  uint32_t entropyCompleteDueMs_ = 0;
+  uint32_t entropyPreviewUpdatedMs_ = 0;
   uint32_t fileOperationDueMs_ = 0;
   AddressKind kind_ = AddressKind::NativeSegwit;
   char passphrase_[64]{};
@@ -65,6 +68,9 @@ class AuroraUI {
   lv_obj_t *passArea_ = nullptr;
   lv_obj_t *entropyBar_ = nullptr;
   lv_obj_t *entropyStatus_ = nullptr;
+  lv_obj_t *entropyPreview_ = nullptr;
+  lv_obj_t *entropyCount_ = nullptr;
+  char entropyPreviewText_[36]{};
   lv_obj_t *verifyArea_[3]{};
   lv_obj_t *verifySuggestionButtons_[3]{};
   lv_obj_t *keyboard_ = nullptr;

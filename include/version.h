@@ -1,3 +1,3 @@
 #pragma once
 
-#define AURORA_FIRMWARE_VERSION "1.7.5"
+#define AURORA_FIRMWARE_VERSION "1.7.6"

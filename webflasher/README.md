@@ -1,10 +1,10 @@
 # AURORA Web Flasher
 
-Installeur Web en français pour **AURORA Seed Generator 1.7.5**, destiné exclusivement à l’ESP32-2432S028R.
+Installeur Web en français pour **AURORA Seed Generator 1.7.6**, destiné exclusivement à l’ESP32-2432S028R. Les [notes de version](CHANGELOG.md) décrivent la collecte à 320 échantillons, la luminosité et l’aperçu défilant.
 
 ## Utilisation
 
-Le Web Flasher doit être servi depuis une adresse HTTPS, par exemple avec GitHub Pages. Ouvrez ensuite `index.html` avec Chrome ou Microsoft Edge sur ordinateur, branchez l’ESP32 avec un câble USB de données et utilisez le bouton **Installer AURORA v1.7.5**.
+Le Web Flasher doit être servi depuis une adresse HTTPS, par exemple avec GitHub Pages. Ouvrez ensuite `index.html` avec Chrome ou Microsoft Edge sur ordinateur, branchez l’ESP32 avec un câble USB de données et utilisez le bouton **Installer AURORA v1.7.6**.
 
 Une ouverture directe de `index.html` depuis l’Explorateur Windows ne permet pas d’utiliser Web Serial.
 
@@ -17,7 +17,9 @@ Une ouverture directe de `index.html` depuis l’Explorateur Windows ne permet p
 | `boot_app0.bin` | `0xE000` |
 | `firmware.bin` | `0x10000` |
 
-ESP Web Tools utilise l’image fusionnée `firmware/aurora-1.7.5-esp32-2432s028r.factory.bin` à l’offset `0x0000`. Elle est préparée en mode DIO, à 40 MHz, pour une flash de 4 Mo.
+ESP Web Tools utilise l’image fusionnée `firmware/aurora-1.7.6-esp32-2432s028r.factory.bin` à l’offset `0x0000`. Elle est préparée en mode DIO, à 40 MHz, pour une flash de 4 Mo.
+
+L’image fusionnée 1.7.5 est conservée comme archive ; le manifeste installe uniquement la version 1.7.6. La préparation de ces fichiers et leur commit local ne publient pas automatiquement le site et ne flashent pas l’appareil.
 
 Les empreintes SHA-256 sont disponibles dans `firmware/SHA256SUMS.txt`.
 

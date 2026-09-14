@@ -6,6 +6,9 @@
 #define AURORA_TFT_ROTATION  1
 #define AURORA_BACKLIGHT_PIN 21
 
+// Photorésistance intégrée au modèle courant (ADC1, canal 6).
+#define AURORA_LIGHT_SENSOR_PIN 34
+
 // Lecteur microSD intégré (bus HSPI séparé sur le modèle courant).
 #define AURORA_SD_CS   5
 #define AURORA_SD_MOSI 23

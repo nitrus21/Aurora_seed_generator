@@ -10,6 +10,7 @@ namespace {
 AuroraUI *g_ui = nullptr;
 constexpr lv_color_t ORANGE = LV_COLOR_MAKE(0xF7, 0x93, 0x1A);
 constexpr lv_color_t DANGER = LV_COLOR_MAKE(0xFF, 0x3B, 0x30);
+constexpr lv_color_t SUCCESS = LV_COLOR_MAKE(0x39, 0xD3, 0x83);
 constexpr lv_color_t BLACK = LV_COLOR_MAKE(0x08, 0x09, 0x0B);
 constexpr lv_color_t PANEL = LV_COLOR_MAKE(0x16, 0x18, 0x1D);
 constexpr lv_color_t MUTED = LV_COLOR_MAKE(0x9A, 0xA0, 0xAA);
@@ -126,7 +127,8 @@ void AuroraUI::tick() {
     show(Screen::GenerationError);
     return;
   }
-  if (entropyReadyPending_ && screen_ == Screen::Entropy) {
+  if (entropyReadyPending_ && screen_ == Screen::Entropy &&
+      static_cast<int32_t>(millis() - entropyCompleteDueMs_) >= 0) {
     entropyReadyPending_ = false;
     show(Screen::Generating);
     generationDueMs_ = millis() + 100;
@@ -162,7 +164,8 @@ void AuroraUI::clear() {
   }
   root_ = lv_obj_create(lv_scr_act()); lv_obj_set_size(root_, 320, 240); lv_obj_set_pos(root_, 0, 0);
   lv_obj_clear_flag(root_, LV_OBJ_FLAG_SCROLLABLE); styleRoot(root_);
-  passArea_ = entropyBar_ = entropyStatus_ = keyboard_ = exportNameArea_ =
+  secureZero(entropyPreviewText_, sizeof(entropyPreviewText_));
+  passArea_ = entropyBar_ = entropyStatus_ = entropyPreview_ = entropyCount_ = keyboard_ = exportNameArea_ =
       importFileDropdown_ = restoreWordArea_ = restoreDerivationDropdown_ =
       filePasswordArea_ = filePasswordConfirmArea_ = nullptr;
   memset(verifyArea_, 0, sizeof(verifyArea_));
@@ -227,7 +230,12 @@ lv_obj_t *AuroraUI::header(const char *title, const char *step) {
 }
 
 void AuroraUI::show(Screen s) {
-  if (screen_ == Screen::Entropy && s != Screen::Entropy) entropy_.cancel();
+  if (screen_ == Screen::Entropy && s != Screen::Entropy) {
+    entropy_.cancel();
+    entropyReadyPending_ = entropyFailurePending_ = false;
+    entropyCompleteDueMs_ = 0;
+    if (s != Screen::Generating) secureZero(mixedEntropy_, sizeof(mixedEntropy_));
+  }
   screen_ = s; clear();
   switch (s) {
     case Screen::Splash: buildSplash(); break; case Screen::Mode: buildMode(); break;
@@ -579,22 +587,78 @@ void AuroraUI::buildPassphrase() {
 }
 
 void AuroraUI::buildEntropy() {
-  header("Collecte d'entropie", "3 / 7"); entropy_.begin(); entropyReadyPending_ = false; entropyFailurePending_ = false;
-  lv_obj_t *title = label(root_, "Tracez des lignes aléatoires avec votre doigt", &aurora_font_14); lv_obj_align(title,LV_ALIGN_TOP_MID,0,43);
-  lv_obj_t *pad = lv_obj_create(root_); lv_obj_set_pos(pad,18,68); lv_obj_set_size(pad,284,104);
-  lv_obj_set_style_bg_color(pad,PANEL,0); lv_obj_set_style_border_color(pad,ORANGE,0); lv_obj_set_style_border_width(pad,1,0); lv_obj_set_style_radius(pad,8,0);
-  lv_obj_t *hint = label(pad,"RNG physique ESP32 + geste tactile\nMouvement, timing et pression",&aurora_font_10); lv_obj_set_style_text_color(hint,MUTED,0); lv_obj_center(hint);
-  entropyBar_ = lv_bar_create(root_); lv_obj_set_pos(entropyBar_,18,184); lv_obj_set_size(entropyBar_,220,12); lv_bar_set_range(entropyBar_,0,100);
-  lv_obj_set_style_bg_color(entropyBar_,ORANGE,LV_PART_INDICATOR);
-  entropyStatus_ = label(root_,"0 %",&aurora_font_10); lv_obj_set_pos(entropyStatus_,246,183);
+  lv_obj_set_style_pad_all(root_,0,0);
+  header("Collecte d'entropie", "3 / 7");
+  secureZero(mixedEntropy_, sizeof(mixedEntropy_));
+  entropyReadyPending_ = entropyFailurePending_ = false;
+  entropyCompleteDueMs_ = entropyPreviewUpdatedMs_ = 0;
+  entropy_.begin();
+
+  lv_obj_t *title = label(root_, "Bougez votre doigt dans le cadre", &aurora_font_12);
+  lv_obj_set_pos(title,18,43);
+  lv_obj_t *pad = lv_obj_create(root_); lv_obj_set_pos(pad,18,62); lv_obj_set_size(pad,284,72);
+  lv_obj_clear_flag(pad,LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_style_bg_color(pad,PANEL,0); lv_obj_set_style_border_color(pad,ORANGE,0);
+  lv_obj_set_style_border_width(pad,1,0); lv_obj_set_style_radius(pad,8,0);
+  lv_obj_t *hint = label(pad,"Mouvement + pression + temps\nLuminosité + RNG matériel",&aurora_font_10);
+  lv_obj_set_style_text_color(hint,MUTED,0); lv_obj_set_style_text_align(hint,LV_TEXT_ALIGN_CENTER,0); lv_obj_center(hint);
+
+  lv_obj_t *caption = label(root_,"Aperçu du mélange",&aurora_font_10);
+  lv_obj_set_style_text_color(caption,MUTED,0); lv_obj_set_pos(caption,18,140);
+  lv_obj_t *strip = lv_obj_create(root_); lv_obj_set_pos(strip,18,155); lv_obj_set_size(strip,284,26);
+  lv_obj_clear_flag(strip,LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_style_bg_color(strip,PANEL,0); lv_obj_set_style_border_width(strip,0,0);
+  lv_obj_set_style_radius(strip,4,0); lv_obj_set_style_pad_all(strip,4,0);
+  strlcpy(entropyPreviewText_,"-------- -------- -------- --------",sizeof(entropyPreviewText_));
+  entropyPreview_ = label(strip,"",&aurora_font_12);
+  lv_label_set_text_static(entropyPreview_,entropyPreviewText_); lv_obj_center(entropyPreview_);
+
+  entropyStatus_ = label(root_,"Collecte insuffisante - 0 %",&aurora_font_12);
+  lv_obj_set_pos(entropyStatus_,18,187); lv_obj_set_style_text_color(entropyStatus_,DANGER,0);
+  entropyBar_ = lv_bar_create(root_); lv_obj_set_pos(entropyBar_,18,207); lv_obj_set_size(entropyBar_,284,12);
+  lv_bar_set_range(entropyBar_,0,100); lv_bar_set_value(entropyBar_,0,LV_ANIM_OFF);
+  lv_obj_set_style_bg_color(entropyBar_,lv_color_darken(DANGER,LV_OPA_70),LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(entropyBar_,LV_OPA_COVER,LV_PART_MAIN);
+  lv_obj_set_style_bg_color(entropyBar_,DANGER,LV_PART_INDICATOR);
+  entropyCount_ = label(root_,"",&aurora_font_10); lv_obj_set_pos(entropyCount_,18,224);
+  lv_obj_set_style_text_color(entropyCount_,MUTED,0);
+  lv_label_set_text_fmt(entropyCount_,"0 / %u échantillons",static_cast<unsigned>(TouchEntropy::REQUIRED_SAMPLES));
+}
+
+void AuroraUI::updateEntropyPreview(uint32_t token) {
+  // Shift one group to the left; show only the keyed preview from the collector.
+  memmove(entropyPreviewText_,entropyPreviewText_+9,26);
+  entropyPreviewText_[26]=' ';
+  snprintf(entropyPreviewText_+27,9,"%08lX",static_cast<unsigned long>(token));
+  lv_label_set_text_static(entropyPreview_,entropyPreviewText_);
 }
 
 void AuroraUI::onTouchSample(int16_t x, int16_t y, uint16_t pressure) {
   if (screen_ != Screen::Entropy || !entropyBar_ || entropyReadyPending_) return;
-  entropy_.add(x,y,pressure); uint8_t p = entropy_.progress(); lv_bar_set_value(entropyBar_,p,LV_ANIM_OFF);
-  char s[12]; snprintf(s,sizeof(s),"%u %%",p); lv_label_set_text(entropyStatus_,s);
+  if (x < 18 || x >= 302 || y < 62 || y >= 134) return;
+  entropy_.add(x,y,pressure);
+  const uint8_t p = entropy_.progress();
+  const uint16_t count = entropy_.sampleCount();
+  const lv_color_t color = p == 100 ? SUCCESS : (p >= 50 ? ORANGE : DANGER);
+  lv_bar_set_value(entropyBar_,p,LV_ANIM_OFF);
+  lv_obj_set_style_bg_color(entropyBar_,color,LV_PART_INDICATOR);
+  lv_obj_set_style_bg_color(entropyBar_,lv_color_darken(color,LV_OPA_70),LV_PART_MAIN);
+  lv_obj_set_style_text_color(entropyStatus_,color,0);
+  lv_label_set_text_fmt(entropyStatus_,"%s - %u %%",
+      p == 100 ? "Collecte terminée" : (p >= 50 ? "Collecte en cours" : "Collecte insuffisante"),
+      static_cast<unsigned>(p));
+  lv_label_set_text_fmt(entropyCount_,"%u / %u échantillons",
+      static_cast<unsigned>(count),static_cast<unsigned>(TouchEntropy::REQUIRED_SAMPLES));
+  const uint32_t now = millis();
+  if (count == 1 || p == 100 || now - entropyPreviewUpdatedMs_ >= 100) {
+    updateEntropyPreview(entropy_.previewToken());
+    entropyPreviewUpdatedMs_ = now;
+  }
   if (entropy_.ready()) {
-    if (entropy_.finish(mixedEntropy_)) entropyReadyPending_ = true;
+    if (entropy_.finish(mixedEntropy_)) {
+      entropyReadyPending_ = true;
+      entropyCompleteDueMs_ = millis() + 1000; // Leave the green state visible.
+    }
     else entropyFailurePending_ = true;
   }
 }

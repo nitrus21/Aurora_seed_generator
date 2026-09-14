@@ -4,7 +4,8 @@ Firmware Bitcoin entièrement hors ligne pour **ESP32-2432S028(R)**, écran tact
 
 ![Fond de l’écran de démarrage AURORA](assets/splash_320x240.png)
 
-Version documentée : **1.7.5**
+Version finale du code et des binaires inclus : **1.7.6**
+Notes de version : [luminosité, aperçu de collecte et 320 échantillons](webflasher/CHANGELOG.md)
 Environnement : **PlatformIO + Arduino**
 Cible : **ESP32-2432S028R / Cheap Yellow Display**
 Réseaux : **Wi-Fi et Bluetooth désactivés**
@@ -39,7 +40,7 @@ AURORA transforme un ESP32-2432S028R en générateur et lecteur de portefeuille 
 
 - créer une phrase BIP39 anglaise de 12, 15, 18, 21 ou 24 mots ;
 - ajouter une passphrase BIP39 optionnelle ;
-- mélanger le générateur matériel de l’ESP32 avec des mouvements tactiles ;
+- mélanger le générateur matériel de l’ESP32 avec des mouvements tactiles et la luminosité ;
 - dériver une première adresse Bitcoin Mainnet selon BIP44, BIP49, BIP84 ou BIP86 ;
 - vérifier que la phrase a bien été recopiée ;
 - afficher l’adresse, la clé publique étendue du compte et leurs QR codes ;
@@ -69,9 +70,11 @@ La méthode recommandée consiste à utiliser AURORA hors ligne pour créer ou e
 - Liste anglaise officielle BIP39 de 2 048 mots et contrôle du checksum.
 - Toutes les combinaisons **12/15/18/21/24 mots × Legacy/Nested SegWit/Native SegWit/Taproot**.
 - Passphrase BIP39 ASCII optionnelle, de 0 à 63 caractères imprimables.
-- Entropie tactile : coordonnées, pression et timings de 160 échantillons.
+- Entropie tactile : coordonnées, pression et timings de 320 échantillons.
+- Luminosité : lecture de la photorésistance intégrée sur GPIO34 à chaque échantillon.
 - RNG matériel ESP32 activé explicitement autour de `esp_random()`.
-- Mélange final RNG + tactile par SHA-256 avant création BIP39.
+- Mélange final RNG + tactile + luminosité par SHA-256 avant création BIP39.
+- Aperçu hexadécimal défilant et jauge de collecte rouge, orange puis verte.
 - Dérivations Bitcoin Mainnet BIP44, BIP49, BIP84 et BIP86.
 - Affichage de huit mots maximum par page.
 - Vérification de trois positions différentes tirées aléatoirement.
@@ -92,7 +95,7 @@ La cryptographie Bitcoin repose principalement sur [uBitcoin](https://github.com
 
 L’accueil présente trois choix :
 
-1. **NOUVEAU PORTEFEUILLE** : création complète avec RNG matériel et entropie tactile.
+1. **NOUVEAU PORTEFEUILLE** : création complète avec RNG matériel, entropie tactile et luminosité.
 2. **OUVRIR AURORA WALLET** : lecture d’un fichier `.aurora` chiffré présent à la racine de la microSD.
 3. **RESTAURER UNE SEED** : saisie manuelle d’une phrase existante, avec autocomplétion.
 
@@ -232,15 +235,17 @@ Sur une carte déjà initialisée avec exactement le même environnement AURORA,
 
 SHA-256 permet de vérifier que le fichier n’a pas changé entre sa création, son téléchargement et son flashage. Il ne prouve l’authenticité que si la valeur de référence a été obtenue par un canal de confiance.
 
-### Empreinte de la version 1.7.5 compilée et flashée
+### Empreinte de la version finale 1.7.6 compilée
 
-Fichier : `.pio/build/esp32-2432S028R/firmware.bin`
-Taille : **1 477 216 octets**
+Fichier distribué : `webflasher/firmware/firmware.bin` (copie du build PlatformIO)
+Taille : **1 483 328 octets**
 SHA-256 :
 
 ```text
-BA275C95507A713335A15C2452D5AE47F70D95F077F3F624F93A96F83BEB6BF4
+9CFF7030555D60AD3A5E18589D76B961BBBE8431C32C34B8374B5E1A31C33033
 ```
+
+Cette empreinte concerne l’application seule, pas l’image fusionnée du Web Flasher. Les empreintes de tous les binaires sont dans [SHA256SUMS.txt](webflasher/firmware/SHA256SUMS.txt). Sous PowerShell, `./tests/release/verify.ps1` contrôle les versions, le manifeste, le contenu de l’image fusionnée et les empreintes, sans flasher l’appareil.
 
 ### Windows PowerShell
 
@@ -269,7 +274,7 @@ shasum -a 256 .pio/build/esp32-2432S028R/firmware.bin
 La casse des lettres n’a pas d’importance, mais les 64 caractères hexadécimaux doivent être identiques. Si l’empreinte diffère :
 
 1. ne flashez pas le fichier ;
-2. vérifiez que vous utilisez bien la version 1.7.5 ;
+2. vérifiez que vous utilisez bien le binaire de la version 1.7.6 correspondant à cette empreinte ;
 3. retéléchargez ou recompilez depuis les sources attendues ;
 4. contrôlez `platformio.ini` et la liste des dépendances ;
 5. générez et archivez une nouvelle empreinte si vous avez volontairement modifié le code.
@@ -329,14 +334,19 @@ La passphrase BIP39 n’est pas le mot de passe du fichier Aurora Wallet :
 
 #### 3/7 — Collecte d’entropie
 
-Tracez des mouvements irréguliers jusqu’à 100 %. Pour chaque échantillon, AURORA mélange :
+Tracez des mouvements irréguliers dans le cadre jusqu’à 100 %. Pour chaque échantillon, AURORA conserve les sources précédentes et mélange :
 
 - les coordonnées X/Y ;
 - la pression tactile ;
 - le compteur en microsecondes ;
-- une valeur provenant du RNG matériel ESP32.
+- une valeur provenant du RNG matériel ESP32 ;
+- la lecture lumineuse brute sur 12 bits de la photorésistance intégrée (GPIO34).
 
-Après 160 échantillons, le mélange tactile est condensé par SHA-256. Lors de la création BIP39, 32 nouveaux octets du RNG matériel sont mélangés avec ce résultat, puis condensés une seconde fois.
+Après 320 échantillons, le mélange est condensé par SHA-256. La durée de collecte et un tirage matériel supplémentaire restent incorporés à la fin. Lors de la création BIP39, 32 nouveaux octets du RNG matériel sont mélangés avec ce résultat, puis condensés une seconde fois, comme auparavant.
+
+La barre de progression suit le nombre d’échantillons recueillis : **rouge de 0 à 49 %**, **orange de 50 à 99 %**, puis **verte à 100 %**. L’état vert reste visible une seconde avant le passage automatique à la génération. La jauge ne mesure pas une quantité de bits d’entropie certifiée. La lumière est un apport complémentaire : une valeur stable ou saturée ne bloque pas la collecte et ne remplace jamais le RNG matériel.
+
+Le bandeau « Aperçu du mélange » fait défiler quatre groupes hexadécimaux, actualisés pendant les gestes (au plus environ dix fois par seconde, avec une dernière actualisation à 100 %). Chaque groupe est un HMAC-SHA-256 tronqué de l’échantillon, avec une clé d’affichage aléatoire indépendante et temporaire. Ni les valeurs brutes du RNG, ni l’état du mélange secret, ni l’entropie finale BIP39 ne sont affichés. Cette clé d’affichage est effacée en fin de collecte ou en cas de retour ; le bandeau est effacé en quittant l’écran.
 
 #### 4/7 — Phrase de récupération
 
@@ -469,6 +479,7 @@ Après lecture ou écriture, AURORA écrase le mot de passe du fichier, la clé 
 | TFT DC | 2 |
 | TFT RST | -1 |
 | Rétroéclairage | 21 |
+| Photorésistance (LDR, ADC1) | 34 |
 | Touch MOSI | 32 |
 | Touch MISO | 39 |
 | Touch CLK | 25 |
@@ -479,7 +490,7 @@ Après lecture ou écriture, AURORA écrase le mot de passe du fichier, la clé 
 | microSD CLK | 18 |
 | microSD CS | 5 |
 
-Les paramètres TFT se trouvent dans `platformio.ini`. Le tactile, la microSD, la rotation et la calibration se trouvent dans `include/board_config.h`.
+Les paramètres TFT se trouvent dans `platformio.ini`. Le tactile, la photorésistance, la microSD, la rotation et la calibration se trouvent dans `include/board_config.h`.
 
 Configuration actuelle :
 
@@ -529,6 +540,8 @@ Au démarrage, le firmware coupe le Wi-Fi et le Bluetooth. Il n’efface pas les
 
 Sur l’ESP32 original, `esp_random()` n’est considéré comme une source matérielle complète que lorsqu’une source d’entropie est active. AURORA active explicitement la source interne SAR-ADC avec `bootloader_random_enable()`, collecte les valeurs, puis la désactive.
 
+La lecture de luminosité et cette source SAR-ADC sont alternées : désactivation de la source interne, configuration et lecture ponctuelle de l’ADC, puis réactivation avant tout appel au RNG. Elles ne fonctionnent pas simultanément, conformément aux [contraintes Espressif sur le RNG et l’ADC](https://docs.espressif.com/projects/esp-idf/en/v4.4.7/esp32/api-reference/system/random.html). Le Wi-Fi et le Bluetooth restent désactivés.
+
 ### Mémoire
 
 Les secrets doivent nécessairement exister en RAM pendant la dérivation et l’affichage. AURORA écrase explicitement ses buffers, les textes LVGL sensibles, les contextes cryptographiques principaux et plusieurs temporaires uBitcoin. Cela ne garantit pas l’effacement après un crash, une coupure brutale, une attaque DMA ou une analyse physique.
@@ -575,7 +588,7 @@ Tout secret affiché peut être photographié ou observé. Le QR de clé privée
 | microSD absente | Reformatez en FAT32, réinsérez avant l’ouverture de la page et utilisez **ACTUALISER** |
 | Fichier déjà existant | Choisissez un autre nom ; AURORA refuse volontairement l’écrasement |
 | Mauvais mot de passe `.aurora` | Vérifiez casse, espaces et caractères ; le fichier ne possède aucune procédure de récupération |
-| BlueWallet indique `Non-base58 character` | Le QR privé doit commencer par `K` ou `L` et ne contenir que la WIF brute ; utilisez la version 1.7.5 et comparez ensuite l’adresse |
+| BlueWallet indique `Non-base58 character` | Le QR privé doit commencer par `K` ou `L` et ne contenir que la WIF brute ; utilisez une version au moins égale à 1.7.5 et comparez ensuite l’adresse |
 | Échec de sécurité E01–E60 | Ne générez rien ; notez le code, recompilez avec les dépendances épinglées et contrôlez le matériel |
 
 ## Dépendances épinglées
@@ -602,7 +615,7 @@ include/
   version.h                    Version affichée sur le splash
   secure_memory.h              Effacement anti-optimisation
   hardware_rng.h               Activation de la source RNG ESP32
-  entropy.h                    Accumulation tactile et SHA-256
+  entropy.h                    Mélange tactile + luminosité, SHA-256 et aperçu HMAC
   wallet.h                     Interface du moteur Bitcoin
   sd_export.h                  Types d’export et lecture Aurora Wallet
   ui.h                         État et parcours LVGL

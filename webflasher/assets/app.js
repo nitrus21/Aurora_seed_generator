@@ -4,7 +4,7 @@ const hashElement = document.querySelector("#firmware-hash");
 const copyButton = document.querySelector("#copy-hash");
 const year = document.querySelector("#year");
 
-const firmwareHash = "469A8912CD2A7BA3EF919467D84D6857CF60E726A27865157BD1A04653510218";
+const firmwareHash = "574245700CC55BD52D7151D3C463A3383D788D51775A8C6A2038671021A8B9E0";
 
 if (window.isSecureContext && "serial" in navigator) {
   compatibility.classList.add("ready");
