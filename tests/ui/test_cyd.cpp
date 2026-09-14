@@ -10,6 +10,8 @@
 
 extern "C" uint32_t native_millis(void) { return millis(); }
 static unsigned wipes=0;
+static bool sdReady=true;
+bool auroraSdReady() { return sdReady; }
 extern "C" void auroraUiWipeAudit(const void *pointer,size_t size) {
   for(size_t i=0;i<size;++i) assert(static_cast<const uint8_t *>(pointer)[i]==0);
   ++wipes;
@@ -62,6 +64,14 @@ int main() {
   lv_disp_drv_register(&display);
   static AuroraUI ui; ui.begin(); ui.selfTestPending_=false;
   using Screen=AuroraUI::Screen;
+  sdReady=false;
+  for(auto screen:{Screen::Setup,Screen::Passphrase,Screen::RestoreWords,Screen::PinSetup}) {
+    ui.show(screen);
+    assert(ui.screen_==Screen::SdRequired && ui.afterSd_==screen);
+    assert(!ui.keyboard_ && !ui.passArea_ && !ui.pinArea_ && !ui.restoreWordArea_);
+  }
+  snapshot(ui,"sd-required.ppm"); sdReady=true;
+  ui.show(Screen::Mode);
   ui.show(Screen::Passphrase); snapshot(ui,"passphrase.ppm");
   assert(ui.passArea_ && ui.passConfirmArea_);
   lv_textarea_set_text(ui.passArea_,"same"); lv_textarea_set_text(ui.passConfirmArea_,"same");
@@ -73,6 +83,10 @@ int main() {
   assert(ui.screen_==Screen::Info && ui.pinGuard_.enabled()); snapshot(ui,"info.ppm");
   ui.qrContent_=AuroraUI::QrContent::PrivateKey; ui.show(Screen::Qr);
   assert(ui.screen_==Screen::PinUnlock); snapshot(ui,"pin-unlock.ppm");
+  lv_textarea_set_text(ui.pinArea_,"1234"); sdReady=false; ui.submitPinUnlock();
+  assert(ui.screen_==Screen::SdRequired && !ui.pinArea_ && ui.pinGuard_.failures()==0);
+  sdReady=true; ui.show(ui.afterSd_);
+  assert(ui.screen_==Screen::PinUnlock && !lv_textarea_get_text(ui.pinArea_)[0]);
   for(unsigned i=0;i<3;++i) {
     mock.time+=1000000; lv_textarea_set_text(ui.pinArea_,"0000");
     lv_event_send(ui.keyboard_,LV_EVENT_READY,nullptr);
@@ -80,5 +94,5 @@ int main() {
   assert(ui.screen_==Screen::Mode && !ui.pinGuard_.enabled() && !ui.passphrase_[0]);
   ui.show(Screen::Entropy); snapshot(ui,"entropy.ppm"); ui.show(Screen::Mode);
   assert(wipes>100);
-  puts("PASS: real LVGL 8 CYD 320x240, dual passphrase, numeric PIN setup/unlock, 3 failures wipe, secure allocator");
+  puts("PASS: real LVGL 8 CYD 320x240, mandatory SD credential gate/removal, dual passphrase, numeric PIN setup/unlock, 3 failures wipe, secure allocator");
 }

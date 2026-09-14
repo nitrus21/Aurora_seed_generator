@@ -8,6 +8,8 @@
 // Test-only in-memory SD. No disk, card, wallet or device is touched.
 inline std::map<std::string, std::vector<uint8_t>> testCard;
 inline bool testSyncOk = true;
+inline bool testCardReady = true, testRootReadable = true;
+inline unsigned testMounts = 0, testUnmounts = 0;
 class AuroraFile {
  public:
   std::string path;
@@ -36,13 +38,13 @@ class AuroraFile {
 };
 class AuroraStorage {
  public:
-  bool begin() { return true; }
-  void end() {}
+  bool begin() { ++testMounts; return testCardReady; }
+  void end() { ++testUnmounts; }
   bool exists(const char *path) { return testCard.count(path) != 0; }
   bool remove(const char *path) { return testCard.erase(path) != 0; }
   bool sync(AuroraFile &) { return testSyncOk; }
   AuroraFile open(const char *path, bool write = false) {
-    if (!strcmp(path, "/")) return {path, 0, 0, true, true};
+    if (!strcmp(path, "/")) return {path, 0, 0, testRootReadable, true};
     if (write) {
       if (exists(path)) return {};
       testCard[path] = {};

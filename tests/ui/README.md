@@ -15,6 +15,7 @@ Le test compile les **vraies sources** de `src/ui.cpp`, du PIN, de l'allocateur 
 - Vérification qu'un événement LVGL tactile produit un seul échantillon, sans répéter un état mis en cache à chaque passage de la boucle.
 - Vérification qu'un arrêt non confirmé, même après le délai d'attente, ne permet pas d'afficher les secrets.
 - Confirmation exacte de passphrase et conservation du mélange jusqu'à la génération.
+- SD obligatoire avant les formulaires, écran sans clavier/champs, RÉESSAYER sans carte et après réinsertion, FERMER avec effacement ; retrait avant validation de phrase, mot de passe et PIN. Conservation de l'entropie collectée et des erreurs PIN, abandon des saisies et absence de contrôle SD pendant l'arrêt des capteurs.
 - Autorisation PIN par catégorie, compteur persistant, trois échecs avec effacement, délais 15/120 secondes, import V1/V2 et garde au point d'entrée de l'export.
 - Vérification des allocations LVGL écrasées **avant** libération/réallocation, avec contrôle du cas d'échec de réallocation.
 

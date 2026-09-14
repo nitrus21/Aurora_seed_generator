@@ -2,7 +2,7 @@
 
 Firmware Bitcoin hors ligne, avec un noyau commun et deux cibles matérielles : **ESP32-2432S028(R)** (320 × 240) et portage **Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3** (480 × 800 portrait, version sans caméra fournie). Toute l’interface est en français ; seuls les mots de la phrase de récupération utilisent la liste anglaise officielle BIP39.
 
-> Cette branche développe **1.9.0-dev** : confirmation de passphrase, PIN par fichier et verrouillage de session, sans changer les dérivations Bitcoin ni le chiffrement AES-256-GCM/PBKDF2 existant. Les nouveaux parcours doivent être validés sur les deux appareils. Les binaires du Web Flasher restent ceux de la version CYD **1.7.6**. [Sécurité et compatibilité V1/V2](SECURITY.md) · [Architecture et validation P4](targets/waveshare_p4/README.md).
+> Cette branche développe **1.9.1-dev** : microSD obligatoire avant les saisies, confirmation de passphrase, PIN par fichier et verrouillage de session, sans changer les dérivations Bitcoin ni le chiffrement AES-256-GCM/PBKDF2 existant. Les nouveaux parcours doivent être validés sur les deux appareils. Les binaires du Web Flasher restent ceux de la version CYD **1.7.6**. [Sécurité et compatibilité V1/V2](SECURITY.md) · [Architecture et validation P4](targets/waveshare_p4/README.md).
 
 ![Fond de l’écran de démarrage AURORA](assets/splash_320x240.png)
 
@@ -98,13 +98,22 @@ La cryptographie Bitcoin repose principalement sur [uBitcoin](https://github.com
 
 ![Schéma des parcours AURORA](assets/aurora_workflow.svg)
 
-Ce schéma décrit la version publiée 1.7.6. En développement : configuration → collecte → double passphrase → portefeuille ; la sauvegarde ajoute un PIN et l'ouverture n'affiche plus les secrets automatiquement. Voir le [parcours sécurisé actuel](SECURITY.md).
+Ce schéma décrit la version publiée 1.7.6. En développement : détection microSD → configuration → collecte → double passphrase → portefeuille ; la sauvegarde ajoute un PIN et l'ouverture n'affiche plus les secrets automatiquement. Voir le [parcours sécurisé actuel](SECURITY.md).
 
 L’accueil présente trois choix :
 
 1. **NOUVEAU PORTEFEUILLE** : création complète avec RNG matériel, entropie tactile et luminosité.
 2. **OUVRIR AURORA WALLET** : lecture d’un fichier `.aurora` chiffré présent à la racine de la microSD.
 3. **RESTAURER UNE SEED** : saisie manuelle d’une phrase existante, avec autocomplétion.
+
+En **1.9.1-dev**, chaque choix exige une microSD détectée et lisible avant de
+poursuivre. Sans carte, l'écran **microSD requise** propose uniquement
+**RÉESSAYER** ou **FERMER** (effacement de la session). Aucun champ de phrase,
+mot de passe ou PIN n'est créé. Un nouveau contrôle a lieu avant les formulaires
+et à leur validation ; un retrait entre les deux bloque la validation et efface
+la saisie du formulaire. La détection n'est pas une surveillance continue de
+chaque frappe. Une carte vide lisible suffit ; cela ne prouve pas qu'une
+sauvegarde a été écrite. Ne jamais retirer la carte pendant une écriture.
 
 Le logo blanc utilisé sur cette page est également conservé dans le projet :
 
@@ -116,7 +125,7 @@ Le logo blanc utilisé sur cette page est également conservé dans le projet :
 - un câble USB capable de transférer les données, pas uniquement de charger ;
 - un ordinateur Windows, macOS ou Linux ;
 - Visual Studio Code + PlatformIO, ou PlatformIO Core en ligne de commande ;
-- facultatif : une carte microSD formatée en FAT32 pour les sauvegardes ;
+- une carte microSD formatée en FAT32, obligatoire pour le parcours en **1.9.1-dev** (facultative en version publiée 1.7.6) ;
 - idéalement : un ordinateur hors ligne ou une machine dédiée pour la génération finale.
 
 Selon la révision de la carte, Windows peut demander le pilote du convertisseur USB-série, généralement CH340 ou CP210x. Vérifiez le composant présent sur votre propre carte avant d’installer un pilote.
@@ -604,7 +613,7 @@ Tout secret affiché peut être photographié ou observé. Le QR de clé privée
 | Collecte bloquée avant 100 % | Bougez le doigt dans le cadre avec une pression suffisante jusqu’à 320 échantillons ; une lumière stable ne bloque pas la collecte |
 | Rien après 100 % | L’état vert reste visible une seconde avant la génération ; si le blocage persiste, redémarrez et vérifiez que l’autotest affiche E00 |
 | Suggestions incorrectes | Vérifiez que le mot est anglais et appartient à BIP39 ; la version doit être au moins 1.7.5 |
-| microSD absente | Reformatez en FAT32, réinsérez avant l’ouverture de la page et utilisez **ACTUALISER** |
+| microSD absente ou illisible | Insérez une carte FAT32 lisible et utilisez **RÉESSAYER** en 1.9.1-dev (**ACTUALISER** dans la liste de fichiers). Sauvegardez les données existantes avant tout éventuel formatage sur ordinateur ; AURORA ne formate jamais la carte |
 | Fichier déjà existant | Choisissez un autre nom ; AURORA refuse volontairement l’écrasement |
 | Mauvais mot de passe `.aurora` | Vérifiez casse, espaces et caractères ; le fichier ne possède aucune procédure de récupération |
 | BlueWallet indique `Non-base58 character` | Le QR privé doit commencer par `K` ou `L` et ne contenir que la WIF brute ; utilisez une version au moins égale à 1.7.5 et comparez ensuite l’adresse |

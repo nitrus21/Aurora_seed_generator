@@ -79,6 +79,10 @@ constexpr size_t AURORA_WALLET_MIN_PASSWORD_LENGTH = 12;
 
 const char *walletExportSuffix(WalletExportFormat format);
 
+// Fresh, read-only mount/root check. An empty readable card is accepted;
+// never format a card or create a probe file. Writes still check their result.
+bool auroraSdReady();
+
 WalletExportResult writeWalletExportFile(WalletExportFormat format,
                                          const char *baseName,
                                          const char *filePassword,

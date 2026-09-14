@@ -271,6 +271,18 @@ bool validAuroraData(const WalletExportData &data) {
 
 }
 
+bool auroraSdReady() {
+  AuroraStorage storage;
+  bool ready = false;
+  if (storage.begin()) {
+    AuroraFile root = storage.open("/");
+    ready = root && root.isDirectory();
+    root.close();
+  }
+  storage.end();
+  return ready;
+}
+
 const char *walletExportSuffix(WalletExportFormat format) {
   switch (format) {
     case WalletExportFormat::ElectrumPrivate: return "-electrum.json";

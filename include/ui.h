@@ -17,7 +17,7 @@ class AuroraUI {
     RestoreSetup, RestoreWords, RestorePassphrase, Restoring,
     Setup, Passphrase, Entropy, Generating, FileProcessing, GenerationError,
     SecurityError, Mnemonic, PassphraseReveal, Verify, Info, Qr, Backup, ExportWarning,
-    ExportName, ExportPassword, Wipe, PinSetup, PinUnlock
+    ExportName, ExportPassword, Wipe, PinSetup, PinUnlock, SdRequired
   };
   enum class FileOperation : uint8_t { None, Export, Import };
   enum class QrContent : uint8_t { Address, AccountXpub, PrivateKey };
@@ -43,6 +43,10 @@ class AuroraUI {
   bool confirmPassphrase();
   void buildPinSetup(); void buildPinUnlock();
   void submitPinSetup(); void submitPinUnlock();
+  bool needsSd(Screen screen) const;
+  bool ensureSd(Screen resume);
+  void buildSdRequired();
+  Screen afterSd_ = Screen::Mode;
   void wipeSession(); void closeSession();
   enum class Access : uint8_t { None, Words, Passphrase, PrivateQr, Export };
   Access accessFor(Screen screen) const;

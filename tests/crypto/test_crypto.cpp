@@ -5,6 +5,10 @@
 #include "../../src/pin_security.cpp"
 
 int main() {
+  assert(testCard.empty() && auroraSdReady() && testCard.empty());
+  testCardReady=false; assert(!auroraSdReady());
+  testCardReady=true; testRootReadable=false; assert(!auroraSdReady());
+  testRootReadable=true; assert(auroraSdReady() && testMounts==testUnmounts);
   assert(auroraWalletCryptoSelfTest()); // Frozen PBKDF2-SHA256 and AES-256-GCM vectors.
   const auto *password = reinterpret_cast<const uint8_t *>("password");
   const auto *salt = reinterpret_cast<const uint8_t *>("salt");
@@ -44,6 +48,9 @@ int main() {
       "TEST ONLY", "address-fixture", "public-fixture", "private-fixture", "wif-fixture", "descriptor-fixture", &pin};
   constexpr const char *filePassword = "a-test-password-only";
   char path[80]{}; AuroraWalletData restored{};
+  testCardReady=false;
+  assert(writeWalletExportFile(WalletExportFormat::AuroraWallet,"absent",filePassword,fixture,path,sizeof(path))==WalletExportResult::NoCard);
+  assert(testCard.empty()); testCardReady=true;
   assert(writeWalletExportFile(WalletExportFormat::AuroraWallet, "test", filePassword, fixture, path, sizeof(path)) == WalletExportResult::Ok);
   assert(testCard.at("/test.aurora").size() == 1200);
   const auto original = testCard.at("/test.aurora");
@@ -108,5 +115,6 @@ int main() {
   testSyncOk = false;
   assert(writeWalletExportFile(WalletExportFormat::AuroraWallet, "failure", filePassword, fixture, path, sizeof(path)) == WalletExportResult::WriteFailed);
   assert(!testCard.count("/failure.aurora") && testCard.at("/test.aurora") == original);
+  puts("PASS: read-only SD presence/root check accepts empty media, rejects absent/unreadable media, no-card export creates nothing");
   puts("PASS: unchanged wallet/file KDF vectors, V1 read and V2 round trip, independent PIN and 3-attempt guard, tamper/wrong-password rejection, no overwrite, failed-sync cleanup");
 }

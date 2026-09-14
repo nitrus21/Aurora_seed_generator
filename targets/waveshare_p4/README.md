@@ -1,6 +1,6 @@
 # AURORA — développement ESP32-P4
 
-Version de développement : **1.9.0-dev**, branche `codex/waveshare-p4-480x800`. Les protections PIN et la confirmation de passphrase sont décrites dans [SECURITY.md](../../SECURITY.md), sans modification des dérivations du portefeuille ou du fichier.
+Version de développement : **1.9.1-dev**, branche `codex/waveshare-p4-480x800`. La microSD obligatoire, les protections PIN et la confirmation de passphrase sont décrites dans [SECURITY.md](../../SECURITY.md), sans modification des dérivations du portefeuille ou du fichier.
 Carte visée : **Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3**, sans suffixe `-C`.
 Ne pas confondre une compilation réussie avec une validation matérielle : ce portage n'est pas encore une version finale à utiliser avec des fonds.
 
@@ -37,6 +37,14 @@ Les pilotes sont démarrés uniquement sur l'écran de collecte. Aucun audio/ima
 Le coprocesseur radio ESP32-C6 est maintenu en reset actif bas sur GPIO54 selon le profil P4 SDIO utilisé par Waveshare. Aucun pilote réseau n'est lancé. Ce brochage et l'absence d'activité radio doivent être vérifiés sur la révision exacte de la carte ; le logiciel ne peut garantir une isolation physique avant son démarrage.
 
 ## Compatibilité microSD
+
+La microSD FAT32 doit être détectée et sa racine lisible avant toute création,
+restauration ou ouverture, puis avant les formulaires de phrase/mot de passe/PIN
+et leur validation. Sinon l'écran **microSD requise** bloque la saisie, avec
+**RÉESSAYER** et **FERMER** seulement. Une carte vide lisible est acceptée,
+sans formatage ni fichier de test. Sur P4, le contrôle après collecte attend
+d'abord l'arrêt confirmé des capteurs. Les retraits entre affichage et validation
+sont détectés à la validation ; pas de surveillance continue de chaque frappe.
 
 FAT32, mêmes noms et suffixes sur les deux appareils. Lecture V1 conservée ; nouvelles écritures V2 avec PIN par fichier. En-tête de 46 octets, PBKDF2-HMAC-SHA-256 (120 000 itérations à l'écriture), AES-256-GCM et tag de 16 octets restent inchangés. V2 ajoute 80 octets chiffrés pour le vérificateur PIN : fichier total de 1 200 octets contre 1 120 en V1. Aucun champ spécifique au matériel. Les anciens firmwares ne lisent pas V2 ; mettre les deux cartes à jour. [Migration V1/V2](../../SECURITY.md#format-binaire-v2-et-migration).
 
@@ -92,7 +100,7 @@ Résultats et limites de la vérification logicielle : [VALIDATION.md](VALIDATIO
 4. Vérifier microphones, puis refaire la collecte avec OV5647 : image, compteur réel, variations sonores, absence de données après sortie.
 5. Tester annulation, redémarrage de collecte, source muette/bloquée et erreurs I2C/CSI ; aucun accès aux secrets si l'arrêt échoue.
 6. Échanger un portefeuille **de test sans fonds** dans les deux sens entre CYD et P4 ; comparer adresse, dérivation et exports.
-7. Tester absence de SD, carte pleine, fichier existant, mauvais mot de passe et fichier altéré ; aucun formatage ni perte d'un fichier préexistant.
+7. Sans SD, vérifier le blocage avant création/restauration/ouverture et l'absence de champs phrase/PIN. Réessayer sans carte doit rester bloqué ; une carte FAT32 vide doit permettre la création. Retirer la carte après affichage d'un formulaire puis valider : saisie effacée, aucune opération ni tentative PIN consommée. Réinsérer et réessayer, puis vérifier FERMER et la conservation du compteur d'erreurs PIN. Tester aussi carte pleine, fichier existant, mauvais mot de passe et fichier altéré ; aucun formatage ni perte d'un fichier préexistant. Ne pas retirer pendant une écriture.
 8. Tester double passphrase, PIN avec zéros initiaux, trois erreurs séparées par annulation, expiration à 15 s et inactivité à 120 s. Mesurer la latence PIN et la stabilité mémoire sur plusieurs cycles ; confirmer que l'adresse reste identique à celle d'un logiciel de référence.
 
 ## Références matérielles et pilotes
