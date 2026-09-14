@@ -1,4 +1,4 @@
-# Tests de collecte d’entropie — AURORA 1.7.6
+# Tests du noyau commun — AURORA
 
 Sous Windows avec Visual Studio Build Tools (compilateur C++ et SDK Windows) :
 
@@ -6,9 +6,11 @@ Sous Windows avec Visual Studio Build Tools (compilateur C++ et SDK Windows) :
 .\tests\native\run.cmd
 ```
 
-Les tests exécutent le véritable `include/entropy.h` avec des entrées matérielles simulées et des fonctions SHA-256/HMAC fournies par Windows CNG. Les fixtures sont déterministes et ne doivent jamais servir à générer un portefeuille réel. Les exécutables restent dans `tmp/entropy-tests/`.
+Les tests exécutent le véritable `include/entropy.h`, compilé pour les profils CYD et P4, avec des entrées matérielles simulées et des fonctions SHA-256/HMAC fournies par Windows CNG. Les fixtures sont déterministes et ne doivent jamais servir à générer un portefeuille réel. Les exécutables restent dans `tmp/entropy-tests/`.
 
 Vérifications : conservation des coordonnées, de la pression, des timings et du RNG ; contribution effective de la lumière ; exclusion mutuelle ADC/RNG ; seuil de 320 échantillons et refus de finaliser à 160 ; absence d’influence de l’aperçu sur le mélange ; effacement de sa clé ; annulation et recommencement.
+
+Profil P4 : ni pression fictive ni luminosité fictive ; séparation des domaines microphone/caméra, rejet des doublons et séquences anciennes, bornes des tampons, contribution au résultat, effacement à l'annulation. Les sources complémentaires ne changent ni le seuil tactile ni l'aperçu indépendant.
 
 La compilation du véritable firmware utilise ses dépendances épinglées :
 
@@ -19,12 +21,12 @@ pio run -e esp32-2432S028R
 Pour contrôler les binaires de la version finale inclus dans le dépôt, sans compiler ni flasher :
 
 ```powershell
-.\tests\release\verify.ps1
+.\tests\release\verify.ps1 -ReleasedArtifactsOnly
 ```
 
-Ce contrôle vérifie la cohérence des versions et du manifeste, les octets de chaque composant aux offsets prévus dans l’image fusionnée, toutes les empreintes SHA-256 et celles affichées dans le Web Flasher et le README.
+Ce contrôle vérifie le manifeste publié, les octets de chaque composant aux offsets prévus dans l’image fusionnée, toutes les empreintes SHA-256 et celles affichées dans le Web Flasher et le README. Sans l'option, une version finale identique dans les sources est aussi exigée ; une branche `-dev` est alors volontairement refusée.
 
-## État de validation du 14 septembre 2026
+## Validation historique de la version publiée 1.7.6 (14 septembre 2026)
 
 - Tests natifs de collecte et contrôle des binaires : réussis.
 - Écran LVGL avec matériel simulé : compteur 320, seuils de couleur, aperçu, pause verte, annulation et recommencement vérifiés.

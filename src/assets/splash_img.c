@@ -6404,7 +6404,11 @@ const LV_ATTRIBUTE_MEM_ALIGN LV_ATTRIBUTE_LARGE_CONST uint8_t aurora_splash_map[
 };
 
 const lv_img_dsc_t aurora_splash = {
+#if LVGL_VERSION_MAJOR >= 9
+    .header = {.magic = LV_IMAGE_HEADER_MAGIC, .cf = LV_COLOR_FORMAT_RGB565, .w = 320, .h = 240, .stride = 640},
+#else
     .header = {.cf = LV_IMG_CF_TRUE_COLOR, .always_zero = 0, .reserved = 0, .w = 320, .h = 240},
+#endif
     .data_size = 153600,
     .data = aurora_splash_map,
 };

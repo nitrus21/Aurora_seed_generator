@@ -1,10 +1,12 @@
 # AURORA Seed Generator
 
-Firmware Bitcoin entièrement hors ligne pour **ESP32-2432S028(R)**, écran tactile ILI9341/XPT2046 de 320 × 240 pixels. Toute l’interface est en français ; seuls les mots de la phrase de récupération utilisent la liste anglaise officielle BIP39.
+Firmware Bitcoin hors ligne, avec un noyau commun et deux cibles matérielles : **ESP32-2432S028(R)** (320 × 240) et portage **Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3** (480 × 800 portrait, version sans caméra fournie). Toute l’interface est en français ; seuls les mots de la phrase de récupération utilisent la liste anglaise officielle BIP39.
+
+> Cette branche développe **1.9.0-dev** : confirmation de passphrase, PIN par fichier et verrouillage de session, sans changer les dérivations Bitcoin ni le chiffrement AES-256-GCM/PBKDF2 existant. Les nouveaux parcours doivent être validés sur les deux appareils. Les binaires du Web Flasher restent ceux de la version CYD **1.7.6**. [Sécurité et compatibilité V1/V2](SECURITY.md) · [Architecture et validation P4](targets/waveshare_p4/README.md).
 
 ![Fond de l’écran de démarrage AURORA](assets/splash_320x240.png)
 
-Version finale du code et des binaires inclus : **1.7.6**
+Dernière version publiée et binaires inclus : **1.7.6**
 Notes de version : [luminosité, aperçu de collecte et 320 échantillons](webflasher/CHANGELOG.md)
 Installation Web : [AURORA Web Flasher](https://nitrus21.github.io/Aurora_seed_generator/)
 Environnement : **PlatformIO + Arduino**
@@ -71,7 +73,8 @@ La méthode recommandée consiste à utiliser AURORA hors ligne pour créer ou e
 
 - Liste anglaise officielle BIP39 de 2 048 mots et contrôle du checksum.
 - Toutes les combinaisons **12/15/18/21/24 mots × Legacy/Nested SegWit/Native SegWit/Taproot**.
-- Passphrase BIP39 ASCII optionnelle, de 0 à 63 caractères imprimables.
+- Passphrase BIP39 ASCII optionnelle, de 0 à 63 caractères imprimables, saisie deux fois après la collecte.
+- PIN de 4 à 8 chiffres par fichier Aurora V2 ; trois erreurs ferment la session, sans effacer la carte.
 - Entropie tactile : coordonnées, pression et timings de 320 échantillons.
 - Luminosité : lecture de la photorésistance intégrée sur GPIO34 à chaque échantillon.
 - RNG matériel ESP32 activé explicitement autour de `esp_random()`.
@@ -94,6 +97,8 @@ La cryptographie Bitcoin repose principalement sur [uBitcoin](https://github.com
 ## Parcours de l’application
 
 ![Schéma des parcours AURORA](assets/aurora_workflow.svg)
+
+Ce schéma décrit la version publiée 1.7.6. En développement : configuration → collecte → double passphrase → portefeuille ; la sauvegarde ajoute un PIN et l'ouverture n'affiche plus les secrets automatiquement. Voir le [parcours sécurisé actuel](SECURITY.md).
 
 L’accueil présente trois choix :
 
@@ -338,19 +343,7 @@ Les tests natifs, le contrôle des binaires et les tests de l’écran LVGL avec
 
 Le nombre de mots détermine la quantité d’entropie BIP39, pas le format de l’adresse. Toutes les combinaisons proposées sont valides.
 
-#### 2/7 — Passphrase BIP39
-
-La passphrase est facultative. Elle est parfois appelée « 25e mot », mais ce n’est pas nécessairement un mot de la liste BIP39.
-
-> [!WARNING]
-> Une passphrase différente, même d’un seul caractère, crée un portefeuille totalement différent sans message d’erreur. Une passphrase oubliée rend les fonds associés irrécupérables.
-
-La passphrase BIP39 n’est pas le mot de passe du fichier Aurora Wallet :
-
-- **passphrase BIP39** : participe à la dérivation des clés Bitcoin ;
-- **mot de passe Aurora Wallet** : chiffre uniquement le fichier `.aurora` sur la microSD.
-
-#### 3/7 — Collecte d’entropie
+#### 2/7 — Collecte d’entropie
 
 Tracez des mouvements irréguliers dans le cadre jusqu’à 100 %. Pour chaque échantillon, AURORA conserve les sources précédentes et mélange :
 
@@ -362,9 +355,15 @@ Tracez des mouvements irréguliers dans le cadre jusqu’à 100 %. Pour chaque �
 
 Après 320 échantillons, le mélange est condensé par SHA-256. La durée de collecte et un tirage matériel supplémentaire restent incorporés à la fin. Lors de la création BIP39, 32 nouveaux octets du RNG matériel sont mélangés avec ce résultat, puis condensés une seconde fois, comme auparavant.
 
-La barre de progression suit le nombre d’échantillons recueillis : **rouge de 0 à 49 %**, **orange de 50 à 99 %**, puis **verte à 100 %**. L’état vert reste visible une seconde avant le passage automatique à la génération. La jauge ne mesure pas une quantité de bits d’entropie certifiée. La lumière est un apport complémentaire : une valeur stable ou saturée ne bloque pas la collecte et ne remplace jamais le RNG matériel.
+La barre suit le nombre d’échantillons : **rouge de 0 à 49 %**, **orange de 50 à 99 %**, puis **verte à 100 %**. Le vert reste visible une seconde avant l'arrêt des capteurs et la double saisie de passphrase. La jauge n'est pas une mesure certifiée de bits d'entropie. Sur P4, micro et caméra facultative complètent la collecte ; la pression et la luminosité sont propres au CYD.
 
 Le bandeau « Aperçu du mélange » fait défiler quatre groupes hexadécimaux, actualisés pendant les gestes (au plus environ dix fois par seconde, avec une dernière actualisation à 100 %). Chaque groupe est un HMAC-SHA-256 tronqué de l’échantillon, avec une clé d’affichage aléatoire indépendante et temporaire. Ni les valeurs brutes du RNG, ni l’état du mélange secret, ni l’entropie finale BIP39 ne sont affichés. Cette clé d’affichage est effacée en fin de collecte ou en cas de retour ; le bandeau est effacé en quittant l’écran.
+
+#### 3/7 — Passphrase BIP39
+
+Saisissez la même passphrase dans les deux champs de la même page, ou laissez les deux vides. La comparaison est exacte ; la confirmation n'est jamais préremplie. Limite inchangée : ASCII imprimable, 63 caractères.
+
+Une passphrase différente crée un autre portefeuille ; l'oublier rend les fonds associés irrécupérables. La saisir après l'entropie ne change pas la dérivation BIP39. Elle est distincte du mot de passe de chiffrement `.aurora` et du PIN d'accès aux secrets.
 
 #### 4/7 — Phrase de récupération
 
@@ -410,7 +409,7 @@ Vous pouvez exporter sur microSD, puis utiliser **EFFACER**. Cette action écras
 
 Après déchiffrement, AURORA ne fait pas confiance aux valeurs enregistrées. Il valide la phrase BIP39, recalcule le portefeuille depuis les mots et la passphrase, puis compare l’adresse, le chemin, les clés étendues, la WIF et le descripteur. Une différence, un mauvais mot de passe ou un fichier modifié provoque un refus.
 
-Si le fichier contient une passphrase BIP39, elle est révélée sur un écran d’avertissement séparé après les mots.
+L'ouverture affiche seulement les données publiques. Le PIN est requis pour révéler les mots, la passphrase ou le QR privé et pour exporter des secrets. Trois erreurs cumulées ferment la session ; les fichiers restent sur la carte. Les anciens V1 demandent un PIN temporaire, à rendre permanent en réexportant sous un nouveau nom. [Règles et limites](SECURITY.md).
 
 ### Restaurer une seed
 
@@ -418,7 +417,7 @@ Si le fichier contient une passphrase BIP39, elle est révélée sur un écran d
 2. Saisissez chaque mot anglais séparément.
 3. Touchez une des trois suggestions pour éviter les fautes.
 4. AURORA refuse la phrase si le checksum BIP39 est invalide.
-5. Saisissez la passphrase BIP39 éventuelle.
+5. Saisissez et confirmez la passphrase BIP39 éventuelle, puis créez un PIN de session.
 6. Sélectionnez le type de dérivation dans la liste.
 7. Comparez l’adresse et utilisez les QR.
 8. Utilisez **EXPORTER** pour sauvegarder le portefeuille restauré.
@@ -467,7 +466,7 @@ Ce fichier est volontairement non chiffré. Ne l’utilisez pas pour une démons
 
 ## Format chiffré Aurora Wallet
 
-Le conteneur binaire `.aurora`, version 1, utilise :
+Le conteneur binaire `.aurora` est écrit en **V2** ; la lecture **V1** reste disponible. Les deux versions utilisent sans changement :
 
 - AES-256-GCM ;
 - une clé AES de 256 bits ;
@@ -479,6 +478,8 @@ Le conteneur binaire `.aurora`, version 1, utilise :
 - un mot de passe ASCII de 12 à 63 caractères, saisi deux fois à la création.
 
 Le contenu chiffré comprend les mots BIP39, la passphrase éventuelle, le type d’adresse, le chemin, l’adresse, la clé publique étendue, la clé privée étendue, la WIF, le descripteur et la version du firmware.
+
+V2 ajoute un vérificateur PIN chiffré et passe de 1 120 à 1 200 octets. Le PIN ne modifie aucune clé et ne remplace pas le mot de passe. Un ancien firmware ne lit pas V2 ; les deux cartes doivent utiliser le nouveau firmware. [Format exact et migration](SECURITY.md#format-binaire-v2-et-migration).
 
 AES-256 ne rend pas un mot de passe faible équivalent à une clé aléatoire de 256 bits. Utilisez une phrase de passe longue, unique et conservée séparément. Il n’existe ni porte dérobée ni récupération en cas de perte.
 

@@ -9,6 +9,10 @@ if errorlevel 1 exit /b 1
 cl /nologo /std:c++17 /EHsc /W4 /WX /utf-8 /Itests\native\stubs /Iinclude tests\native\test_entropy.cpp /Fotmp\entropy-tests\test_entropy.obj /Fetmp\entropy-tests\test_entropy.exe /link bcrypt.lib
 if errorlevel 1 exit /b 1
 tmp\entropy-tests\test_entropy.exe
+if errorlevel 1 exit /b 1
+cl /nologo /std:c++17 /EHsc /W4 /WX /utf-8 /DAURORA_BOARD_P4 /DAURORA_NATIVE_TEST /Itests\native\stubs /Iinclude tests\native\test_entropy.cpp /Fotmp\entropy-tests\test_entropy_p4.obj /Fetmp\entropy-tests\test_entropy_p4.exe /link bcrypt.lib
+if errorlevel 1 exit /b 1
+tmp\entropy-tests\test_entropy_p4.exe
 set "AURORA_TEST_RESULT=%ERRORLEVEL%"
 popd
 exit /b %AURORA_TEST_RESULT%

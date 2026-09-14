@@ -1,6 +1,7 @@
 #pragma once
 
-#include <Arduino.h>
+#include "platform/runtime.h"
+#include "pin_security.h"
 
 enum class WalletExportFormat : uint8_t {
   ElectrumPrivate,
@@ -13,6 +14,7 @@ enum class WalletExportResult : uint8_t {
   InvalidData,
   UnsupportedFormat,
   WeakPassword,
+  InvalidPin,
   NoCard,
   AlreadyExists,
   OpenFailed,
@@ -54,6 +56,7 @@ struct WalletExportData {
   const char *accountXprv;
   const char *privateWif;
   const char *receiveDescriptor;
+  const AuroraPinRecord *pin; // Keep this an aggregate under the CYD's C++11.
 };
 
 struct AuroraWalletData {
@@ -68,6 +71,8 @@ struct AuroraWalletData {
   char accountXprv[128];
   char privateWif[64];
   char receiveDescriptor[224];
+  uint8_t fileVersion;
+  AuroraPinRecord pin;
 };
 
 constexpr size_t AURORA_WALLET_MIN_PASSWORD_LENGTH = 12;

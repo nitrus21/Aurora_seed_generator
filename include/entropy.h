@@ -1,5 +1,5 @@
 #pragma once
-#include <Arduino.h>
+#include "platform/runtime.h"
 #include <Hash.h>
 #include <new>
 #include "secure_memory.h"
@@ -24,6 +24,7 @@ class TouchEntropy {
     if (!rngEnabled_ || ready()) return;
     const uint32_t sampleTime = micros();
 
+#if !defined(AURORA_BOARD_P4)
     // The LDR ADC and the internal SAR-ADC RNG source must not run together.
     // Complete the one-shot read before restoring the hardware entropy source.
     hardwareRngDisable();
@@ -40,6 +41,14 @@ class TouchEntropy {
       uint32_t us, rng;
       uint16_t light;
     } s = {x, y, pressure, sampleTime, esp_random(), light};
+#else
+    // Capacitive contact strength is not a calibrated pressure sensor; no LDR.
+    (void)pressure;
+    struct __attribute__((packed)) Sample {
+      int16_t x, y;
+      uint32_t us, rng;
+    } s = {x, y, sampleTime, esp_random()};
+#endif
     sha_.write(reinterpret_cast<const uint8_t *>(&s), sizeof(s));
 
     // Display only a truncated HMAC of the sample, never raw RNG or pool bytes.
@@ -50,6 +59,31 @@ class TouchEntropy {
     secureZero(preview, sizeof(preview));
     secureZero(&s, sizeof(s));
     ++samples_;
+  }
+  enum class Source : uint8_t { Microphone = 1, Camera = 2 };
+  // Fresh, real auxiliary data only. This never advances the 320-touch counter.
+  bool addAuxiliary(Source source, uint32_t sequence, const uint8_t *data, size_t length) {
+    const unsigned index = static_cast<unsigned>(source) - 1;
+    if (!rngEnabled_ || ready() || index >= 2 || !data || length == 0 || length > 4096) return false;
+    if (auxSeen_[index] && static_cast<int32_t>(sequence - auxSequence_[index]) <= 0) return false;
+    const uint8_t domain[] = {'A','U','R','O','R','A','-','A','U','X',1,static_cast<uint8_t>(source)};
+    uint8_t metadata[8];
+    for (unsigned i = 0; i < 4; ++i) {
+      metadata[i] = static_cast<uint8_t>(sequence >> (8 * i));
+      metadata[i + 4] = static_cast<uint8_t>(length >> (8 * i));
+    }
+    sha_.write(domain, sizeof(domain));
+    sha_.write(metadata, sizeof(metadata));
+    sha_.write(data, length);
+    auxSeen_[index] = true;
+    auxSequence_[index] = sequence;
+    ++auxCount_[index];
+    secureZero(metadata, sizeof(metadata));
+    return true;
+  }
+  uint32_t auxiliaryCount(Source source) const {
+    const unsigned index = static_cast<unsigned>(source) - 1;
+    return index < 2 ? auxCount_[index] : 0;
   }
   // Collection progress, not an estimate of the number of unpredictable bits.
   uint8_t progress() const { return static_cast<uint8_t>(samples_ * 100 / REQUIRED_SAMPLES); }
@@ -77,6 +111,9 @@ class TouchEntropy {
     secureZero(&previewToken_, sizeof(previewToken_));
     samples_ = 0;
     started_ = 0;
+    secureZero(auxSeen_, sizeof(auxSeen_));
+    secureZero(auxSequence_, sizeof(auxSequence_));
+    secureZero(auxCount_, sizeof(auxCount_));
   }
  private:
   SHA256 sha_;
@@ -85,4 +122,7 @@ class TouchEntropy {
   uint16_t samples_ = 0;
   uint32_t started_ = 0;
   bool rngEnabled_ = false;
+  bool auxSeen_[2]{};
+  uint32_t auxSequence_[2]{};
+  uint32_t auxCount_[2]{};
 };

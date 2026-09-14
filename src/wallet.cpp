@@ -4,7 +4,7 @@
 
 #include <Hash.h>
 #include <mbedtls/md.h>
-#include <mbedtls/pkcs5.h>
+#include "platform/crypto.h"
 #include <utility/trezor/bip39.h>
 
 namespace {
@@ -143,8 +143,6 @@ bool validateMnemonicChecksum(const char *mnemonic, uint8_t words) {
 bool seedFromMnemonic(const char *mnemonic, const char *passphrase, uint8_t seed[64]) {
   char salt[72] = "mnemonic";
   bool ok = false;
-  mbedtls_md_context_t context;
-  mbedtls_md_init(&context);
   const char *password = passphrase ? passphrase : "";
 
   if (!mnemonic || !seed) goto cleanup;
@@ -152,17 +150,14 @@ bool seedFromMnemonic(const char *mnemonic, const char *passphrase, uint8_t seed
   if (strlcat(salt, password, sizeof(salt)) >= sizeof(salt)) goto cleanup;
 
   {
-    const mbedtls_md_info_t *sha512 = mbedtls_md_info_from_type(MBEDTLS_MD_SHA512);
-    if (!sha512 || mbedtls_md_setup(&context, sha512, 1) != 0) goto cleanup;
-    if (mbedtls_pkcs5_pbkdf2_hmac(
-            &context, reinterpret_cast<const unsigned char *>(mnemonic), strlen(mnemonic),
+    if (auroraPbkdf2Hmac(
+            MBEDTLS_MD_SHA512, reinterpret_cast<const unsigned char *>(mnemonic), strlen(mnemonic),
             reinterpret_cast<const unsigned char *>(salt), strlen(salt), 2048,
             64, seed) != 0) goto cleanup;
   }
   ok = true;
 
 cleanup:
-  mbedtls_md_free(&context);
   secureZero(salt, sizeof(salt));
   if (!ok) secureZero(seed, 64);
   return ok;

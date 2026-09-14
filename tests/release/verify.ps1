@@ -1,3 +1,5 @@
+param([switch] $ReleasedArtifactsOnly)
+
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
@@ -10,9 +12,13 @@ $webRoot = Join-Path $taskRoot 'webflasher'
 $firmwareRoot = Join-Path $webRoot 'firmware'
 $versionHeader = Get-Content -Raw -LiteralPath (Join-Path $taskRoot 'include\version.h')
 $versionMatch = [regex]::Match($versionHeader, 'AURORA_FIRMWARE_VERSION\s+"(\d+\.\d+\.\d+)"')
-Assert-Release $versionMatch.Success 'A final firmware version is required.'
-$version = $versionMatch.Groups[1].Value
 $manifest = Get-Content -Raw -LiteralPath (Join-Path $webRoot 'manifest.json') | ConvertFrom-Json
+if ($ReleasedArtifactsOnly) {
+    $version = $manifest.version
+} else {
+    Assert-Release $versionMatch.Success 'A final firmware version is required. Use -ReleasedArtifactsOnly to verify preserved release binaries on a development branch.'
+    $version = $versionMatch.Groups[1].Value
+}
 $layout = Get-Content -Raw -LiteralPath (Join-Path $firmwareRoot 'flash-layout.json') | ConvertFrom-Json
 $factoryName = "aurora-$version-esp32-2432s028r.factory.bin"
 

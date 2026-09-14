@@ -1,5 +1,12 @@
 #pragma once
 
+#if defined(AURORA_BOARD_P4)
+#define AURORA_SCREEN_WIDTH 480
+#define AURORA_SCREEN_HEIGHT 800
+// Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3, not the -C variant.
+// Display, touch, audio and SD pins are provided by its versioned BSP.
+#define AURORA_RADIO_RESET_PIN 54
+#else
 // ESP32-2432S028(R) "Cheap Yellow Display". Modifiez ici pour un clone différent.
 #define AURORA_SCREEN_WIDTH  320
 #define AURORA_SCREEN_HEIGHT 240
@@ -33,3 +40,4 @@
 #define AURORA_TOUCH_SWAP_XY 1
 #define AURORA_TOUCH_INVERT_X 0
 #define AURORA_TOUCH_INVERT_Y 1
+#endif

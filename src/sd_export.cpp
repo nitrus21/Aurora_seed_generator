@@ -4,51 +4,16 @@
 #include "hardware_rng.h"
 #include "secure_memory.h"
 #include "version.h"
+#include "wallet_file_format.h"
 
-#include <FS.h>
-#include <SD.h>
-#include <SPI.h>
+#include "platform/storage.h"
 #include <mbedtls/gcm.h>
 #include <mbedtls/md.h>
-#include <mbedtls/pkcs5.h>
+#include "platform/crypto.h"
 #include <new>
 
 namespace {
-constexpr uint8_t FILE_MAGIC[8] = {'A', 'U', 'R', 'O', 'R', 'A', 'W', '1'};
-constexpr uint8_t PAYLOAD_MAGIC[8] = {'A', 'U', 'R', 'D', 'A', 'T', '0', '1'};
-constexpr uint8_t FILE_VERSION = 1;
-constexpr uint8_t KDF_PBKDF2_HMAC_SHA256 = 1;
-constexpr uint8_t CIPHER_AES_256_GCM = 1;
-constexpr uint32_t KDF_ITERATIONS = 120000;
-constexpr uint32_t KDF_ITERATIONS_MIN = 10000;
-constexpr uint32_t KDF_ITERATIONS_MAX = 500000;
-constexpr size_t HEADER_SIZE = 46;
-constexpr size_t SALT_OFFSET = 16;
-constexpr size_t SALT_SIZE = 16;
-constexpr size_t NONCE_OFFSET = 32;
-constexpr size_t NONCE_SIZE = 12;
-constexpr size_t TAG_SIZE = 16;
-constexpr size_t KEY_SIZE = 32;
-
-#pragma pack(push, 1)
-struct AuroraPayloadV1 {
-  uint8_t magic[8];
-  uint8_t addressKind;
-  uint8_t wordCount;
-  char firmwareVersion[16];
-  char addressType[40];
-  char derivationPath[32];
-  char mnemonic[256];
-  char passphrase[64];
-  char address[96];
-  char accountXpub[128];
-  char accountXprv[128];
-  char privateWif[64];
-  char receiveDescriptor[224];
-};
-#pragma pack(pop)
-
-static_assert(sizeof(AuroraPayloadV1) < 65536, "Aurora Wallet payload is too large");
+using namespace AuroraWalletFormat;
 
 bool validBaseName(const char *name) {
   if (!name) return false;
@@ -144,17 +109,9 @@ uint32_t getLe32(const uint8_t *source) {
 bool deriveKey(const char *password, const uint8_t *salt, size_t saltLength,
                uint32_t iterations, uint8_t key[KEY_SIZE]) {
   if (!password || !salt || saltLength == 0 || !key || iterations == 0) return false;
-  bool ok = false;
-  mbedtls_md_context_t context;
-  mbedtls_md_init(&context);
-  const mbedtls_md_info_t *sha256 = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
-  if (sha256 && mbedtls_md_setup(&context, sha256, 1) == 0 &&
-      mbedtls_pkcs5_pbkdf2_hmac(
-          &context, reinterpret_cast<const unsigned char *>(password), strlen(password),
-          salt, saltLength, iterations, KEY_SIZE, key) == 0) {
-    ok = true;
-  }
-  mbedtls_md_free(&context);
+  const bool ok = auroraPbkdf2Hmac(MBEDTLS_MD_SHA256,
+      reinterpret_cast<const unsigned char *>(password), strlen(password),
+      salt, saltLength, iterations, KEY_SIZE, key) == 0;
   if (!ok) secureZero(key, KEY_SIZE);
   return ok;
 }
@@ -188,13 +145,13 @@ bool aesGcmDecrypt(const uint8_t key[KEY_SIZE], const uint8_t nonce[NONCE_SIZE],
   return ok;
 }
 
-bool writeText(File &file, const char *text) {
+bool writeText(AuroraFile &file, const char *text) {
   if (!text) return false;
   const size_t length = strlen(text);
   return file.write(reinterpret_cast<const uint8_t *>(text), length) == length;
 }
 
-bool writeJsonString(File &file, const char *text) {
+bool writeJsonString(AuroraFile &file, const char *text) {
   if (!text || !writeText(file, "\"")) return false;
   for (const unsigned char *p = reinterpret_cast<const unsigned char *>(text); *p; ++p) {
     if (*p == '\"' || *p == '\\') {
@@ -211,7 +168,7 @@ bool writeJsonString(File &file, const char *text) {
   return writeText(file, "\"");
 }
 
-bool writeElectrum(File &file, const WalletExportData &data) {
+bool writeElectrum(AuroraFile &file, const WalletExportData &data) {
   return writeText(file, "{\n  \"keystore\": {\n    \"xpub\": ") &&
          writeJsonString(file, data.accountXpub) &&
          writeText(file, ",\n    \"xprv\": ") &&
@@ -240,8 +197,8 @@ bool fillPayload(const WalletExportData &data, AuroraPayloadV1 &payload) {
          copyChecked(payload.receiveDescriptor, data.receiveDescriptor);
 }
 
-bool validPayload(const AuroraPayloadV1 &payload) {
-  return memcmp(payload.magic, PAYLOAD_MAGIC, sizeof(payload.magic)) == 0 &&
+bool validPayload(const AuroraPayloadV1 &payload, bool version2 = false) {
+  return memcmp(payload.magic, version2 ? PAYLOAD_MAGIC_V2 : PAYLOAD_MAGIC, sizeof(payload.magic)) == 0 &&
          payload.addressKind <= 3 && supportedWordCount(payload.wordCount) &&
          terminated(payload.firmwareVersion) && terminated(payload.addressType) &&
          terminated(payload.derivationPath) && terminated(payload.mnemonic) &&
@@ -254,21 +211,23 @@ bool validPayload(const AuroraPayloadV1 &payload) {
          present(payload.privateWif) && present(payload.receiveDescriptor);
 }
 
-bool writeAuroraWallet(File &file, const char *password,
+bool writeAuroraWallet(AuroraFile &file, const char *password,
                        const WalletExportData &data) {
-  AuroraPayloadV1 payload{};
+  AuroraPayloadV2 payload{};
   uint8_t header[HEADER_SIZE] = {};
   uint8_t key[KEY_SIZE] = {};
   uint8_t tag[TAG_SIZE] = {};
   uint8_t *cipher = nullptr;
   bool ok = false;
 
-  if (!fillPayload(data, payload)) goto cleanup;
+  if (!data.pin || !auroraPinRecordValid(*data.pin) || !fillPayload(data, payload.wallet)) goto cleanup;
+  memcpy(payload.wallet.magic, PAYLOAD_MAGIC_V2, sizeof(payload.wallet.magic));
+  payload.pin = *data.pin;
   cipher = new (std::nothrow) uint8_t[sizeof(payload)];
   if (!cipher) goto cleanup;
 
-  memcpy(header, FILE_MAGIC, sizeof(FILE_MAGIC));
-  header[8] = FILE_VERSION;
+  memcpy(header, FILE_MAGIC_V2, sizeof(FILE_MAGIC_V2));
+  header[8] = FILE_VERSION_V2;
   header[9] = KDF_PBKDF2_HMAC_SHA256;
   header[10] = CIPHER_AES_256_GCM;
   putLe32(header + 12, KDF_ITERATIONS);
@@ -292,7 +251,7 @@ cleanup:
   secureZero(key, sizeof(key));
   secureZero(tag, sizeof(tag));
   if (cipher) {
-    secureZero(cipher, sizeof(AuroraPayloadV1));
+    secureZero(cipher, sizeof(AuroraPayloadV2));
     delete[] cipher;
   }
   return ok;
@@ -310,18 +269,6 @@ bool validAuroraData(const WalletExportData &data) {
          present(data.privateWif) && present(data.receiveDescriptor);
 }
 
-bool beginSd(SPIClass &sdSpi) {
-  pinMode(AURORA_SD_CS, OUTPUT);
-  digitalWrite(AURORA_SD_CS, HIGH);
-  sdSpi.begin(AURORA_SD_CLK, AURORA_SD_MISO, AURORA_SD_MOSI, AURORA_SD_CS);
-  return SD.begin(AURORA_SD_CS, sdSpi, AURORA_SD_FREQUENCY) &&
-         SD.cardType() != CARD_NONE;
-}
-
-void endSd(SPIClass &sdSpi) {
-  SD.end();
-  sdSpi.end();
-}
 }
 
 const char *walletExportSuffix(WalletExportFormat format) {
@@ -346,6 +293,7 @@ WalletExportResult writeWalletExportFile(WalletExportFormat format,
   if (format == WalletExportFormat::AuroraWallet) {
     if (!validAuroraData(data)) return WalletExportResult::InvalidData;
     if (!validPassword(filePassword)) return WalletExportResult::WeakPassword;
+    if (!data.pin || !auroraPinRecordValid(*data.pin)) return WalletExportResult::InvalidPin;
   }
 
   char path[56] = {};
@@ -355,29 +303,29 @@ WalletExportResult writeWalletExportFile(WalletExportFormat format,
     return WalletExportResult::InvalidName;
   }
 
-  SPIClass sdSpi(HSPI);
-  if (!beginSd(sdSpi)) {
-    endSd(sdSpi);
+  AuroraStorage storage;
+  if (!storage.begin()) {
+    storage.end();
     return WalletExportResult::NoCard;
   }
-  if (SD.exists(path)) {
-    endSd(sdSpi);
+  if (storage.exists(path)) {
+    storage.end();
     return WalletExportResult::AlreadyExists;
   }
 
-  File file = SD.open(path, FILE_WRITE);
+  AuroraFile file = storage.open(path, true);
   if (!file) {
-    endSd(sdSpi);
+    storage.end();
     return WalletExportResult::OpenFailed;
   }
 
-  const bool ok = format == WalletExportFormat::ElectrumPrivate
+  bool ok = format == WalletExportFormat::ElectrumPrivate
                       ? writeElectrum(file, data)
                       : writeAuroraWallet(file, filePassword, data);
-  file.flush();
+  ok = storage.sync(file) && ok;
   file.close();
-  if (!ok) SD.remove(path);
-  endSd(sdSpi);
+  if (!ok) storage.remove(path);
+  storage.end();
 
   if (!ok) return WalletExportResult::WriteFailed;
   if (writtenPath && writtenPathLength) strlcpy(writtenPath, path, writtenPathLength);
@@ -397,32 +345,36 @@ AuroraWalletReadResult readAuroraWalletFile(const char *baseName,
     return AuroraWalletReadResult::InvalidName;
   }
 
-  SPIClass sdSpi(HSPI);
-  if (!beginSd(sdSpi)) {
-    endSd(sdSpi);
+  AuroraStorage storage;
+  if (!storage.begin()) {
+    storage.end();
     return AuroraWalletReadResult::NoCard;
   }
-  if (!SD.exists(path)) {
-    endSd(sdSpi);
+  if (!storage.exists(path)) {
+    storage.end();
     return AuroraWalletReadResult::NotFound;
   }
 
-  File file = SD.open(path, FILE_READ);
+  AuroraFile file = storage.open(path);
   if (!file) {
-    endSd(sdSpi);
+    storage.end();
     return AuroraWalletReadResult::OpenFailed;
   }
 
   uint8_t header[HEADER_SIZE] = {};
   uint8_t tag[TAG_SIZE] = {};
   uint8_t key[KEY_SIZE] = {};
-  AuroraPayloadV1 payload{};
+  AuroraPayloadV2 storagePayload{};
+  AuroraPayloadV1 &payload = storagePayload.wallet;
+  bool version2 = false;
+  size_t allocatedLength = 0;
   uint8_t *cipher = nullptr;
   AuroraWalletReadResult result = AuroraWalletReadResult::ReadFailed;
 
   if (file.read(header, sizeof(header)) != sizeof(header)) goto cleanup_file;
-  if (memcmp(header, FILE_MAGIC, sizeof(FILE_MAGIC)) != 0 ||
-      header[8] != FILE_VERSION || header[9] != KDF_PBKDF2_HMAC_SHA256 ||
+  version2 = header[8] == FILE_VERSION_V2;
+  if (memcmp(header, version2 ? FILE_MAGIC_V2 : FILE_MAGIC, sizeof(FILE_MAGIC)) != 0 ||
+      (!version2 && header[8] != FILE_VERSION) || header[9] != KDF_PBKDF2_HMAC_SHA256 ||
       header[10] != CIPHER_AES_256_GCM || header[11] != 0) {
     result = AuroraWalletReadResult::InvalidFormat;
     goto cleanup_file;
@@ -432,7 +384,7 @@ AuroraWalletReadResult readAuroraWalletFile(const char *baseName,
     const uint16_t cipherLength = getLe16(header + 44);
     const size_t expectedSize = HEADER_SIZE + cipherLength + TAG_SIZE;
     if (iterations < KDF_ITERATIONS_MIN || iterations > KDF_ITERATIONS_MAX ||
-        cipherLength != sizeof(payload) || file.size() != expectedSize) {
+        cipherLength != (version2 ? sizeof(storagePayload) : sizeof(payload)) || file.size() != expectedSize) {
       result = AuroraWalletReadResult::InvalidFormat;
       goto cleanup_file;
     }
@@ -441,24 +393,25 @@ AuroraWalletReadResult readAuroraWalletFile(const char *baseName,
       result = AuroraWalletReadResult::MemoryFailed;
       goto cleanup_file;
     }
+    allocatedLength = cipherLength;
     if (file.read(cipher, cipherLength) != cipherLength ||
         file.read(tag, sizeof(tag)) != sizeof(tag)) {
       result = AuroraWalletReadResult::ReadFailed;
       goto cleanup_file;
     }
     file.close();
-    endSd(sdSpi);
+    storage.end();
     delay(1);
     if (!deriveKey(filePassword, header + SALT_OFFSET, SALT_SIZE, iterations, key) ||
         !aesGcmDecrypt(key, header + NONCE_OFFSET, header, sizeof(header),
                        cipher, cipherLength, tag,
-                       reinterpret_cast<uint8_t *>(&payload))) {
+                       reinterpret_cast<uint8_t *>(&storagePayload))) {
       result = AuroraWalletReadResult::AuthenticationFailed;
       goto cleanup_memory;
     }
   }
 
-  if (!validPayload(payload)) {
+  if (!validPayload(payload, version2) || (version2 && !auroraPinRecordValid(storagePayload.pin))) {
     result = AuroraWalletReadResult::InvalidFormat;
     goto cleanup_memory;
   }
@@ -473,19 +426,21 @@ AuroraWalletReadResult readAuroraWalletFile(const char *baseName,
   strlcpy(data.accountXprv, payload.accountXprv, sizeof(data.accountXprv));
   strlcpy(data.privateWif, payload.privateWif, sizeof(data.privateWif));
   strlcpy(data.receiveDescriptor, payload.receiveDescriptor, sizeof(data.receiveDescriptor));
+  data.fileVersion = version2 ? FILE_VERSION_V2 : FILE_VERSION;
+  if (version2) data.pin = storagePayload.pin;
   result = AuroraWalletReadResult::Ok;
   goto cleanup_memory;
 
 cleanup_file:
   file.close();
-  endSd(sdSpi);
+  storage.end();
 cleanup_memory:
   secureZero(header, sizeof(header));
   secureZero(tag, sizeof(tag));
   secureZero(key, sizeof(key));
-  secureZero(&payload, sizeof(payload));
+  secureZero(&storagePayload, sizeof(storagePayload));
   if (cipher) {
-    secureZero(cipher, sizeof(AuroraPayloadV1));
+    secureZero(cipher, allocatedLength);
     delete[] cipher;
   }
   if (result != AuroraWalletReadResult::Ok) wipeAuroraWalletData(data);
@@ -499,22 +454,22 @@ AuroraWalletListResult listAuroraWalletFiles(char *options,
   if (!options || optionsLength == 0) return AuroraWalletListResult::BufferTooSmall;
   options[0] = '\0';
 
-  SPIClass sdSpi(HSPI);
-  if (!beginSd(sdSpi)) {
-    endSd(sdSpi);
+  AuroraStorage storage;
+  if (!storage.begin()) {
+    storage.end();
     return AuroraWalletListResult::NoCard;
   }
 
-  File root = SD.open("/");
+  AuroraFile root = storage.open("/");
   if (!root || !root.isDirectory()) {
     if (root) root.close();
-    endSd(sdSpi);
+    storage.end();
     return AuroraWalletListResult::OpenFailed;
   }
 
   size_t used = 0;
   bool bufferTooSmall = false;
-  File entry = root.openNextFile();
+  AuroraFile entry = root.openNextFile();
   while (entry) {
     if (!entry.isDirectory()) {
       char baseName[25] = {};
@@ -537,7 +492,7 @@ AuroraWalletListResult listAuroraWalletFiles(char *options,
     entry = root.openNextFile();
   }
   root.close();
-  endSd(sdSpi);
+  storage.end();
 
   if (bufferTooSmall) return AuroraWalletListResult::BufferTooSmall;
   if (fileCount == 0) return AuroraWalletListResult::NoFiles;

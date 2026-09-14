@@ -3,6 +3,9 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <esp_system.h>
+#if defined(AURORA_BOARD_P4) && !defined(AURORA_NATIVE_TEST)
+#include <esp_random.h>
+#endif
 #include <bootloader_random.h>
 
 // On the original ESP32, esp_random() is only a true hardware RNG while an

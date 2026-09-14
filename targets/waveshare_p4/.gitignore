@@ -1,0 +1,4 @@
+.pio/
+managed_components/
+sdkconfig.p4*
+sdkconfig.waveshare-*

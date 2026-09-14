@@ -8,7 +8,10 @@ instead of silently compiling without the expected memory clearing.
 
 from pathlib import Path
 
-Import("env")  # type: ignore[name-defined]  # Provided by PlatformIO/SCons.
+try:
+    Import("env")  # type: ignore[name-defined]  # Provided by PlatformIO/SCons.
+except NameError:
+    pass  # Also used by the ESP-IDF component during configuration.
 
 
 MARKER = "AURORA_UBITCOIN_RAM_HARDENING_V1"
@@ -42,14 +45,25 @@ def patch_file(path, replacements):
     return True
 
 
-lib_root = (
-    Path(env.subst("$PROJECT_LIBDEPS_DIR"))
-    / env.subst("$PIOENV")
-    / "uBitcoin"
-    / "src"
-)
+if "env" in globals():
+    lib_root = Path(env.subst("$PROJECT_LIBDEPS_DIR")) / env.subst("$PIOENV") / "uBitcoin" / "src"
+else:
+    import argparse
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--lib-root", required=True, type=Path)
+    lib_root = parser.parse_args().lib_root
 
 changed = False
+
+# ESP-IDF 5 no longer re-exports esp_random() from esp_system.h.
+changed |= patch_file(
+    lib_root / "utility" / "trezor" / "rand.c",
+    [("  #include <esp_system.h>\n",
+      "  #include <esp_system.h>\n"
+      "  #if defined(AURORA_BOARD_P4)\n"
+      "  #include <esp_random.h>\n"
+      "  #endif\n")],
+)
 
 changed |= patch_file(
     lib_root / "Hash.h",

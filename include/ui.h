@@ -17,7 +17,7 @@ class AuroraUI {
     RestoreSetup, RestoreWords, RestorePassphrase, Restoring,
     Setup, Passphrase, Entropy, Generating, FileProcessing, GenerationError,
     SecurityError, Mnemonic, PassphraseReveal, Verify, Info, Qr, Backup, ExportWarning,
-    ExportName, ExportPassword, Wipe
+    ExportName, ExportPassword, Wipe, PinSetup, PinUnlock
   };
   enum class FileOperation : uint8_t { None, Export, Import };
   enum class QrContent : uint8_t { Address, AccountXpub, PrivateKey };
@@ -39,15 +39,59 @@ class AuroraUI {
   void buildInfo(); void buildQr();
   void buildBackup(); void buildExportWarning(); void buildExportName();
   void buildExportPassword(); void buildWipe();
+  void buildPassphraseFields(bool restoring);
+  bool confirmPassphrase();
+  void buildPinSetup(); void buildPinUnlock();
+  void submitPinSetup(); void submitPinUnlock();
+  void wipeSession(); void closeSession();
+  enum class Access : uint8_t { None, Words, Passphrase, PrivateQr, Export };
+  Access accessFor(Screen screen) const;
+  bool authorized(Access access) const;
+  void revokeAccess();
   bool generate(); void selectVerifyWords(); bool verifyWords();
   bool renderQr(lv_obj_t *parent, const char *data, int size = 158, int x = 6, int y = 42);
   void performWalletExport(); bool performWalletImport();
   static void event(lv_event_t *e);
+#if defined(AURORA_BOARD_P4)
+  void buildPortraitEntropy();
+  void updatePortraitSensors();
+  bool sensorStopPending_ = false;
+  Screen afterSensorStop_ = Screen::Mode;
+  uint32_t sensorStopStarted_ = 0;
+  uint32_t sensorUiUpdated_ = 0;
+  uint32_t cameraPreviewSequence_ = 0;
+  lv_obj_t *microphoneStatus_ = nullptr;
+  lv_obj_t *microphoneLevel_ = nullptr;
+  lv_obj_t *cameraStatus_ = nullptr;
+  lv_obj_t *cameraPreview_ = nullptr;
+  uint16_t *cameraPixels_ = nullptr;
+  lv_image_dsc_t cameraImage_{};
+#endif
 
   Screen screen_ = Screen::Splash;
   WalletEngine engine_;
   WalletOutput wallet_{};
   TouchEntropy entropy_;
+  AuroraPinGuard pinGuard_;
+  AuroraPinRecord exportPin_{};
+  bool protectedSession_ = false;
+  bool legacyImported_ = false;
+  bool pinForExport_ = false;
+  bool entropyCollected_ = false;
+  bool exportSucceeded_ = false;
+  Access access_ = Access::None;
+  Access requestedAccess_ = Access::None;
+  Screen afterPin_ = Screen::Info;
+  uint32_t accessGrantedMs_ = 0;
+  uint32_t pinRetryMs_ = 0;
+  bool pinRetryPending_ = false;
+  static constexpr uint32_t SECRET_VISIBLE_MS = 15000;
+  static constexpr uint32_t SESSION_IDLE_MS = 120000;
+  static constexpr uint32_t EXPORT_AUTH_MS = 120000;
+  lv_obj_t *passConfirmArea_ = nullptr;
+  lv_obj_t *pinArea_ = nullptr;
+  lv_obj_t *pinConfirmArea_ = nullptr;
+  lv_obj_t *securityStatus_ = nullptr;
   uint8_t mixedEntropy_[32]{};
   uint8_t words_ = 12;
   uint8_t mnemonicPage_ = 0;

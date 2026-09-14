@@ -5,15 +5,19 @@
 #include "secure_memory.h"
 #include "splash_img.h"
 #include "version.h"
+#include "platform/ui_layout.h"
+#if defined(AURORA_BOARD_P4)
+#include "sensors.h"
+#endif
 
 namespace {
 AuroraUI *g_ui = nullptr;
-constexpr lv_color_t ORANGE = LV_COLOR_MAKE(0xF7, 0x93, 0x1A);
-constexpr lv_color_t DANGER = LV_COLOR_MAKE(0xFF, 0x3B, 0x30);
-constexpr lv_color_t SUCCESS = LV_COLOR_MAKE(0x39, 0xD3, 0x83);
-constexpr lv_color_t BLACK = LV_COLOR_MAKE(0x08, 0x09, 0x0B);
-constexpr lv_color_t PANEL = LV_COLOR_MAKE(0x16, 0x18, 0x1D);
-constexpr lv_color_t MUTED = LV_COLOR_MAKE(0x9A, 0xA0, 0xAA);
+constexpr lv_color_t ORANGE = AuroraLayout::color(0xF7, 0x93, 0x1A);
+constexpr lv_color_t DANGER = AuroraLayout::color(0xFF, 0x3B, 0x30);
+constexpr lv_color_t SUCCESS = AuroraLayout::color(0x39, 0xD3, 0x83);
+constexpr lv_color_t BLACK = AuroraLayout::color(0x08, 0x09, 0x0B);
+constexpr lv_color_t PANEL = AuroraLayout::color(0x16, 0x18, 0x1D);
+constexpr lv_color_t MUTED = AuroraLayout::color(0x9A, 0xA0, 0xAA);
 constexpr char PASSPHRASE_ASCII[] =
     " abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
     "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~";
@@ -51,11 +55,23 @@ enum Action : uint8_t { START, OPEN_WALLET, NEW_WALLET, RESTORE_WALLET,
                         RESTORE_WORD_BACK, BACK_RESTORE_SETUP,
                         BACK_RESTORE_WORDS, SHOW_LOADED_PASSPHRASE,
                         VERIFY_WORD_CHANGED = 100, VERIFY_SUGGESTION_0,
-                        VERIFY_SUGGESTION_1, VERIFY_SUGGESTION_2 };
+                        VERIFY_SUGGESTION_1, VERIFY_SUGGESTION_2,
+                        PIN_SAVE = 110, PIN_CHECK, PIN_CANCEL, LOCK_SESSION,
+                        SHOW_WORDS };
 
 void styleRoot(lv_obj_t *o) {
   lv_obj_set_style_bg_color(o, BLACK, 0); lv_obj_set_style_bg_opa(o, LV_OPA_COVER, 0);
   lv_obj_set_style_text_color(o, lv_color_white(), 0); lv_obj_set_style_border_width(o, 0, 0);
+}
+
+void configurePinKeyboard(lv_obj_t *keyboard) {
+  static const char *map[]={"1","2","3","\n","4","5","6","\n",
+      "7","8","9","\n",LV_SYMBOL_CLOSE,"0",LV_SYMBOL_BACKSPACE,LV_SYMBOL_OK,""};
+  static constexpr lv_btnmatrix_ctrl_t key=static_cast<lv_btnmatrix_ctrl_t>(
+      1 | LV_BTNMATRIX_CTRL_CLICK_TRIG | LV_BTNMATRIX_CTRL_NO_REPEAT);
+  static const lv_btnmatrix_ctrl_t controls[]={key,key,key,key,key,key,key,key,key,key,key,key,key};
+  lv_keyboard_set_map(keyboard,LV_KEYBOARD_MODE_NUMBER,map,controls);
+  lv_keyboard_set_mode(keyboard,LV_KEYBOARD_MODE_NUMBER);
 }
 
 void wipeObjectTree(lv_obj_t *object) {
@@ -71,8 +87,12 @@ void wipeObjectTree(lv_obj_t *object) {
     char *text = const_cast<char *>(lv_textarea_get_text(object));
     if (text) secureZero(text, strlen(text));
   }
-  if (lv_obj_check_type(object, &lv_canvas_class)) {
+  if (lv_obj_has_class(object, &lv_canvas_class)) {
+#if LVGL_VERSION_MAJOR >= 9
+    lv_image_dsc_t *image = lv_canvas_get_image(object);
+#else
     lv_img_dsc_t *image = lv_canvas_get_img(object);
+#endif
     if (image && image->data && image->data_size) {
       secureZero(const_cast<uint8_t *>(image->data), image->data_size);
     }
@@ -88,6 +108,38 @@ void AuroraUI::begin() {
 }
 
 void AuroraUI::tick() {
+#if defined(AURORA_BOARD_P4)
+  if (sensorStopPending_) {
+    if (AuroraSensors::stopped()) {
+      sensorStopPending_ = false;
+      show(afterSensorStop_);
+      if (afterSensorStop_ == Screen::Generating) generationDueMs_ = millis() + 100;
+    } else if (millis() - sensorStopStarted_ > 5000 && entropyStatus_) {
+      lv_label_set_text(entropyStatus_, "Arrêt capteurs non confirmé. Redémarrez.");
+      lv_obj_set_style_text_color(entropyStatus_, DANGER, 0);
+    }
+    return; // Never show wallet secrets while a sensor can still be recording.
+  }
+  if (screen_ == Screen::Entropy && !entropyReadyPending_) {
+    AuroraSensors::drain(entropy_);
+    updatePortraitSensors();
+  }
+#endif
+  if ((protectedSession_ || entropyCollected_) &&
+      lv_disp_get_inactive_time(nullptr) >= SESSION_IDLE_MS) {
+    closeSession();
+    return;
+  }
+  if (protectedSession_ && access_ != Access::None && !authorized(access_)) {
+    revokeAccess();
+    secureZero(filePassword_, sizeof(filePassword_));
+    secureZero(&exportPin_, sizeof(exportPin_));
+    fileOperation_ = FileOperation::None;
+    fileOperationDueMs_ = 0;
+    qrContent_ = QrContent::Address;
+    show(Screen::Info);
+    return;
+  }
   if (selfTestPending_ && static_cast<int32_t>(millis() - selfTestDueMs_) >= 0) {
     selfTestPending_ = false;
     const uint32_t selfTestStarted = millis();
@@ -113,12 +165,18 @@ void AuroraUI::tick() {
       performWalletExport();
       secureZero(filePassword_, sizeof(filePassword_));
       Serial.printf("AURORA export SD : %lu ms\n", static_cast<unsigned long>(millis() - started));
-      show(Screen::Backup);
+      secureZero(&exportPin_, sizeof(exportPin_));
+      revokeAccess();
+      show(exportSucceeded_ && protectedSession_ ? Screen::Info : Screen::Backup);
     } else if (operation == FileOperation::Import) {
       const bool imported = performWalletImport();
       secureZero(filePassword_, sizeof(filePassword_));
       Serial.printf("AURORA lecture SD : %lu ms\n", static_cast<unsigned long>(millis() - started));
-      show(imported ? Screen::Mnemonic : Screen::ImportPassword);
+      if (imported) {
+        lv_disp_trig_activity(nullptr);
+        pinForExport_ = false;
+        show(pinGuard_.enabled() ? Screen::Info : Screen::PinSetup);
+      } else show(Screen::ImportPassword);
     }
     return;
   }
@@ -130,8 +188,7 @@ void AuroraUI::tick() {
   if (entropyReadyPending_ && screen_ == Screen::Entropy &&
       static_cast<int32_t>(millis() - entropyCompleteDueMs_) >= 0) {
     entropyReadyPending_ = false;
-    show(Screen::Generating);
-    generationDueMs_ = millis() + 100;
+    show(Screen::Passphrase);
     return;
   }
   if (screen_ == Screen::Generating && generationDueMs_ &&
@@ -149,7 +206,10 @@ void AuroraUI::tick() {
     generationDueMs_ = 0;
     if (restoreEnteredWallet()) {
       qrContent_ = QrContent::Address;
-      show(Screen::Qr);
+      protectedSession_ = true;
+      pinForExport_ = false;
+      lv_disp_trig_activity(nullptr);
+      show(Screen::PinSetup);
     } else {
       restoreWordIndex_ = words_ ? words_ - 1 : 0;
       show(Screen::RestoreWords);
@@ -162,8 +222,18 @@ void AuroraUI::clear() {
     wipeObjectTree(root_);
     lv_obj_del(root_);
   }
-  root_ = lv_obj_create(lv_scr_act()); lv_obj_set_size(root_, 320, 240); lv_obj_set_pos(root_, 0, 0);
+  root_ = lv_obj_create(lv_scr_act()); AuroraLayout::size(root_, 320, 240); AuroraLayout::pos(root_, 0, 0);
   lv_obj_clear_flag(root_, LV_OBJ_FLAG_SCROLLABLE); styleRoot(root_);
+#if defined(AURORA_BOARD_P4)
+  lv_obj_set_style_pad_all(root_, 0, 0);
+  lv_obj_set_style_radius(root_, 0, 0);
+  if (cameraPixels_) {
+    secureZero(cameraPixels_, AuroraSensors::PREVIEW_WIDTH * AuroraSensors::PREVIEW_HEIGHT * sizeof(uint16_t));
+    free(cameraPixels_); cameraPixels_ = nullptr;
+  }
+  microphoneStatus_ = microphoneLevel_ = cameraStatus_ = cameraPreview_ = nullptr;
+  cameraImage_ = {}; cameraPreviewSequence_ = 0;
+#endif
   secureZero(entropyPreviewText_, sizeof(entropyPreviewText_));
   passArea_ = entropyBar_ = entropyStatus_ = entropyPreview_ = entropyCount_ = keyboard_ = exportNameArea_ =
       importFileDropdown_ = restoreWordArea_ = restoreDerivationDropdown_ =
@@ -171,15 +241,16 @@ void AuroraUI::clear() {
   memset(verifyArea_, 0, sizeof(verifyArea_));
   memset(verifySuggestionButtons_, 0, sizeof(verifySuggestionButtons_));
   memset(restoreSuggestionButtons_, 0, sizeof(restoreSuggestionButtons_));
+  passConfirmArea_ = pinArea_ = pinConfirmArea_ = securityStatus_ = nullptr;
 }
 
 lv_obj_t *AuroraUI::label(lv_obj_t *p, const char *text, const lv_font_t *font) {
-  lv_obj_t *l = lv_label_create(p); lv_label_set_text(l, text); lv_obj_set_style_text_font(l, font, 0);
+  lv_obj_t *l = lv_label_create(p); lv_label_set_text(l, text); AuroraLayout::font(l, font, 0);
   lv_obj_set_style_text_color(l, lv_color_white(), 0); return l;
 }
 
 lv_obj_t *AuroraUI::button(lv_obj_t *p, const char *text, lv_event_cb_t cb, int w) {
-  lv_obj_t *b = lv_btn_create(p); lv_obj_set_size(b, w, 34); lv_obj_set_style_radius(b, 8, 0);
+  lv_obj_t *b = lv_btn_create(p); AuroraLayout::size(b, w, 34); lv_obj_set_style_radius(b, 8, 0);
   lv_obj_set_style_bg_color(b, ORANGE, 0); lv_obj_set_style_shadow_width(b, 0, 0);
   lv_obj_add_event_cb(b, cb, LV_EVENT_CLICKED, nullptr);
   lv_obj_t *l = label(b, text, &aurora_font_12); lv_obj_set_style_text_color(l, BLACK, 0); lv_obj_center(l);
@@ -189,18 +260,18 @@ lv_obj_t *AuroraUI::button(lv_obj_t *p, const char *text, lv_event_cb_t cb, int 
 lv_obj_t *AuroraUI::header(const char *title, const char *step) {
   lv_obj_t *titleLabel = nullptr;
   if (step) {
-    lv_obj_t *badge = lv_obj_create(root_); lv_obj_set_pos(badge, 9, 3); lv_obj_set_size(badge, 27, 27);
+    lv_obj_t *badge = lv_obj_create(root_); AuroraLayout::pos(badge, 9, 3); AuroraLayout::size(badge, 27, 27);
     lv_obj_set_style_radius(badge, LV_RADIUS_CIRCLE, 0); lv_obj_set_style_bg_color(badge, ORANGE, 0);
     lv_obj_set_style_border_width(badge, 0, 0); lv_obj_clear_flag(badge, LV_OBJ_FLAG_SCROLLABLE);
     char n[2] = {step[0], 0}; lv_obj_t *num = label(badge, n, &aurora_font_14);
     lv_obj_set_style_text_color(num, BLACK, 0); lv_obj_center(num);
-    titleLabel = label(root_, title, &aurora_font_14); lv_obj_set_pos(titleLabel, 44, 9);
-    lv_obj_t *s = label(root_, step, &aurora_font_10); lv_obj_set_style_text_color(s, MUTED, 0); lv_obj_set_pos(s, 247, 10);
+    titleLabel = label(root_, title, &aurora_font_14); AuroraLayout::pos(titleLabel, 44, 9);
+    lv_obj_t *s = label(root_, step, &aurora_font_10); lv_obj_set_style_text_color(s, MUTED, 0); AuroraLayout::pos(s, 247, 10);
     Action backAction = BACK_MODE;
     switch(screen_) {
       case Screen::Setup: backAction=BACK_MODE; break;
-      case Screen::Passphrase: backAction=BACK_SETUP; break;
-      case Screen::Entropy: backAction=BACK_PASSPHRASE; break;
+      case Screen::Passphrase: backAction=BACK_ENTROPY; break;
+      case Screen::Entropy: backAction=BACK_SETUP; break;
       case Screen::Mnemonic: backAction=loadedWallet_ ? BACK_MODE_WIPE : BACK_ENTROPY; break;
       case Screen::PassphraseReveal: backAction=BACK_MNEMONIC; break;
       case Screen::Verify: backAction=BACK_MNEMONIC; break;
@@ -213,28 +284,68 @@ lv_obj_t *AuroraUI::header(const char *title, const char *step) {
       case Screen::ExportPassword: backAction=BACK_EXPORT_NAME; break;
       default: break;
     }
-    lv_obj_t *back=lv_btn_create(root_); lv_obj_set_pos(back,276,3); lv_obj_set_size(back,28,28);
+    lv_obj_t *back=lv_btn_create(root_); AuroraLayout::pos(back,276,3); AuroraLayout::size(back,28,28);
     lv_obj_set_style_radius(back,7,0); lv_obj_set_style_bg_color(back,PANEL,0);
     lv_obj_set_style_border_color(back,ORANGE,0); lv_obj_set_style_border_width(back,1,0);
     lv_obj_set_style_shadow_width(back,0,0); lv_obj_set_user_data(back,(void*)backAction);
     lv_obj_add_event_cb(back,event,LV_EVENT_CLICKED,nullptr);
     lv_obj_t *arrow=label(back,"<",&aurora_font_16); lv_obj_set_style_text_color(arrow,ORANGE,0); lv_obj_center(arrow);
   } else {
-    lv_obj_t *brand = label(root_, "AURORA", &aurora_font_14); lv_obj_set_pos(brand, 10, 9);
+    lv_obj_t *brand = label(root_, "AURORA", &aurora_font_14); AuroraLayout::pos(brand, 10, 9);
     lv_obj_set_style_text_color(brand, ORANGE, 0);
-    titleLabel = label(root_, title, &aurora_font_14); lv_obj_set_pos(titleLabel, 105, 9);
+    titleLabel = label(root_, title, &aurora_font_14); AuroraLayout::pos(titleLabel, 105, 9);
   }
-  lv_obj_t *line = lv_obj_create(root_); lv_obj_set_pos(line, 10, 34); lv_obj_set_size(line, 300, 1);
-  lv_obj_set_style_bg_color(line, LV_COLOR_MAKE(0x38,0x3B,0x42),0); lv_obj_set_style_border_width(line,0,0);
+  lv_obj_t *line = lv_obj_create(root_); AuroraLayout::pos(line, 10, 34); AuroraLayout::size(line, 300, 1);
+  lv_obj_set_style_bg_color(line, AuroraLayout::color(0x38,0x3B,0x42),0); lv_obj_set_style_border_width(line,0,0);
   return titleLabel;
 }
 
 void AuroraUI::show(Screen s) {
+#if defined(AURORA_BOARD_P4)
+  if (screen_ == Screen::Entropy && !AuroraSensors::stopped()) {
+    if (!sensorStopPending_) {
+      afterSensorStop_ = s; sensorStopPending_ = true; sensorStopStarted_ = millis();
+      AuroraSensors::requestStop();
+      entropy_.cancel();
+      if (s != Screen::Generating && !(s == Screen::Passphrase && entropyCollected_)) {
+        secureZero(mixedEntropy_, sizeof(mixedEntropy_)); entropyCollected_ = false;
+      }
+      if (entropyStatus_) lv_label_set_text(entropyStatus_, "Arrêt des capteurs...");
+    }
+    return;
+  }
+#endif
   if (screen_ == Screen::Entropy && s != Screen::Entropy) {
     entropy_.cancel();
     entropyReadyPending_ = entropyFailurePending_ = false;
     entropyCompleteDueMs_ = 0;
-    if (s != Screen::Generating) secureZero(mixedEntropy_, sizeof(mixedEntropy_));
+    if (s != Screen::Generating && !(s == Screen::Passphrase && entropyCollected_)) {
+      secureZero(mixedEntropy_, sizeof(mixedEntropy_)); entropyCollected_ = false;
+    }
+  }
+  if (s == Screen::Mode) wipeSession();
+  if (s == Screen::Entropy) entropyCollected_ = false;
+  // One central gate covers all routes (including back buttons and direct
+  // screen requests). A missing verifier never permits a protected secret.
+  if (protectedSession_ && s != Screen::Mode && s != Screen::Wipe && s != Screen::SecurityError) {
+    if (!pinGuard_.enabled()) { pinForExport_ = false; s = Screen::PinSetup; }
+    else if (s != Screen::PinUnlock) {
+      // An existing session PIN cannot be reset through a setup-screen route.
+      if(s==Screen::PinSetup && !pinForExport_) s=Screen::Info;
+      const Access required = accessFor(s);
+      if (required != Access::None && !authorized(required)) {
+        access_=Access::None; accessGrantedMs_=0;
+        afterPin_ = s; requestedAccess_ = required;
+        s = Screen::PinUnlock;
+      } else if (required == Access::None) {
+        if(access_==Access::Export) {
+          secureZero(filePassword_,sizeof(filePassword_));
+          secureZero(&exportPin_,sizeof(exportPin_));
+          fileOperation_=FileOperation::None; fileOperationDueMs_=0;
+        }
+        revokeAccess();
+      }
+    }
   }
   screen_ = s; clear();
   switch (s) {
@@ -259,51 +370,71 @@ void AuroraUI::show(Screen s) {
     case Screen::ExportName: buildExportName(); break;
     case Screen::ExportPassword: buildExportPassword(); break;
     case Screen::Wipe: buildWipe(); break;
+    case Screen::PinSetup: buildPinSetup(); break;
+    case Screen::PinUnlock: buildPinUnlock(); break;
   }
 }
 
 void AuroraUI::buildSplash() {
-  lv_obj_t *bg = lv_img_create(root_); lv_img_set_src(bg, &aurora_splash); lv_obj_set_pos(bg, 0, 0);
-  lv_obj_t *shade = lv_obj_create(root_); lv_obj_set_pos(shade, 0, 142); lv_obj_set_size(shade, 320, 98);
+#if defined(AURORA_BOARD_P4)
+  lv_obj_t *bg = lv_image_create(root_); lv_image_set_src(bg, &aurora_splash);
+  lv_image_set_scale(bg, 384); lv_image_set_pivot(bg, 0, 0);
+  lv_obj_set_pos(bg, 0, 110);
+  lv_obj_t *name = label(root_, "A U R O R A", &aurora_font_20);
+  lv_obj_align(name, LV_ALIGN_TOP_MID, 0, 48);
+  lv_obj_t *sub = label(root_, "SEED GENERATOR", &aurora_font_12);
+  lv_obj_set_style_text_color(sub, ORANGE, 0); lv_obj_align(sub, LV_ALIGN_TOP_MID, 0, 91);
+  lv_obj_t *description = label(root_, "Bitcoin hors ligne\nWaveshare ESP32-P4", &aurora_font_12);
+  lv_obj_set_style_text_align(description, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_align(description, LV_ALIGN_TOP_MID, 0, 505);
+  lv_obj_t *b = button(root_, "CONTINUER", event, 280);
+  lv_obj_set_size(b, 432, 72); lv_obj_set_user_data(b, (void *)START);
+  lv_obj_align(b, LV_ALIGN_BOTTOM_MID, 0, -80);
+  lv_obj_t *version = label(root_, "v" AURORA_FIRMWARE_VERSION " • développement", &aurora_font_10);
+  lv_obj_set_style_text_color(version, MUTED, 0); lv_obj_align(version, LV_ALIGN_BOTTOM_MID, 0, -24);
+#else
+  lv_obj_t *bg = lv_img_create(root_); lv_img_set_src(bg, &aurora_splash); AuroraLayout::pos(bg, 0, 0);
+  lv_obj_t *shade = lv_obj_create(root_); AuroraLayout::pos(shade, 0, 142); AuroraLayout::size(shade, 320, 98);
   lv_obj_set_style_bg_color(shade, BLACK, 0); lv_obj_set_style_bg_opa(shade, LV_OPA_50, 0);
   lv_obj_set_style_border_width(shade, 0, 0); lv_obj_clear_flag(shade, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_t *b = button(root_, "CONTINUER", event, 140); lv_obj_set_user_data(b, (void *)START);
-  lv_obj_align(b, LV_ALIGN_BOTTOM_MID, 0, -51);
+  AuroraLayout::align(b, LV_ALIGN_BOTTOM_MID, 0, -51);
   lv_obj_t *name = label(root_, "A U R O R A", &aurora_font_20);
-  lv_obj_align(name, LV_ALIGN_BOTTOM_MID, 0, -19);
+  AuroraLayout::align(name, LV_ALIGN_BOTTOM_MID, 0, -19);
   lv_obj_t *sub = label(root_, "SEED GENERATOR", &aurora_font_10);
-  lv_obj_set_style_text_color(sub, ORANGE, 0); lv_obj_align(sub, LV_ALIGN_BOTTOM_MID, 0, -4);
+  lv_obj_set_style_text_color(sub, ORANGE, 0); AuroraLayout::align(sub, LV_ALIGN_BOTTOM_MID, 0, -4);
   lv_obj_t *version = label(root_, "v" AURORA_FIRMWARE_VERSION, &aurora_font_10);
   lv_obj_set_style_text_color(version, lv_color_white(), 0);
-  lv_obj_align(version, LV_ALIGN_BOTTOM_RIGHT, -4, -3);
+  AuroraLayout::align(version, LV_ALIGN_BOTTOM_RIGHT, -4, -3);
+#endif
 }
 
 void AuroraUI::buildMode() {
   header("Choisissez une action");
   lv_obj_t *create=button(root_,"NOUVEAU PORTEFEUILLE",event,178);
-  lv_obj_set_user_data(create,(void*)NEW_WALLET); lv_obj_set_pos(create,12,48);
-  lv_obj_set_size(create,178,44);
+  lv_obj_set_user_data(create,(void*)NEW_WALLET); AuroraLayout::pos(create,12,48);
+  AuroraLayout::size(create,178,44);
   lv_obj_t *open=button(root_,"OUVRIR AURORA WALLET",event,178);
-  lv_obj_set_user_data(open,(void*)OPEN_WALLET); lv_obj_set_pos(open,12,108);
-  lv_obj_set_size(open,178,44);
+  lv_obj_set_user_data(open,(void*)OPEN_WALLET); AuroraLayout::pos(open,12,108);
+  AuroraLayout::size(open,178,44);
   lv_obj_t *restore=button(root_,"RESTAURER UNE SEED",event,178);
-  lv_obj_set_user_data(restore,(void*)RESTORE_WALLET); lv_obj_set_pos(restore,12,168);
-  lv_obj_set_size(restore,178,44);
+  lv_obj_set_user_data(restore,(void*)RESTORE_WALLET); AuroraLayout::pos(restore,12,168);
+  AuroraLayout::size(restore,178,44);
   lv_obj_t *logo=lv_img_create(root_); lv_img_set_src(logo,&aurora_bitcoin_logo);
-  lv_obj_set_pos(logo,200,43);
+  AuroraLayout::pos(logo,200,43);
 }
 
 void AuroraUI::buildImportName() {
   header("Ouvrir Aurora Wallet");
-  lv_obj_t *back=button(root_,"<",event,28); lv_obj_set_size(back,28,28);
-  lv_obj_set_user_data(back,(void*)BACK_MODE); lv_obj_set_pos(back,276,3);
+  lv_obj_t *back=button(root_,"<",event,28); AuroraLayout::size(back,28,28);
+  lv_obj_set_user_data(back,(void*)BACK_MODE); AuroraLayout::pos(back,276,3);
   lv_obj_t *hint=label(root_,"Sélectionnez un fichier .aurora sur la carte microSD",&aurora_font_10);
-  lv_obj_set_style_text_color(hint,MUTED,0); lv_obj_set_pos(hint,12,41);
+  lv_obj_set_style_text_color(hint,MUTED,0); AuroraLayout::pos(hint,12,41);
   const AuroraWalletListResult listResult=listAuroraWalletFiles(
       auroraFileOptions_,sizeof(auroraFileOptions_),auroraFileCount_);
-  importFileDropdown_=lv_dropdown_create(root_); lv_obj_set_pos(importFileDropdown_,12,59);
-  lv_obj_set_size(importFileDropdown_,296,40);
-  lv_obj_set_style_text_font(importFileDropdown_,&aurora_font_12,0);
+  importFileDropdown_=lv_dropdown_create(root_); AuroraLayout::pos(importFileDropdown_,12,59);
+  AuroraLayout::size(importFileDropdown_,296,40);
+  AuroraLayout::font(importFileDropdown_,&aurora_font_12,0);
   lv_dropdown_set_symbol(importFileDropdown_,LV_SYMBOL_DOWN);
   if(auroraFileCount_) lv_dropdown_set_options(importFileDropdown_,auroraFileOptions_);
   else lv_dropdown_set_options(importFileDropdown_,"Aucun fichier .aurora");
@@ -328,13 +459,13 @@ void AuroraUI::buildImportName() {
       statusText="Trop de fichiers .aurora pour afficher la liste complète."; statusColor=DANGER; break;
   }
   lv_obj_t *status=label(root_,statusText?statusText:"",&aurora_font_10);
-  lv_label_set_long_mode(status,LV_LABEL_LONG_WRAP); lv_obj_set_size(status,296,30);
-  lv_obj_set_style_text_color(status,statusColor,0); lv_obj_set_pos(status,12,108);
+  lv_label_set_long_mode(status,LV_LABEL_LONG_WRAP); AuroraLayout::size(status,296,30);
+  lv_obj_set_style_text_color(status,statusColor,0); AuroraLayout::pos(status,12,108);
 
   lv_obj_t *refresh=button(root_,"ACTUALISER",event,130);
-  lv_obj_set_user_data(refresh,(void*)REFRESH_AURORA_FILES); lv_obj_set_pos(refresh,12,164);
+  lv_obj_set_user_data(refresh,(void*)REFRESH_AURORA_FILES); AuroraLayout::pos(refresh,12,164);
   lv_obj_t *open=button(root_,"OUVRIR",event,130);
-  lv_obj_set_user_data(open,(void*)TO_IMPORT_PASSWORD); lv_obj_set_pos(open,178,164);
+  lv_obj_set_user_data(open,(void*)TO_IMPORT_PASSWORD); AuroraLayout::pos(open,178,164);
   if(listResult!=AuroraWalletListResult::Ok || !auroraFileCount_) {
     lv_obj_add_state(open,LV_STATE_DISABLED);
     lv_obj_set_style_bg_color(open,PANEL,LV_STATE_DISABLED);
@@ -343,35 +474,36 @@ void AuroraUI::buildImportName() {
 
 void AuroraUI::buildImportPassword() {
   lv_obj_t *title=header("Mot de passe Aurora Wallet");
-  lv_obj_set_style_text_font(title,&aurora_font_12,0); lv_obj_set_pos(title,90,10);
-  lv_obj_t *back=button(root_,"<",event,28); lv_obj_set_size(back,28,28);
-  lv_obj_set_user_data(back,(void*)BACK_IMPORT_NAME); lv_obj_set_pos(back,276,3);
+  AuroraLayout::font(title,&aurora_font_12,0); AuroraLayout::pos(title,90,10);
+  lv_obj_t *back=button(root_,"<",event,28); AuroraLayout::size(back,28,28);
+  lv_obj_set_user_data(back,(void*)BACK_IMPORT_NAME); AuroraLayout::pos(back,276,3);
   const char *message=importStatus_[0] ? importStatus_ :
       "Saisissez le mot de passe du fichier (12 caractères minimum).";
   lv_obj_t *hint=label(root_,message,&aurora_font_10);
-  lv_label_set_long_mode(hint,LV_LABEL_LONG_WRAP); lv_obj_set_size(hint,296,26);
-  lv_obj_set_style_text_color(hint,importStatus_[0]?DANGER:MUTED,0); lv_obj_set_pos(hint,12,40);
-  filePasswordArea_=lv_textarea_create(root_); lv_obj_set_pos(filePasswordArea_,12,69);
-  lv_obj_set_size(filePasswordArea_,296,38); lv_obj_set_style_text_font(filePasswordArea_,&aurora_font_12,0);
+  lv_label_set_long_mode(hint,LV_LABEL_LONG_WRAP); AuroraLayout::size(hint,296,26);
+  lv_obj_set_style_text_color(hint,importStatus_[0]?DANGER:MUTED,0); AuroraLayout::pos(hint,12,40);
+  filePasswordArea_=lv_textarea_create(root_); AuroraLayout::pos(filePasswordArea_,12,69);
+  AuroraLayout::size(filePasswordArea_,296,38); AuroraLayout::font(filePasswordArea_,&aurora_font_12,0);
   lv_textarea_set_one_line(filePasswordArea_,true); lv_textarea_set_password_mode(filePasswordArea_,true);
+  lv_textarea_set_password_show_time(filePasswordArea_,0);
   lv_textarea_set_max_length(filePasswordArea_,63); lv_textarea_set_accepted_chars(filePasswordArea_,PASSPHRASE_ASCII);
   lv_textarea_set_placeholder_text(filePasswordArea_,"Mot de passe du fichier");
-  keyboard_=lv_keyboard_create(root_); lv_obj_set_size(keyboard_,320,112);
-  lv_obj_align(keyboard_,LV_ALIGN_BOTTOM_MID,0,0); lv_keyboard_set_textarea(keyboard_,filePasswordArea_);
+  keyboard_=lv_keyboard_create(root_); AuroraLayout::size(keyboard_,320,112);
+  AuroraLayout::align(keyboard_,LV_ALIGN_BOTTOM_MID,0,0); lv_keyboard_set_textarea(keyboard_,filePasswordArea_);
   lv_obj_add_event_cb(keyboard_,event,LV_EVENT_READY,(void*)UNLOCK_WALLET);
 }
 
 void AuroraUI::buildRestoreSetup() {
   header("Restaurer une seed");
-  lv_obj_t *back=button(root_,"<",event,28); lv_obj_set_size(back,28,28);
-  lv_obj_set_user_data(back,(void*)BACK_MODE); lv_obj_set_pos(back,276,3);
+  lv_obj_t *back=button(root_,"<",event,28); AuroraLayout::size(back,28,28);
+  lv_obj_set_user_data(back,(void*)BACK_MODE); AuroraLayout::pos(back,276,3);
   lv_obj_t *hint=label(root_,"Choisissez le nombre de mots de la phrase BIP39.",&aurora_font_10);
-  lv_obj_set_style_text_color(hint,ORANGE,0); lv_obj_set_pos(hint,12,43);
+  lv_obj_set_style_text_color(hint,ORANGE,0); AuroraLayout::pos(hint,12,43);
 
   const uint8_t counts[5]={12,15,18,21,24};
   for(uint8_t i=0;i<5;++i) {
-    lv_obj_t *choice=button(root_,"",event,54); lv_obj_set_pos(choice,10+i*61,70);
-    lv_obj_set_size(choice,54,40); lv_obj_set_user_data(choice,(void*)(WORD_12+i));
+    lv_obj_t *choice=button(root_,"",event,54); AuroraLayout::pos(choice,10+i*61,70);
+    AuroraLayout::size(choice,54,40); lv_obj_set_user_data(choice,(void*)(WORD_12+i));
     const bool selected=words_==counts[i];
     lv_obj_set_style_bg_color(choice,selected?ORANGE:PANEL,0);
     lv_obj_set_style_border_color(choice,ORANGE,0);
@@ -384,11 +516,11 @@ void AuroraUI::buildRestoreSetup() {
   lv_obj_t *info=label(root_,
       "Les mots sont vérifiés avec la liste anglaise officielle.\n"
       "Le checksum BIP39 sera contrôlé avant toute dérivation.",&aurora_font_10);
-  lv_label_set_long_mode(info,LV_LABEL_LONG_WRAP); lv_obj_set_size(info,296,46);
-  lv_obj_set_style_text_color(info,MUTED,0); lv_obj_set_pos(info,12,127);
+  lv_label_set_long_mode(info,LV_LABEL_LONG_WRAP); AuroraLayout::size(info,296,46);
+  lv_obj_set_style_text_color(info,MUTED,0); AuroraLayout::pos(info,12,127);
   lv_obj_t *next=button(root_,"SAISIR LES MOTS",event,170);
   lv_obj_set_user_data(next,(void*)RESTORE_SETUP_CONTINUE);
-  lv_obj_align(next,LV_ALIGN_BOTTOM_MID,0,-20);
+  AuroraLayout::align(next,LV_ALIGN_BOTTOM_MID,0,-20);
 }
 
 void AuroraUI::updateRestoreSuggestions() {
@@ -414,19 +546,19 @@ void AuroraUI::buildRestoreWords() {
                            static_cast<unsigned>(restoreWordIndex_+1),
                            static_cast<unsigned>(words_));
   header(title);
-  lv_obj_t *back=button(root_,"<",event,28); lv_obj_set_size(back,28,28);
+  lv_obj_t *back=button(root_,"<",event,28); AuroraLayout::size(back,28,28);
   lv_obj_set_user_data(back,(void*)(restoreWordIndex_?RESTORE_WORD_BACK:BACK_RESTORE_SETUP));
-  lv_obj_set_pos(back,276,3);
+  AuroraLayout::pos(back,276,3);
 
   const int16_t contentOffset=restoreStatus_[0]?14:0;
   if(restoreStatus_[0]) {
     lv_obj_t *hint=label(root_,restoreStatus_,&aurora_font_10);
-    lv_label_set_long_mode(hint,LV_LABEL_LONG_WRAP); lv_obj_set_size(hint,296,14);
-    lv_obj_set_style_text_color(hint,DANGER,0); lv_obj_set_pos(hint,12,38);
+    lv_label_set_long_mode(hint,LV_LABEL_LONG_WRAP); AuroraLayout::size(hint,296,14);
+    lv_obj_set_style_text_color(hint,DANGER,0); AuroraLayout::pos(hint,12,38);
   }
 
-  restoreWordArea_=lv_textarea_create(root_); lv_obj_set_pos(restoreWordArea_,12,40+contentOffset);
-  lv_obj_set_size(restoreWordArea_,296,36); lv_obj_set_style_text_font(restoreWordArea_,&aurora_font_14,0);
+  restoreWordArea_=lv_textarea_create(root_); AuroraLayout::pos(restoreWordArea_,12,40+contentOffset);
+  AuroraLayout::size(restoreWordArea_,296,36); AuroraLayout::font(restoreWordArea_,&aurora_font_14,0);
   lv_textarea_set_one_line(restoreWordArea_,true);
   lv_textarea_set_max_length(restoreWordArea_,WalletEngine::BIP39_WORD_CAPACITY-1);
   lv_textarea_set_accepted_chars(restoreWordArea_,"abcdefghijklmnopqrstuvwxyz");
@@ -438,16 +570,16 @@ void AuroraUI::buildRestoreWords() {
 
   for(uint8_t i=0;i<3;++i) {
     restoreSuggestionButtons_[i]=button(root_,"",event,94);
-    lv_obj_set_size(restoreSuggestionButtons_[i],94,26);
-    lv_obj_set_pos(restoreSuggestionButtons_[i],8+i*104,80+contentOffset);
+    AuroraLayout::size(restoreSuggestionButtons_[i],94,26);
+    AuroraLayout::pos(restoreSuggestionButtons_[i],8+i*104,80+contentOffset);
     lv_obj_set_user_data(restoreSuggestionButtons_[i],
                          (void*)(RESTORE_SUGGESTION_0+i));
   }
 
   updateRestoreSuggestions();
 
-  keyboard_=lv_keyboard_create(root_); lv_obj_set_size(keyboard_,320,108);
-  lv_obj_align(keyboard_,LV_ALIGN_BOTTOM_MID,0,0);
+  keyboard_=lv_keyboard_create(root_); AuroraLayout::size(keyboard_,320,108);
+  AuroraLayout::align(keyboard_,LV_ALIGN_BOTTOM_MID,0,0);
   lv_keyboard_set_mode(keyboard_,LV_KEYBOARD_MODE_TEXT_LOWER);
   lv_keyboard_set_textarea(keyboard_,restoreWordArea_);
   lv_obj_add_event_cb(keyboard_,event,LV_EVENT_READY,(void*)RESTORE_WORD_READY);
@@ -492,32 +624,18 @@ bool AuroraUI::acceptRestoreWord(const char *word) {
 }
 
 void AuroraUI::buildRestorePassphrase() {
-  header("Passphrase BIP39");
-  lv_obj_t *back=button(root_,"<",event,28); lv_obj_set_size(back,28,28);
-  lv_obj_set_user_data(back,(void*)BACK_RESTORE_WORDS); lv_obj_set_pos(back,276,3);
-  lv_obj_t *hint=label(root_,
-      "Laissez vide si la phrase n'utilise pas de passphrase.",&aurora_font_10);
-  lv_obj_set_style_text_color(hint,ORANGE,0); lv_obj_set_pos(hint,12,42);
-  passArea_=lv_textarea_create(root_); lv_obj_set_pos(passArea_,12,62);
-  lv_obj_set_size(passArea_,296,38); lv_obj_set_style_text_font(passArea_,&aurora_font_12,0);
-  lv_textarea_set_one_line(passArea_,true); lv_textarea_set_password_mode(passArea_,true);
-  lv_textarea_set_max_length(passArea_,63); lv_textarea_set_accepted_chars(passArea_,PASSPHRASE_ASCII);
-  lv_textarea_set_placeholder_text(passArea_,"Passphrase optionnelle");
-  if(passphrase_[0]) lv_textarea_set_text(passArea_,passphrase_);
-  keyboard_=lv_keyboard_create(root_); lv_obj_set_size(keyboard_,320,112);
-  lv_obj_align(keyboard_,LV_ALIGN_BOTTOM_MID,0,0); lv_keyboard_set_textarea(keyboard_,passArea_);
-  lv_obj_add_event_cb(keyboard_,event,LV_EVENT_READY,(void*)RESTORE_DERIVE);
+  buildPassphraseFields(true);
 }
 
 void AuroraUI::buildRestoring() {
-  lv_obj_t *spinner=lv_spinner_create(root_,900,70); lv_obj_set_size(spinner,58,58);
+  lv_obj_t *spinner=AuroraLayout::spinner(root_,900,70); AuroraLayout::size(spinner,58,58);
   lv_obj_set_style_arc_color(spinner,PANEL,LV_PART_MAIN);
   lv_obj_set_style_arc_color(spinner,ORANGE,LV_PART_INDICATOR);
-  lv_obj_align(spinner,LV_ALIGN_CENTER,0,-40);
+  AuroraLayout::align(spinner,LV_ALIGN_CENTER,0,-40);
   lv_obj_t *title=label(root_,"Restauration du portefeuille...",&aurora_font_16);
-  lv_obj_align(title,LV_ALIGN_CENTER,0,15);
+  AuroraLayout::align(title,LV_ALIGN_CENTER,0,15);
   lv_obj_t *hint=label(root_,"Validation BIP39 et dérivation BIP32 en cours.",&aurora_font_10);
-  lv_obj_set_style_text_color(hint,MUTED,0); lv_obj_align(hint,LV_ALIGN_CENTER,0,48);
+  lv_obj_set_style_text_color(hint,MUTED,0); AuroraLayout::align(hint,LV_ALIGN_CENTER,0,48);
 }
 
 bool AuroraUI::restoreEnteredWallet() {
@@ -548,10 +666,10 @@ bool AuroraUI::rederiveManualWallet(AddressKind kind) {
 
 void AuroraUI::buildSetup() {
   header("Configuration du portefeuille", "1 / 7");
-  lv_obj_t *l1 = label(root_, "Nombre de mots", &aurora_font_10); lv_obj_set_pos(l1, 10, 41);
+  lv_obj_t *l1 = label(root_, "Nombre de mots", &aurora_font_10); AuroraLayout::pos(l1, 10, 41);
   const uint8_t counts[5] = {12,15,18,21,24};
   for (int i=0;i<5;++i) {
-    lv_obj_t *b=lv_btn_create(root_); lv_obj_set_pos(b,10+i*61,56); lv_obj_set_size(b,55,27);
+    lv_obj_t *b=lv_btn_create(root_); AuroraLayout::pos(b,10+i*61,56); AuroraLayout::size(b,55,27);
     bool selected=words_==counts[i]; lv_obj_set_style_radius(b,6,0);
     lv_obj_set_style_bg_color(b,selected?ORANGE:PANEL,0); lv_obj_set_style_border_color(b,ORANGE,0);
     lv_obj_set_style_border_width(b,selected?1:0,0); lv_obj_set_style_shadow_width(b,0,0);
@@ -559,44 +677,82 @@ void AuroraUI::buildSetup() {
     char text[3]; snprintf(text,sizeof(text),"%u",counts[i]); lv_obj_t *v=label(b,text,&aurora_font_10);
     lv_obj_set_style_text_color(v,selected?BLACK:lv_color_white(),0); lv_obj_center(v);
   }
-  lv_obj_t *l2 = label(root_, "Type d'adresse", &aurora_font_10); lv_obj_set_pos(l2, 10, 86);
+  lv_obj_t *l2 = label(root_, "Type d'adresse", &aurora_font_10); AuroraLayout::pos(l2, 10, 86);
   const char *names[4]={"Legacy\nm/44'/0'/0'/0/0","Nested SegWit\nm/49'/0'/0'/0/0","Native SegWit\nm/84'/0'/0'/0/0","Taproot\nm/86'/0'/0'/0/0"};
   for(int i=0;i<4;++i){
-    lv_obj_t *b=lv_btn_create(root_); int x=10+(i%2)*155, y=99+(i/2)*36; lv_obj_set_pos(b,x,y); lv_obj_set_size(b,145,32);
+    lv_obj_t *b=lv_btn_create(root_); int x=10+(i%2)*155, y=99+(i/2)*36; AuroraLayout::pos(b,x,y); AuroraLayout::size(b,145,32);
     bool selected=(uint8_t)kind_==i; lv_obj_set_style_radius(b,6,0); lv_obj_set_style_bg_color(b,PANEL,0);
     lv_obj_set_style_border_color(b,ORANGE,0); lv_obj_set_style_border_width(b,selected?2:1,0); lv_obj_set_style_shadow_width(b,0,0);
     lv_obj_set_user_data(b,(void*)(TYPE_LEGACY+i)); lv_obj_add_event_cb(b,event,LV_EVENT_CLICKED,nullptr);
     lv_obj_t *v=label(b,names[i],&aurora_font_10); lv_obj_set_style_text_color(v,selected?ORANGE:lv_color_white(),0); lv_obj_center(v);
   }
-  lv_obj_t *safe=label(root_,"Bitcoin Mainnet • hors ligne",&aurora_font_10); lv_obj_set_style_text_color(safe,MUTED,0); lv_obj_set_pos(safe,10,181);
-  lv_obj_t *b = button(root_, "CONTINUER", event, 105); lv_obj_set_user_data(b,(void*)TO_PASSPHRASE); lv_obj_set_pos(b,205,198);
+  lv_obj_t *safe=label(root_,"Bitcoin Mainnet • hors ligne",&aurora_font_10); lv_obj_set_style_text_color(safe,MUTED,0); AuroraLayout::pos(safe,10,181);
+  lv_obj_t *b = button(root_, "CONTINUER", event, 105); lv_obj_set_user_data(b,(void*)TO_PASSPHRASE); AuroraLayout::pos(b,205,198);
 }
 
 void AuroraUI::buildPassphrase() {
-  header("Passphrase BIP39", "2 / 7");
-  lv_obj_t *warn = label(root_, "Optionnelle — ASCII uniquement, 63 caractères maximum.", &aurora_font_10);
-  lv_obj_set_style_text_color(warn, ORANGE, 0); lv_obj_set_pos(warn, 14, 39);
-  passArea_ = lv_textarea_create(root_); lv_obj_set_pos(passArea_, 14, 58); lv_obj_set_size(passArea_, 292, 38);
-  lv_obj_set_style_text_font(passArea_, &aurora_font_12, 0);
-  lv_textarea_set_one_line(passArea_, true); lv_textarea_set_password_mode(passArea_, true); lv_textarea_set_max_length(passArea_, 63);
-  lv_textarea_set_accepted_chars(passArea_, PASSPHRASE_ASCII);
-  lv_textarea_set_placeholder_text(passArea_, "Laisser vide ou saisir une passphrase");
-  if(passphrase_[0]) lv_textarea_set_text(passArea_,passphrase_);
-  keyboard_ = lv_keyboard_create(root_); lv_obj_set_size(keyboard_, 320, 104); lv_obj_align(keyboard_, LV_ALIGN_BOTTOM_MID,0,0); lv_keyboard_set_textarea(keyboard_,passArea_);
-  lv_obj_add_event_cb(passArea_, event, LV_EVENT_READY, (void*)TO_ENTROPY);
+  buildPassphraseFields(false);
+}
+
+void AuroraUI::buildPassphraseFields(bool restoring) {
+  lv_obj_set_style_pad_all(root_,0,0);
+  header("Passphrase BIP39", restoring ? nullptr : "3 / 7");
+  if (restoring) {
+    lv_obj_t *back=button(root_,"<",event,28); AuroraLayout::size(back,28,28);
+    lv_obj_set_user_data(back,(void*)BACK_RESTORE_WORDS); AuroraLayout::pos(back,276,3);
+  }
+  securityStatus_=label(root_,"Optionnelle : saisissez-la deux fois, ou laissez les deux vides.",&aurora_font_10);
+  AuroraLayout::pos(securityStatus_,12,39); AuroraLayout::size(securityStatus_,296,28);
+  lv_label_set_long_mode(securityStatus_,LV_LABEL_LONG_WRAP);
+  lv_obj_set_style_text_color(securityStatus_,ORANGE,0);
+  lv_obj_t **fields[2]={&passArea_,&passConfirmArea_};
+  for(unsigned i=0;i<2;++i) {
+    lv_obj_t *field=*fields[i]=lv_textarea_create(root_);
+    AuroraLayout::pos(field,i?165:12,70); AuroraLayout::size(field,143,35);
+    AuroraLayout::font(field,&aurora_font_10,0);
+    lv_textarea_set_one_line(field,true); lv_textarea_set_password_mode(field,true);
+    lv_textarea_set_password_show_time(field,0);
+    lv_textarea_set_max_length(field,63); lv_textarea_set_accepted_chars(field,PASSPHRASE_ASCII);
+    lv_textarea_set_placeholder_text(field,i?"Confirmation":"Passphrase");
+    lv_obj_add_event_cb(field,event,LV_EVENT_FOCUSED,nullptr);
+  }
+  keyboard_=lv_keyboard_create(root_); AuroraLayout::size(keyboard_,320,112);
+  AuroraLayout::align(keyboard_,LV_ALIGN_BOTTOM_MID,0,0); lv_keyboard_set_textarea(keyboard_,passArea_);
+  lv_obj_add_event_cb(keyboard_,event,LV_EVENT_READY,(void*)(restoring?RESTORE_DERIVE:TO_ENTROPY));
+  lv_obj_add_event_cb(keyboard_,event,LV_EVENT_CANCEL,(void*)(restoring?BACK_RESTORE_WORDS:BACK_ENTROPY));
+}
+
+bool AuroraUI::confirmPassphrase() {
+  if(!passArea_ || !passConfirmArea_) return false;
+  const char *first=lv_textarea_get_text(passArea_);
+  const char *second=lv_textarea_get_text(passConfirmArea_);
+  const bool ok=first && second && strlen(first)<sizeof(passphrase_) && strcmp(first,second)==0;
+  secureZero(passphrase_,sizeof(passphrase_));
+  if(ok) strlcpy(passphrase_,first,sizeof(passphrase_));
+  wipeObjectTree(passArea_); wipeObjectTree(passConfirmArea_);
+  lv_textarea_set_text(passArea_,""); lv_textarea_set_text(passConfirmArea_,"");
+  if(!ok) {
+    lv_label_set_text(securityStatus_,"Les deux passphrases sont différentes. Recommencez.");
+    lv_obj_set_style_text_color(securityStatus_,DANGER,0);
+    lv_keyboard_set_textarea(keyboard_,passArea_);
+  }
+  return ok;
 }
 
 void AuroraUI::buildEntropy() {
+#if defined(AURORA_BOARD_P4)
+  buildPortraitEntropy();
+#else
   lv_obj_set_style_pad_all(root_,0,0);
-  header("Collecte d'entropie", "3 / 7");
+  header("Collecte d'entropie", "2 / 7");
   secureZero(mixedEntropy_, sizeof(mixedEntropy_));
   entropyReadyPending_ = entropyFailurePending_ = false;
   entropyCompleteDueMs_ = entropyPreviewUpdatedMs_ = 0;
   entropy_.begin();
 
   lv_obj_t *title = label(root_, "Bougez votre doigt dans le cadre", &aurora_font_12);
-  lv_obj_set_pos(title,18,43);
-  lv_obj_t *pad = lv_obj_create(root_); lv_obj_set_pos(pad,18,62); lv_obj_set_size(pad,284,72);
+  AuroraLayout::pos(title,18,43);
+  lv_obj_t *pad = lv_obj_create(root_); AuroraLayout::pos(pad,18,62); AuroraLayout::size(pad,284,72);
   lv_obj_clear_flag(pad,LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_set_style_bg_color(pad,PANEL,0); lv_obj_set_style_border_color(pad,ORANGE,0);
   lv_obj_set_style_border_width(pad,1,0); lv_obj_set_style_radius(pad,8,0);
@@ -604,8 +760,8 @@ void AuroraUI::buildEntropy() {
   lv_obj_set_style_text_color(hint,MUTED,0); lv_obj_set_style_text_align(hint,LV_TEXT_ALIGN_CENTER,0); lv_obj_center(hint);
 
   lv_obj_t *caption = label(root_,"Aperçu du mélange",&aurora_font_10);
-  lv_obj_set_style_text_color(caption,MUTED,0); lv_obj_set_pos(caption,18,140);
-  lv_obj_t *strip = lv_obj_create(root_); lv_obj_set_pos(strip,18,155); lv_obj_set_size(strip,284,26);
+  lv_obj_set_style_text_color(caption,MUTED,0); AuroraLayout::pos(caption,18,140);
+  lv_obj_t *strip = lv_obj_create(root_); AuroraLayout::pos(strip,18,155); AuroraLayout::size(strip,284,26);
   lv_obj_clear_flag(strip,LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_set_style_bg_color(strip,PANEL,0); lv_obj_set_style_border_width(strip,0,0);
   lv_obj_set_style_radius(strip,4,0); lv_obj_set_style_pad_all(strip,4,0);
@@ -614,15 +770,16 @@ void AuroraUI::buildEntropy() {
   lv_label_set_text_static(entropyPreview_,entropyPreviewText_); lv_obj_center(entropyPreview_);
 
   entropyStatus_ = label(root_,"Collecte insuffisante - 0 %",&aurora_font_12);
-  lv_obj_set_pos(entropyStatus_,18,187); lv_obj_set_style_text_color(entropyStatus_,DANGER,0);
-  entropyBar_ = lv_bar_create(root_); lv_obj_set_pos(entropyBar_,18,207); lv_obj_set_size(entropyBar_,284,12);
+  AuroraLayout::pos(entropyStatus_,18,187); lv_obj_set_style_text_color(entropyStatus_,DANGER,0);
+  entropyBar_ = lv_bar_create(root_); AuroraLayout::pos(entropyBar_,18,207); AuroraLayout::size(entropyBar_,284,12);
   lv_bar_set_range(entropyBar_,0,100); lv_bar_set_value(entropyBar_,0,LV_ANIM_OFF);
   lv_obj_set_style_bg_color(entropyBar_,lv_color_darken(DANGER,LV_OPA_70),LV_PART_MAIN);
   lv_obj_set_style_bg_opa(entropyBar_,LV_OPA_COVER,LV_PART_MAIN);
   lv_obj_set_style_bg_color(entropyBar_,DANGER,LV_PART_INDICATOR);
-  entropyCount_ = label(root_,"",&aurora_font_10); lv_obj_set_pos(entropyCount_,18,224);
+  entropyCount_ = label(root_,"",&aurora_font_10); AuroraLayout::pos(entropyCount_,18,224);
   lv_obj_set_style_text_color(entropyCount_,MUTED,0);
   lv_label_set_text_fmt(entropyCount_,"0 / %u échantillons",static_cast<unsigned>(TouchEntropy::REQUIRED_SAMPLES));
+#endif
 }
 
 void AuroraUI::updateEntropyPreview(uint32_t token) {
@@ -635,7 +792,11 @@ void AuroraUI::updateEntropyPreview(uint32_t token) {
 
 void AuroraUI::onTouchSample(int16_t x, int16_t y, uint16_t pressure) {
   if (screen_ != Screen::Entropy || !entropyBar_ || entropyReadyPending_) return;
+#if defined(AURORA_BOARD_P4)
+  if (sensorStopPending_ || x < 24 || x >= 456 || y < 152 || y >= 340) return;
+#else
   if (x < 18 || x >= 302 || y < 62 || y >= 134) return;
+#endif
   entropy_.add(x,y,pressure);
   const uint8_t p = entropy_.progress();
   const uint16_t count = entropy_.sampleCount();
@@ -656,6 +817,8 @@ void AuroraUI::onTouchSample(int16_t x, int16_t y, uint16_t pressure) {
   }
   if (entropy_.ready()) {
     if (entropy_.finish(mixedEntropy_)) {
+      entropyCollected_ = true;
+      lv_disp_trig_activity(nullptr);
       entropyReadyPending_ = true;
       entropyCompleteDueMs_ = millis() + 1000; // Leave the green state visible.
     }
@@ -664,53 +827,57 @@ void AuroraUI::onTouchSample(int16_t x, int16_t y, uint16_t pressure) {
 }
 
 void AuroraUI::buildGenerating() {
-  lv_obj_t *spinner=lv_spinner_create(root_,900,70); lv_obj_set_size(spinner,58,58);
+  lv_obj_t *spinner=AuroraLayout::spinner(root_,900,70); AuroraLayout::size(spinner,58,58);
   lv_obj_set_style_arc_color(spinner,PANEL,LV_PART_MAIN);
   lv_obj_set_style_arc_color(spinner,ORANGE,LV_PART_INDICATOR);
-  lv_obj_align(spinner,LV_ALIGN_CENTER,0,-42);
+  AuroraLayout::align(spinner,LV_ALIGN_CENTER,0,-42);
   lv_obj_t *title=label(root_,"Génération du portefeuille...",&aurora_font_16);
-  lv_obj_align(title,LV_ALIGN_CENTER,0,13);
+  AuroraLayout::align(title,LV_ALIGN_CENTER,0,13);
   lv_obj_t *hint=label(root_,"Calcul BIP39 / BIP32 en cours\nVeuillez patienter quelques secondes.",&aurora_font_10);
   lv_obj_set_style_text_color(hint,MUTED,0); lv_obj_set_style_text_align(hint,LV_TEXT_ALIGN_CENTER,0);
-  lv_obj_align(hint,LV_ALIGN_CENTER,0,48);
+  AuroraLayout::align(hint,LV_ALIGN_CENTER,0,48);
 }
 
 void AuroraUI::buildFileProcessing() {
-  lv_obj_t *spinner=lv_spinner_create(root_,900,70); lv_obj_set_size(spinner,58,58);
+  lv_obj_t *spinner=AuroraLayout::spinner(root_,900,70); AuroraLayout::size(spinner,58,58);
   lv_obj_set_style_arc_color(spinner,PANEL,LV_PART_MAIN);
   lv_obj_set_style_arc_color(spinner,ORANGE,LV_PART_INDICATOR);
-  lv_obj_align(spinner,LV_ALIGN_CENTER,0,-42);
+  AuroraLayout::align(spinner,LV_ALIGN_CENTER,0,-42);
   const bool importing=fileOperation_==FileOperation::Import;
   lv_obj_t *title=label(root_,importing?"Déchiffrement en cours...":"Chiffrement en cours...",&aurora_font_16);
-  lv_obj_align(title,LV_ALIGN_CENTER,0,13);
+  AuroraLayout::align(title,LV_ALIGN_CENTER,0,13);
   lv_obj_t *hint=label(root_,"PBKDF2-HMAC-SHA-256 + AES-256-GCM\nVeuillez patienter.",&aurora_font_10);
   lv_obj_set_style_text_color(hint,MUTED,0); lv_obj_set_style_text_align(hint,LV_TEXT_ALIGN_CENTER,0);
-  lv_obj_align(hint,LV_ALIGN_CENTER,0,48);
+  AuroraLayout::align(hint,LV_ALIGN_CENTER,0,48);
 }
 
 void AuroraUI::buildGenerationError() {
   header("Erreur de génération");
   lv_obj_t *title=label(root_,"La génération n'a pas abouti.",&aurora_font_16);
-  lv_obj_align(title,LV_ALIGN_CENTER,0,-30);
+  AuroraLayout::align(title,LV_ALIGN_CENTER,0,-30);
   lv_obj_t *hint=label(root_,"Aucune phrase ni clé n'a été conservée.",&aurora_font_10);
-  lv_obj_set_style_text_color(hint,MUTED,0); lv_obj_align(hint,LV_ALIGN_CENTER,0,2);
+  lv_obj_set_style_text_color(hint,MUTED,0); AuroraLayout::align(hint,LV_ALIGN_CENTER,0,2);
   lv_obj_t *retry=button(root_,"RECOMMENCER",event,150); lv_obj_set_user_data(retry,(void*)RETRY_ENTROPY);
-  lv_obj_align(retry,LV_ALIGN_BOTTOM_MID,0,-24);
+  AuroraLayout::align(retry,LV_ALIGN_BOTTOM_MID,0,-24);
 }
 
 void AuroraUI::buildSecurityError() {
   header("ÉCHEC DE SÉCURITÉ");
   lv_obj_t *title=label(root_,"Autotest cryptographique échoué",&aurora_font_16);
-  lv_obj_set_style_text_color(title,DANGER,0); lv_obj_align(title,LV_ALIGN_CENTER,0,-35);
+  lv_obj_set_style_text_color(title,DANGER,0); AuroraLayout::align(title,LV_ALIGN_CENTER,0,-35);
   lv_obj_t *hint=label(root_,"Aucune seed ne peut être générée.\nReflashez un firmware vérifié.",&aurora_font_12);
-  lv_obj_set_style_text_align(hint,LV_TEXT_ALIGN_CENTER,0); lv_obj_align(hint,LV_ALIGN_CENTER,0,10);
+  lv_obj_set_style_text_align(hint,LV_TEXT_ALIGN_CENTER,0); AuroraLayout::align(hint,LV_ALIGN_CENTER,0,10);
   char code[28];
   snprintf(code,sizeof(code),"Code diagnostic : E%02u",static_cast<unsigned>(selfTestResult_));
   lv_obj_t *detail=label(root_,code,&aurora_font_10);
-  lv_obj_set_style_text_color(detail,MUTED,0); lv_obj_align(detail,LV_ALIGN_BOTTOM_MID,0,-22);
+  lv_obj_set_style_text_color(detail,MUTED,0); AuroraLayout::align(detail,LV_ALIGN_BOTTOM_MID,0,-22);
 }
 
-bool AuroraUI::generate() { return engine_.create(words_,kind_,passphrase_,mixedEntropy_,wallet_); }
+bool AuroraUI::generate() {
+  const bool ok=entropyCollected_ && engine_.create(words_,kind_,passphrase_,mixedEntropy_,wallet_);
+  secureZero(mixedEntropy_,sizeof(mixedEntropy_)); entropyCollected_=false;
+  return ok;
+}
 
 void AuroraUI::buildMnemonic() {
   header("Phrase de récupération",
@@ -718,13 +885,13 @@ void AuroraUI::buildMnemonic() {
   const char *warningText=loadedWallet_ ?
       "Portefeuille déchiffré. Ne photographiez jamais ces mots." :
       "Écrivez ces mots dans l'ordre. Ne les photographiez jamais.";
-  lv_obj_t *warning=label(root_,warningText,&aurora_font_10); lv_obj_set_style_text_color(warning,ORANGE,0); lv_obj_set_pos(warning,10,41);
+  lv_obj_t *warning=label(root_,warningText,&aurora_font_10); lv_obj_set_style_text_color(warning,ORANGE,0); AuroraLayout::pos(warning,10,41);
   const uint8_t pageCount = (words_ + 7) / 8;
   if (mnemonicPage_ >= pageCount) mnemonicPage_ = pageCount - 1;
   const uint8_t first = mnemonicPage_ * 8;
   const uint8_t last = (first + 8 < words_) ? first + 8 : words_;
 
-  lv_obj_t *box=lv_obj_create(root_); lv_obj_set_pos(box,10,56); lv_obj_set_size(box,300,121); lv_obj_set_style_bg_color(box,PANEL,0); lv_obj_set_style_border_width(box,0,0); lv_obj_set_style_radius(box,7,0);
+  lv_obj_t *box=lv_obj_create(root_); AuroraLayout::pos(box,10,56); AuroraLayout::size(box,300,121); lv_obj_set_style_bg_color(box,PANEL,0); lv_obj_set_style_border_width(box,0,0); lv_obj_set_style_radius(box,7,0);
   lv_obj_set_style_pad_all(box,5,0); lv_obj_clear_flag(box,LV_OBJ_FLAG_SCROLLABLE);
   char copy[256]; strlcpy(copy,wallet_.mnemonic,sizeof(copy)); char *save=nullptr; char *w=strtok_r(copy," ",&save); uint8_t i=0;
   while(w && i<last) {
@@ -732,23 +899,23 @@ void AuroraUI::buildMnemonic() {
       const uint8_t local=i-first, col=local/4, row=local%4;
       const int x=col*145, y=row*27;
       char number[4]; snprintf(number,sizeof(number),"%02u",i+1);
-      lv_obj_t *n=label(box,number,&aurora_font_12); lv_obj_set_style_text_color(n,ORANGE,0); lv_obj_set_pos(n,x,y+2);
-      lv_obj_t *word=label(box,w,&aurora_font_16); lv_obj_set_pos(word,x+29,y);
+      lv_obj_t *n=label(box,number,&aurora_font_12); lv_obj_set_style_text_color(n,ORANGE,0); AuroraLayout::pos(n,x,y+2);
+      lv_obj_t *word=label(box,w,&aurora_font_16); AuroraLayout::pos(word,x+29,y);
     }
     w=strtok_r(nullptr," ",&save); ++i;
   }
   secureZero(copy,sizeof(copy));
 
   if(mnemonicPage_>0) {
-    lv_obj_t *previous=button(root_,"< PRÉCÉDENT",event,112); lv_obj_set_user_data(previous,(void*)MNEMONIC_PREVIOUS); lv_obj_set_pos(previous,10,190);
+    lv_obj_t *previous=button(root_,"< PRÉCÉDENT",event,112); lv_obj_set_user_data(previous,(void*)MNEMONIC_PREVIOUS); AuroraLayout::pos(previous,10,190);
   }
   if(mnemonicPage_+1<pageCount) {
-    lv_obj_t *next=button(root_,"SUIVANT >",event,112); lv_obj_set_user_data(next,(void*)MNEMONIC_NEXT); lv_obj_set_pos(next,198,190);
+    lv_obj_t *next=button(root_,"SUIVANT >",event,112); lv_obj_set_user_data(next,(void*)MNEMONIC_NEXT); AuroraLayout::pos(next,198,190);
   } else {
     lv_obj_t *done=button(root_,loadedWallet_?"SUIVANT":"J'AI NOTÉ",event,132);
     const Action nextAction=(loadedWallet_ && !manualRestore_ && passphrase_[0]) ?
         SHOW_LOADED_PASSPHRASE : (loadedWallet_ ? TO_INFO : NEXT_VERIFY);
-    lv_obj_set_user_data(done,(void*)nextAction); lv_obj_set_pos(done,178,190);
+    lv_obj_set_user_data(done,(void*)nextAction); AuroraLayout::pos(done,178,190);
   }
 }
 
@@ -757,19 +924,19 @@ void AuroraUI::buildPassphraseReveal() {
   lv_obj_t *warning=label(root_,
       "DANGER : cette passphrase BIP39 est indispensable pour retrouver exactement ce portefeuille.",
       &aurora_font_10);
-  lv_label_set_long_mode(warning,LV_LABEL_LONG_WRAP); lv_obj_set_size(warning,292,31);
-  lv_obj_set_style_text_color(warning,DANGER,0); lv_obj_set_pos(warning,14,43);
+  lv_label_set_long_mode(warning,LV_LABEL_LONG_WRAP); AuroraLayout::size(warning,292,31);
+  lv_obj_set_style_text_color(warning,DANGER,0); AuroraLayout::pos(warning,14,43);
 
-  lv_obj_t *panel=lv_obj_create(root_); lv_obj_set_pos(panel,12,78); lv_obj_set_size(panel,296,91);
+  lv_obj_t *panel=lv_obj_create(root_); AuroraLayout::pos(panel,12,78); AuroraLayout::size(panel,296,91);
   lv_obj_set_style_bg_color(panel,PANEL,0); lv_obj_set_style_border_color(panel,DANGER,0);
   lv_obj_set_style_border_width(panel,1,0); lv_obj_set_style_radius(panel,7,0);
   lv_obj_set_style_pad_all(panel,7,0); lv_obj_clear_flag(panel,LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_t *value=label(panel,passphrase_,&aurora_font_14);
-  lv_label_set_long_mode(value,LV_LABEL_LONG_WRAP); lv_obj_set_size(value,278,74);
-  lv_obj_set_style_text_color(value,lv_color_white(),0); lv_obj_set_pos(value,1,1);
+  lv_label_set_long_mode(value,LV_LABEL_LONG_WRAP); AuroraLayout::size(value,278,74);
+  lv_obj_set_style_text_color(value,lv_color_white(),0); AuroraLayout::pos(value,1,1);
 
   lv_obj_t *next=button(root_,"CONTINUER",event,132);
-  lv_obj_set_user_data(next,(void*)TO_INFO); lv_obj_set_pos(next,94,190);
+  lv_obj_set_user_data(next,(void*)TO_INFO); AuroraLayout::pos(next,94,190);
 }
 
 void AuroraUI::selectVerifyWords() {
@@ -798,8 +965,8 @@ void AuroraUI::buildVerify() {
   verifyActiveIndex_=0; verifySuggestionCount_=0;
   secureZero(verifySuggestions_,sizeof(verifySuggestions_));
   for(uint8_t i=0;i<3;++i) {
-    verifyArea_[i]=lv_textarea_create(root_); lv_obj_set_pos(verifyArea_[i],8+i*104,40);
-    lv_obj_set_size(verifyArea_[i],94,36); lv_obj_set_style_text_font(verifyArea_[i],&aurora_font_12,0);
+    verifyArea_[i]=lv_textarea_create(root_); AuroraLayout::pos(verifyArea_[i],8+i*104,40);
+    AuroraLayout::size(verifyArea_[i],94,36); AuroraLayout::font(verifyArea_[i],&aurora_font_12,0);
     lv_textarea_set_one_line(verifyArea_[i],true);
     lv_textarea_set_max_length(verifyArea_[i],WalletEngine::BIP39_WORD_CAPACITY-1);
     lv_textarea_set_accepted_chars(verifyArea_[i],"abcdefghijklmnopqrstuvwxyz");
@@ -810,12 +977,12 @@ void AuroraUI::buildVerify() {
     lv_obj_add_event_cb(verifyArea_[i],event,LV_EVENT_VALUE_CHANGED,nullptr);
 
     verifySuggestionButtons_[i]=button(root_,"",event,94);
-    lv_obj_set_size(verifySuggestionButtons_[i],94,26);
-    lv_obj_set_pos(verifySuggestionButtons_[i],8+i*104,80);
+    AuroraLayout::size(verifySuggestionButtons_[i],94,26);
+    AuroraLayout::pos(verifySuggestionButtons_[i],8+i*104,80);
     lv_obj_set_user_data(verifySuggestionButtons_[i],(void*)(VERIFY_SUGGESTION_0+i));
   }
   updateVerifySuggestions();
-  keyboard_=lv_keyboard_create(root_); lv_obj_set_size(keyboard_,320,112); lv_obj_align(keyboard_,LV_ALIGN_BOTTOM_MID,0,0); lv_keyboard_set_mode(keyboard_,LV_KEYBOARD_MODE_TEXT_LOWER); lv_keyboard_set_textarea(keyboard_,verifyArea_[0]);
+  keyboard_=lv_keyboard_create(root_); AuroraLayout::size(keyboard_,320,112); AuroraLayout::align(keyboard_,LV_ALIGN_BOTTOM_MID,0,0); lv_keyboard_set_mode(keyboard_,LV_KEYBOARD_MODE_TEXT_LOWER); lv_keyboard_set_textarea(keyboard_,verifyArea_[0]);
   lv_obj_add_event_cb(keyboard_,event,LV_EVENT_READY,(void*)CHECK_VERIFY);
 }
 
@@ -870,29 +1037,56 @@ bool AuroraUI::verifyWords() {
 }
 
 void AuroraUI::buildInfo() {
+  if(protectedSession_) lv_obj_set_style_pad_all(root_,0,0);
   const char *step=manualRestore_ ? "2 / 3" :
       (loadedWallet_ ? (passphrase_[0] ? "3 / 4" : "2 / 3") : "6 / 7");
-  header("Informations du portefeuille",step);
-  lv_obj_t *p=lv_obj_create(root_); lv_obj_set_pos(p,10,42); lv_obj_set_size(p,300,132); lv_obj_set_style_bg_color(p,PANEL,0); lv_obj_set_style_border_width(p,0,0); lv_obj_set_style_radius(p,7,0); lv_obj_clear_flag(p,LV_OBJ_FLAG_SCROLLABLE);
+  header(protectedSession_?"Portefeuille":"Informations du portefeuille",protectedSession_?nullptr:step);
+  lv_obj_t *p=lv_obj_create(root_); AuroraLayout::pos(p,10,42); AuroraLayout::size(p,300,132); lv_obj_set_style_bg_color(p,PANEL,0); lv_obj_set_style_border_width(p,0,0); lv_obj_set_style_radius(p,7,0); lv_obj_clear_flag(p,LV_OBJ_FLAG_SCROLLABLE);
   char txt[500]; snprintf(txt,sizeof(txt),"Adresse\n%s\nChemin : %s\nClé publique étendue du compte\n%s",wallet_.address,wallet_.path,wallet_.accountXpub);
-  lv_obj_t *l=label(p,txt,&aurora_font_10); lv_label_set_long_mode(l,LV_LABEL_LONG_WRAP); lv_obj_set_size(l,290,124); lv_obj_set_pos(l,5,3);
-  lv_obj_t *q=button(root_,"CODES QR",event,95); lv_obj_set_user_data(q,(void*)TO_QR_ADDRESS); lv_obj_set_pos(q,10,181);
-  lv_obj_t *r=button(root_,"CLÉ PRIVÉE",event,100); lv_obj_set_user_data(r,(void*)REVEAL_PRIVATE); lv_obj_set_pos(r,110,181);
-  const char *lastText=manualRestore_?"EXPORTER":(loadedWallet_?"EFFACER":"SUIVANT");
-  const Action lastAction=manualRestore_?TO_BACKUP:(loadedWallet_?DO_WIPE:TO_BACKUP);
+  lv_obj_t *l=label(p,txt,&aurora_font_10); lv_label_set_long_mode(l,LV_LABEL_LONG_WRAP); AuroraLayout::size(l,290,124); AuroraLayout::pos(l,5,3);
+  if(protectedSession_ && exportSucceeded_ && exportStatus_[0]) {
+    lv_obj_t *saved=label(p,exportStatus_,&aurora_font_10);
+    lv_obj_set_style_text_color(saved,SUCCESS,0); AuroraLayout::pos(saved,5,110);
+  }
+  lv_obj_t *q=button(root_,"CODES QR",event,95); lv_obj_set_user_data(q,(void*)TO_QR_ADDRESS); AuroraLayout::pos(q,10,181);
+  lv_obj_t *r=button(root_,"CLÉ PRIVÉE",event,100); lv_obj_set_user_data(r,(void*)REVEAL_PRIVATE); AuroraLayout::pos(r,110,181);
+  const char *lastText=protectedSession_?"EXPORTER":(manualRestore_?"EXPORTER":(loadedWallet_?"EFFACER":"SUIVANT"));
+  const Action lastAction=protectedSession_?TO_BACKUP:(manualRestore_?TO_BACKUP:(loadedWallet_?DO_WIPE:TO_BACKUP));
   lv_obj_t *x=button(root_,lastText,event,95);
-  lv_obj_set_user_data(x,(void*)lastAction); lv_obj_set_pos(x,215,181);
+  lv_obj_set_user_data(x,(void*)lastAction); AuroraLayout::pos(x,215,181);
+  if(protectedSession_) {
+    AuroraLayout::pos(q,10,177); AuroraLayout::size(q,95,26);
+    AuroraLayout::pos(r,110,177); AuroraLayout::size(r,100,26);
+    AuroraLayout::pos(x,215,177); AuroraLayout::size(x,95,26);
+    const char *names[3]={"MOTS","PASSPHRASE","VERROUILLER"};
+    const Action actions[3]={SHOW_WORDS,SHOW_LOADED_PASSPHRASE,LOCK_SESSION};
+    for(unsigned i=0;i<3;++i) {
+      lv_obj_t *b=button(root_,names[i],event,95);
+      AuroraLayout::pos(b,10+i*102,207); AuroraLayout::size(b,95,26);
+      AuroraLayout::font(lv_obj_get_child(b,0),&aurora_font_10,0);
+      lv_obj_set_user_data(b,(void*)actions[i]);
+    }
+  }
 }
 
 bool AuroraUI::renderQr(lv_obj_t *parent,const char *data,int size,int x,int y) {
   if (!data || !data[0]) return false;
+#if LVGL_VERSION_MAJOR >= 9
+  lv_obj_t *qr = lv_qrcode_create(parent);
+  if (qr) {
+    lv_qrcode_set_size(qr, AuroraLayout::x(size));
+    lv_qrcode_set_dark_color(qr, lv_color_black());
+    lv_qrcode_set_light_color(qr, lv_color_white());
+  }
+#else
   lv_obj_t *qr = lv_qrcode_create(parent, size, lv_color_black(), lv_color_white());
+#endif
   if (!qr) return false;
   if (lv_qrcode_update(qr, data, strlen(data)) != LV_RES_OK) {
     lv_obj_del(qr);
     return false;
   }
-  lv_obj_set_pos(qr, x, y);
+  AuroraLayout::pos(qr, x, y);
   return true;
 }
 
@@ -912,8 +1106,8 @@ void AuroraUI::buildQr() {
         "Native SegWit - m/84'/0'/0'/0/0\n"
         "Taproot - m/86'/0'/0'/0/0";
     restoreDerivationDropdown_=lv_dropdown_create(root_);
-    lv_obj_set_pos(restoreDerivationDropdown_,6,39); lv_obj_set_size(restoreDerivationDropdown_,128,30);
-    lv_obj_set_style_text_font(restoreDerivationDropdown_,&aurora_font_10,0);
+    AuroraLayout::pos(restoreDerivationDropdown_,6,39); AuroraLayout::size(restoreDerivationDropdown_,128,30);
+    AuroraLayout::font(restoreDerivationDropdown_,&aurora_font_10,0);
     lv_dropdown_set_options(restoreDerivationDropdown_,DERIVATIONS);
     lv_dropdown_set_selected(restoreDerivationDropdown_,static_cast<uint16_t>(wallet_.kind));
     lv_obj_set_user_data(restoreDerivationDropdown_,(void*)RESTORE_DERIVATION_CHANGED);
@@ -921,40 +1115,40 @@ void AuroraUI::buildQr() {
   }
 
   if (!renderQr(root_,data,restoreView?128:158,6,restoreView?73:42)) {
-    lv_obj_t *error=label(root_,"QR impossible",&aurora_font_14); lv_obj_set_style_text_color(error,DANGER,0); lv_obj_align(error,LV_ALIGN_LEFT_MID,25,0);
+    lv_obj_t *error=label(root_,"QR impossible",&aurora_font_14); lv_obj_set_style_text_color(error,DANGER,0); AuroraLayout::align(error,LV_ALIGN_LEFT_MID,25,0);
   }
   const int rightX = restoreView?140:168;
   const int rightWidth = restoreView?164:136;
   lv_obj_t *l=label(root_,data,&aurora_font_10); lv_label_set_long_mode(l,LV_LABEL_LONG_WRAP);
-  lv_obj_set_size(l,rightWidth,restoreView?68:(privateKey ? 139 : 99));
-  lv_obj_set_pos(l,rightX,restoreView?75:43);
+  AuroraLayout::size(l,rightWidth,restoreView?68:(privateKey ? 139 : 99));
+  AuroraLayout::pos(l,rightX,restoreView?75:43);
 
   if(restoreView) {
     lv_obj_t *alternate=button(root_,privateKey?"ADRESSE":"CLÉ PRIVÉE",event,rightWidth);
     lv_obj_set_user_data(alternate,(void*)(privateKey?TO_QR_ADDRESS:REVEAL_PRIVATE));
-    lv_obj_set_pos(alternate,rightX,148);
+    AuroraLayout::pos(alternate,rightX,148);
     if(!privateKey) lv_obj_set_style_bg_color(alternate,ORANGE,0);
     else lv_obj_set_style_bg_color(alternate,DANGER,0);
   } else if (qrContent_ == QrContent::Address) {
     lv_obj_t *p=button(root_,"CLÉ ÉTENDUE",event,rightWidth);
-    lv_obj_set_user_data(p,(void*)TO_QR_PUBLIC); lv_obj_set_pos(p,rightX,147);
+    lv_obj_set_user_data(p,(void*)TO_QR_PUBLIC); AuroraLayout::pos(p,rightX,147);
   } else if (qrContent_ == QrContent::AccountXpub) {
     lv_obj_t *a=button(root_,"ADRESSE",event,rightWidth);
-    lv_obj_set_user_data(a,(void*)TO_QR_ADDRESS); lv_obj_set_pos(a,rightX,147);
+    lv_obj_set_user_data(a,(void*)TO_QR_ADDRESS); AuroraLayout::pos(a,rightX,147);
   }
   lv_obj_t *b=button(root_,restoreView?"INFORMATIONS":"RETOUR",event,rightWidth);
-  lv_obj_set_user_data(b,(void*)TO_INFO); lv_obj_set_pos(b,rightX,190);
+  lv_obj_set_user_data(b,(void*)TO_INFO); AuroraLayout::pos(b,rightX,190);
 }
 
 void AuroraUI::buildBackup() {
   header("Sauvegarde sur microSD", manualRestore_ ? "3 / 3" : "7 / 7");
   lv_obj_t *intro=label(root_,"Choisissez un format (carte FAT32).",&aurora_font_10);
-  lv_obj_set_style_text_color(intro,MUTED,0); lv_obj_set_pos(intro,12,41);
+  lv_obj_set_style_text_color(intro,MUTED,0); AuroraLayout::pos(intro,12,41);
 
   lv_obj_t *aurora=button(root_,"AURORA WALLET CHIFFRÉ",event,280);
-  lv_obj_set_user_data(aurora,(void*)EXPORT_AURORA); lv_obj_set_pos(aurora,20,61);
+  lv_obj_set_user_data(aurora,(void*)EXPORT_AURORA); AuroraLayout::pos(aurora,20,61);
   lv_obj_t *electrum=button(root_,"ELECTRUM PRIVÉ NON CHIFFRÉ",event,280);
-  lv_obj_set_user_data(electrum,(void*)EXPORT_ELECTRUM); lv_obj_set_pos(electrum,20,105);
+  lv_obj_set_user_data(electrum,(void*)EXPORT_ELECTRUM); AuroraLayout::pos(electrum,20,105);
   lv_obj_set_style_bg_color(electrum,DANGER,0);
   if (wallet_.kind == AddressKind::Taproot) {
     lv_obj_add_state(electrum,LV_STATE_DISABLED);
@@ -963,8 +1157,8 @@ void AuroraUI::buildBackup() {
 
   if (exportStatus_[0]) {
     lv_obj_t *status=label(root_,exportStatus_,&aurora_font_10);
-    lv_label_set_long_mode(status,LV_LABEL_LONG_WRAP); lv_obj_set_size(status,296,42);
-    lv_obj_set_pos(status,12,143);
+    lv_label_set_long_mode(status,LV_LABEL_LONG_WRAP); AuroraLayout::size(status,296,42);
+    AuroraLayout::pos(status,12,143);
     lv_obj_set_style_text_color(status,
         strncmp(exportStatus_,"Créé :",strlen("Créé :"))==0 ? ORANGE : DANGER,0);
   } else {
@@ -972,11 +1166,11 @@ void AuroraUI::buildBackup() {
         "Aurora Wallet : AES-256-GCM.\nElectrum indisponible en Taproot." :
         "Aurora Wallet est chiffré et authentifié.\nElectrum contient le xprv en clair.";
     lv_obj_t *explanation=label(root_,text,&aurora_font_10);
-    lv_label_set_long_mode(explanation,LV_LABEL_LONG_WRAP); lv_obj_set_size(explanation,296,34);
-    lv_obj_set_style_text_color(explanation,MUTED,0); lv_obj_set_pos(explanation,12,143);
+    lv_label_set_long_mode(explanation,LV_LABEL_LONG_WRAP); AuroraLayout::size(explanation,296,34);
+    lv_obj_set_style_text_color(explanation,MUTED,0); AuroraLayout::pos(explanation,12,143);
   }
   lv_obj_t *wipe=button(root_,"EFFACER",event,122);
-  lv_obj_set_user_data(wipe,(void*)DO_WIPE); lv_obj_set_pos(wipe,99,196);
+  lv_obj_set_user_data(wipe,(void*)DO_WIPE); AuroraLayout::pos(wipe,99,196);
 }
 
 void AuroraUI::buildExportWarning() {
@@ -984,28 +1178,28 @@ void AuroraUI::buildExportWarning() {
   header(aurora ? "Aurora Wallet chiffré" : "Electrum privé - DANGER",
          manualRestore_ ? "3 / 3" : "7 / 7");
   lv_obj_t *danger=label(root_,aurora?"AES-256-GCM":"SECRETS NON CHIFFRÉS",&aurora_font_16);
-  lv_obj_set_style_text_color(danger,aurora?ORANGE:DANGER,0); lv_obj_align(danger,LV_ALIGN_TOP_MID,0,50);
+  lv_obj_set_style_text_color(danger,aurora?ORANGE:DANGER,0); AuroraLayout::align(danger,LV_ALIGN_TOP_MID,0,50);
   const char *message=aurora ?
       "Les mots et les clés seront chiffrés avec un mot de passe.\n"
       "Mot de passe perdu = fichier définitivement illisible." :
       "Ce fichier Electrum contient le xprv du compte en clair.\n"
       "Toute personne qui le possède peut dépenser les bitcoins.";
   lv_obj_t *warning=label(root_,message,&aurora_font_12);
-  lv_label_set_long_mode(warning,LV_LABEL_LONG_WRAP); lv_obj_set_size(warning,292,76);
-  lv_obj_set_style_text_align(warning,LV_TEXT_ALIGN_CENTER,0); lv_obj_set_pos(warning,14,82);
+  lv_label_set_long_mode(warning,LV_LABEL_LONG_WRAP); AuroraLayout::size(warning,292,76);
+  lv_obj_set_style_text_align(warning,LV_TEXT_ALIGN_CENTER,0); AuroraLayout::pos(warning,14,82);
   lv_obj_t *cancel=button(root_,"ANNULER",event,120);
-  lv_obj_set_user_data(cancel,(void*)BACK_BACKUP); lv_obj_set_pos(cancel,20,184);
+  lv_obj_set_user_data(cancel,(void*)BACK_BACKUP); AuroraLayout::pos(cancel,20,184);
   lv_obj_t *confirm=button(root_,aurora?"CONTINUER":"JE COMPRENDS",event,142);
-  lv_obj_set_user_data(confirm,(void*)CONFIRM_PRIVATE); lv_obj_set_pos(confirm,158,184);
+  lv_obj_set_user_data(confirm,(void*)CONFIRM_PRIVATE); AuroraLayout::pos(confirm,158,184);
   if(!aurora) lv_obj_set_style_bg_color(confirm,DANGER,0);
 }
 
 void AuroraUI::buildExportName() {
   header("Nom du fichier", manualRestore_ ? "3 / 3" : "7 / 7");
   lv_obj_t *hint=label(root_,"Saisissez le nom sans extension (24 caractères max.)",&aurora_font_10);
-  lv_obj_set_style_text_color(hint,MUTED,0); lv_obj_set_pos(hint,12,41);
-  exportNameArea_=lv_textarea_create(root_); lv_obj_set_pos(exportNameArea_,12,57);
-  lv_obj_set_size(exportNameArea_,296,38); lv_obj_set_style_text_font(exportNameArea_,&aurora_font_12,0);
+  lv_obj_set_style_text_color(hint,MUTED,0); AuroraLayout::pos(hint,12,41);
+  exportNameArea_=lv_textarea_create(root_); AuroraLayout::pos(exportNameArea_,12,57);
+  AuroraLayout::size(exportNameArea_,296,38); AuroraLayout::font(exportNameArea_,&aurora_font_12,0);
   lv_textarea_set_one_line(exportNameArea_,true); lv_textarea_set_max_length(exportNameArea_,24);
   lv_textarea_set_accepted_chars(exportNameArea_,FILE_NAME_CHARS);
   lv_textarea_set_placeholder_text(exportNameArea_,"mon_nom");
@@ -1013,9 +1207,9 @@ void AuroraUI::buildExportName() {
   char preview[80] = {};
   snprintf(preview,sizeof(preview),"Suffixe : %s   Validez avec ENTRÉE.",walletExportSuffix(exportFormat_));
   lv_obj_t *suffix=label(root_,preview,&aurora_font_10);
-  lv_obj_set_style_text_color(suffix,ORANGE,0); lv_obj_set_pos(suffix,12,103);
-  keyboard_=lv_keyboard_create(root_); lv_obj_set_size(keyboard_,320,112);
-  lv_obj_align(keyboard_,LV_ALIGN_BOTTOM_MID,0,0); lv_keyboard_set_textarea(keyboard_,exportNameArea_);
+  lv_obj_set_style_text_color(suffix,ORANGE,0); AuroraLayout::pos(suffix,12,103);
+  keyboard_=lv_keyboard_create(root_); AuroraLayout::size(keyboard_,320,112);
+  AuroraLayout::align(keyboard_,LV_ALIGN_BOTTOM_MID,0,0); lv_keyboard_set_textarea(keyboard_,exportNameArea_);
   lv_obj_add_event_cb(keyboard_,event,LV_EVENT_READY,(void*)SAVE_EXPORT);
 }
 
@@ -1024,31 +1218,38 @@ void AuroraUI::buildExportPassword() {
   const char *message=passwordStatus_[0] ? passwordStatus_ :
       "12 à 63 caractères. Conservez ce mot de passe séparément.";
   lv_obj_t *hint=label(root_,message,&aurora_font_10);
-  lv_label_set_long_mode(hint,LV_LABEL_LONG_WRAP); lv_obj_set_size(hint,296,20);
-  lv_obj_set_style_text_color(hint,passwordStatus_[0]?DANGER:ORANGE,0); lv_obj_set_pos(hint,12,39);
+  lv_label_set_long_mode(hint,LV_LABEL_LONG_WRAP); AuroraLayout::size(hint,296,20);
+  lv_obj_set_style_text_color(hint,passwordStatus_[0]?DANGER:ORANGE,0); AuroraLayout::pos(hint,12,39);
 
-  filePasswordArea_=lv_textarea_create(root_); lv_obj_set_pos(filePasswordArea_,12,58);
-  lv_obj_set_size(filePasswordArea_,143,35); lv_obj_set_style_text_font(filePasswordArea_,&aurora_font_10,0);
+  filePasswordArea_=lv_textarea_create(root_); AuroraLayout::pos(filePasswordArea_,12,58);
+  AuroraLayout::size(filePasswordArea_,143,35); AuroraLayout::font(filePasswordArea_,&aurora_font_10,0);
   lv_textarea_set_one_line(filePasswordArea_,true); lv_textarea_set_password_mode(filePasswordArea_,true);
+  lv_textarea_set_password_show_time(filePasswordArea_,0);
   lv_textarea_set_max_length(filePasswordArea_,63); lv_textarea_set_accepted_chars(filePasswordArea_,PASSPHRASE_ASCII);
   lv_textarea_set_placeholder_text(filePasswordArea_,"Mot de passe");
   lv_obj_add_event_cb(filePasswordArea_,event,LV_EVENT_FOCUSED,nullptr);
 
-  filePasswordConfirmArea_=lv_textarea_create(root_); lv_obj_set_pos(filePasswordConfirmArea_,165,58);
-  lv_obj_set_size(filePasswordConfirmArea_,143,35); lv_obj_set_style_text_font(filePasswordConfirmArea_,&aurora_font_10,0);
+  filePasswordConfirmArea_=lv_textarea_create(root_); AuroraLayout::pos(filePasswordConfirmArea_,165,58);
+  AuroraLayout::size(filePasswordConfirmArea_,143,35); AuroraLayout::font(filePasswordConfirmArea_,&aurora_font_10,0);
   lv_textarea_set_one_line(filePasswordConfirmArea_,true); lv_textarea_set_password_mode(filePasswordConfirmArea_,true);
+  lv_textarea_set_password_show_time(filePasswordConfirmArea_,0);
   lv_textarea_set_max_length(filePasswordConfirmArea_,63); lv_textarea_set_accepted_chars(filePasswordConfirmArea_,PASSPHRASE_ASCII);
   lv_textarea_set_placeholder_text(filePasswordConfirmArea_,"Confirmation");
   lv_obj_add_event_cb(filePasswordConfirmArea_,event,LV_EVENT_FOCUSED,nullptr);
 
   lv_obj_t *note=label(root_,"Ce mot de passe est différent de la passphrase BIP39.",&aurora_font_10);
-  lv_obj_set_style_text_color(note,MUTED,0); lv_obj_set_pos(note,12,103);
-  keyboard_=lv_keyboard_create(root_); lv_obj_set_size(keyboard_,320,112);
-  lv_obj_align(keyboard_,LV_ALIGN_BOTTOM_MID,0,0); lv_keyboard_set_textarea(keyboard_,filePasswordArea_);
+  lv_obj_set_style_text_color(note,MUTED,0); AuroraLayout::pos(note,12,103);
+  keyboard_=lv_keyboard_create(root_); AuroraLayout::size(keyboard_,320,112);
+  AuroraLayout::align(keyboard_,LV_ALIGN_BOTTOM_MID,0,0); lv_keyboard_set_textarea(keyboard_,filePasswordArea_);
   lv_obj_add_event_cb(keyboard_,event,LV_EVENT_READY,(void*)SAVE_EXPORT_PASSWORD);
 }
 
 void AuroraUI::performWalletExport() {
+  exportSucceeded_=false;
+  if(!authorized(Access::Export)) {
+    strlcpy(exportStatus_,"Autorisation PIN expirée : export annulé.",sizeof(exportStatus_));
+    return;
+  }
   char accountXprv[128] = {};
   char writtenPath[56] = {};
   if (exportFormat_==WalletExportFormat::ElectrumPrivate &&
@@ -1066,12 +1267,18 @@ void AuroraUI::performWalletExport() {
       static_cast<uint8_t>(wallet_.kind), words_, addressKindName(wallet_.kind),
       wallet_.path, wallet_.mnemonic, passphrase_, wallet_.address,
       wallet_.accountXpub, accountXprv, wallet_.privateWif,
-      wallet_.watchDescriptor};
+      wallet_.watchDescriptor,&exportPin_};
   const WalletExportResult result=writeWalletExportFile(
       exportFormat_,exportBaseName_,filePassword_,data,writtenPath,sizeof(writtenPath));
   secureZero(accountXprv,sizeof(accountXprv));
   switch(result) {
     case WalletExportResult::Ok:
+      exportSucceeded_=true;
+      if(exportFormat_==WalletExportFormat::AuroraWallet) {
+        pinGuard_.begin(exportPin_); protectedSession_=loadedWallet_=true;
+        legacyImported_=false; pinForExport_=false;
+        lv_disp_trig_activity(nullptr);
+      }
       snprintf(exportStatus_,sizeof(exportStatus_),"Créé : %s",writtenPath); break;
     case WalletExportResult::InvalidName:
       strlcpy(exportStatus_,"Nom de fichier invalide.",sizeof(exportStatus_)); break;
@@ -1081,6 +1288,8 @@ void AuroraUI::performWalletExport() {
       strlcpy(exportStatus_,"Format indisponible pour ce portefeuille.",sizeof(exportStatus_)); break;
     case WalletExportResult::WeakPassword:
       strlcpy(exportStatus_,"Mot de passe trop court ou invalide.",sizeof(exportStatus_)); break;
+    case WalletExportResult::InvalidPin:
+      strlcpy(exportStatus_,"PIN manquant ou invalide : export annulé.",sizeof(exportStatus_)); break;
     case WalletExportResult::NoCard:
       strlcpy(exportStatus_,"Carte microSD absente ou illisible.",sizeof(exportStatus_)); break;
     case WalletExportResult::AlreadyExists:
@@ -1122,6 +1331,10 @@ bool AuroraUI::performWalletImport() {
       mnemonicPage_=0;
       qrContent_=QrContent::Address;
       loadedWallet_=true;
+      pinGuard_.clear();
+      if(imported.fileVersion==2) pinGuard_.begin(imported.pin);
+      protectedSession_=true; legacyImported_=imported.fileVersion==1;
+      revokeAccess();
       secureZero(importStatus_,sizeof(importStatus_));
       ok=true;
     } else {
@@ -1157,7 +1370,132 @@ bool AuroraUI::performWalletImport() {
   return ok;
 }
 
-void AuroraUI::buildWipe() {
+AuroraUI::Access AuroraUI::accessFor(Screen screen) const {
+  switch(screen) {
+    case Screen::Mnemonic: case Screen::Verify: return Access::Words;
+    case Screen::PassphraseReveal: return Access::Passphrase;
+    case Screen::Qr: return qrContent_==QrContent::PrivateKey?Access::PrivateQr:Access::None;
+    case Screen::ExportWarning: case Screen::ExportName: case Screen::ExportPassword: return Access::Export;
+    case Screen::PinSetup: return pinForExport_?Access::Export:Access::None;
+    case Screen::FileProcessing: return fileOperation_==FileOperation::Export?Access::Export:Access::None;
+    default: return Access::None;
+  }
+}
+
+bool AuroraUI::authorized(Access access) const {
+  if(!protectedSession_) return true;
+  return pinGuard_.enabled() && !pinGuard_.blocked() && access!=Access::None &&
+      access_==access && millis()-accessGrantedMs_ <
+      (access==Access::Export?EXPORT_AUTH_MS:SECRET_VISIBLE_MS);
+}
+
+void AuroraUI::revokeAccess() {
+  access_=requestedAccess_=Access::None;
+  accessGrantedMs_=0;
+}
+
+void AuroraUI::buildPinSetup() {
+  lv_obj_set_style_pad_all(root_,0,0);
+  lv_obj_t *title=header("Créer le PIN");
+  AuroraLayout::font(title,&aurora_font_12,0);
+  lv_obj_t *back=button(root_,"<",event,28); AuroraLayout::size(back,28,28);
+  lv_obj_set_user_data(back,(void*)PIN_CANCEL); AuroraLayout::pos(back,276,3);
+  securityStatus_=label(root_,pinForExport_?
+      "PIN de ce fichier : 4 à 8 chiffres. Confirmez-le.":
+      (legacyImported_?"Ancien fichier sans PIN : créez un PIN pour cette session.":
+                       "Créez un PIN de session : 4 à 8 chiffres."),&aurora_font_10);
+  AuroraLayout::pos(securityStatus_,12,39); AuroraLayout::size(securityStatus_,296,28);
+  lv_label_set_long_mode(securityStatus_,LV_LABEL_LONG_WRAP);
+  lv_obj_set_style_text_color(securityStatus_,ORANGE,0);
+  lv_obj_t **fields[2]={&pinArea_,&pinConfirmArea_};
+  for(unsigned i=0;i<2;++i) {
+    lv_obj_t *field=*fields[i]=lv_textarea_create(root_);
+    AuroraLayout::pos(field,i?165:12,70); AuroraLayout::size(field,143,35);
+    AuroraLayout::font(field,&aurora_font_10,0);
+    lv_textarea_set_one_line(field,true); lv_textarea_set_password_mode(field,true);
+    lv_textarea_set_password_show_time(field,0);
+    lv_textarea_set_max_length(field,8); lv_textarea_set_accepted_chars(field,"0123456789");
+    lv_textarea_set_placeholder_text(field,i?"Confirmation":"PIN du fichier");
+    lv_obj_add_event_cb(field,event,LV_EVENT_FOCUSED,nullptr);
+  }
+  keyboard_=lv_keyboard_create(root_); AuroraLayout::size(keyboard_,320,112);
+  AuroraLayout::align(keyboard_,LV_ALIGN_BOTTOM_MID,0,0);
+  configurePinKeyboard(keyboard_);
+  lv_keyboard_set_textarea(keyboard_,pinArea_);
+  lv_obj_add_event_cb(keyboard_,event,LV_EVENT_READY,(void*)PIN_SAVE);
+  lv_obj_add_event_cb(keyboard_,event,LV_EVENT_CANCEL,(void*)PIN_CANCEL);
+}
+
+void AuroraUI::buildPinUnlock() {
+  lv_obj_set_style_pad_all(root_,0,0);
+  header("PIN requis");
+  lv_obj_t *back=button(root_,"<",event,28); AuroraLayout::size(back,28,28);
+  lv_obj_set_user_data(back,(void*)PIN_CANCEL); AuroraLayout::pos(back,276,3);
+  securityStatus_=label(root_,"",&aurora_font_10);
+  lv_label_set_text_fmt(securityStatus_,"PIN du fichier. %u tentative(s) restante(s).",
+                        static_cast<unsigned>(3-pinGuard_.failures()));
+  AuroraLayout::pos(securityStatus_,12,42); AuroraLayout::size(securityStatus_,296,26);
+  lv_obj_set_style_text_color(securityStatus_,ORANGE,0);
+  pinArea_=lv_textarea_create(root_); AuroraLayout::pos(pinArea_,12,72);
+  AuroraLayout::size(pinArea_,296,35); AuroraLayout::font(pinArea_,&aurora_font_12,0);
+  lv_textarea_set_one_line(pinArea_,true); lv_textarea_set_password_mode(pinArea_,true);
+  lv_textarea_set_password_show_time(pinArea_,0);
+  lv_textarea_set_max_length(pinArea_,8); lv_textarea_set_accepted_chars(pinArea_,"0123456789");
+  lv_textarea_set_placeholder_text(pinArea_,"4 à 8 chiffres");
+  keyboard_=lv_keyboard_create(root_); AuroraLayout::size(keyboard_,320,112);
+  AuroraLayout::align(keyboard_,LV_ALIGN_BOTTOM_MID,0,0);
+  configurePinKeyboard(keyboard_); lv_keyboard_set_textarea(keyboard_,pinArea_);
+  lv_obj_add_event_cb(keyboard_,event,LV_EVENT_READY,(void*)PIN_CHECK);
+  lv_obj_add_event_cb(keyboard_,event,LV_EVENT_CANCEL,(void*)PIN_CANCEL);
+}
+
+void AuroraUI::submitPinSetup() {
+  if(!pinArea_ || !pinConfirmArea_ || (!authorized(Access::Export) && pinForExport_)) return;
+  if(!pinForExport_ && pinGuard_.enabled()) return;
+  const char *first=lv_textarea_get_text(pinArea_);
+  const char *second=lv_textarea_get_text(pinConfirmArea_);
+  AuroraPinRecord record{};
+  const bool ok=auroraPinValid(first) && second && strcmp(first,second)==0 && auroraPinCreate(first,record);
+  wipeObjectTree(pinArea_); wipeObjectTree(pinConfirmArea_);
+  lv_textarea_set_text(pinArea_,""); lv_textarea_set_text(pinConfirmArea_,"");
+  if(ok) {
+    if(pinForExport_) {
+      exportPin_=record;
+      fileOperation_=FileOperation::Export; show(Screen::FileProcessing);
+      if(screen_==Screen::FileProcessing) fileOperationDueMs_=millis()+100;
+    } else {
+      pinGuard_.begin(record); protectedSession_=true; revokeAccess();
+      lv_disp_trig_activity(nullptr); show(Screen::Info);
+    }
+  } else {
+    lv_label_set_text(securityStatus_,"Deux PIN identiques de 4 à 8 chiffres sont requis.");
+    lv_obj_set_style_text_color(securityStatus_,DANGER,0);
+  }
+  secureZero(&record,sizeof(record));
+}
+
+void AuroraUI::submitPinUnlock() {
+  if(!pinArea_ || !protectedSession_ || !pinGuard_.enabled()) { closeSession(); return; }
+  if(pinRetryPending_ && millis()-pinRetryMs_<1000) return;
+  pinRetryPending_=false;
+  const bool ok=pinGuard_.attempt(lv_textarea_get_text(pinArea_));
+  wipeObjectTree(pinArea_); lv_textarea_set_text(pinArea_,"");
+  if(pinGuard_.blocked()) { closeSession(); return; }
+  if(ok) {
+    access_=requestedAccess_; accessGrantedMs_=millis();
+    const Screen destination=afterPin_;
+    show(destination);
+    if(screen_==Screen::FileProcessing && fileOperation_==FileOperation::Export)
+      fileOperationDueMs_=millis()+100;
+  } else {
+    pinRetryPending_=true; pinRetryMs_=millis();
+    lv_label_set_text_fmt(securityStatus_,"PIN incorrect. Encore %u tentative(s).",
+                          static_cast<unsigned>(3-pinGuard_.failures()));
+    lv_obj_set_style_text_color(securityStatus_,DANGER,0);
+  }
+}
+
+void AuroraUI::wipeSession() {
   engine_.wipe(wallet_); secureZero(passphrase_,sizeof(passphrase_));
   secureZero(filePassword_,sizeof(filePassword_)); secureZero(mixedEntropy_,sizeof(mixedEntropy_));
   exportFormat_=WalletExportFormat::AuroraWallet; fileOperation_=FileOperation::None;
@@ -1168,15 +1506,36 @@ void AuroraUI::buildWipe() {
   secureZero(importStatus_,sizeof(importStatus_)); secureZero(passwordStatus_,sizeof(passwordStatus_));
   secureZero(exportBaseName_,sizeof(exportBaseName_)); strlcpy(exportBaseName_,"aurora",sizeof(exportBaseName_));
   secureZero(importBaseName_,sizeof(importBaseName_)); strlcpy(importBaseName_,"aurora",sizeof(importBaseName_));
-  header("Effacement terminé"); lv_obj_t *ok=label(root_,"OK",&aurora_font_20); lv_obj_set_style_text_color(ok,ORANGE,0); lv_obj_align(ok,LV_ALIGN_CENTER,0,-40);
-  lv_obj_t *msg=label(root_,"Les tampons sensibles de la session\nont été écrasés en mémoire vive.",&aurora_font_12); lv_obj_set_style_text_align(msg,LV_TEXT_ALIGN_CENTER,0); lv_obj_align(msg,LV_ALIGN_CENTER,0,0);
-  lv_obj_t *b=button(root_,"RETOUR À L'ACCUEIL",event,190); lv_obj_set_user_data(b,(void*)BACK_MODE); lv_obj_align(b,LV_ALIGN_BOTTOM_MID,0,-18);
+  entropy_.cancel(); pinGuard_.clear(); secureZero(&exportPin_,sizeof(exportPin_));
+  secureZero(verifyIndex_,sizeof(verifyIndex_)); secureZero(verifySuggestions_,sizeof(verifySuggestions_));
+  secureZero(auroraFileOptions_,sizeof(auroraFileOptions_));
+  secureZero(entropyPreviewText_,sizeof(entropyPreviewText_));
+  revokeAccess(); protectedSession_=legacyImported_=pinForExport_=entropyCollected_=exportSucceeded_=false;
+  entropyReadyPending_=entropyFailurePending_=pinRetryPending_=false;
+  generationDueMs_=entropyCompleteDueMs_=fileOperationDueMs_=pinRetryMs_=0;
+  auroraFileCount_=0; verifyActiveIndex_=verifySuggestionCount_=mnemonicPage_=0;
+  qrContent_=QrContent::Address; afterPin_=Screen::Info;
+}
+
+void AuroraUI::closeSession() {
+  wipeSession(); show(Screen::Mode);
+}
+
+void AuroraUI::buildWipe() {
+  wipeSession();
+  header("Effacement terminé"); lv_obj_t *ok=label(root_,"OK",&aurora_font_20); lv_obj_set_style_text_color(ok,ORANGE,0); AuroraLayout::align(ok,LV_ALIGN_CENTER,0,-40);
+  lv_obj_t *msg=label(root_,"Les tampons sensibles de la session\nont été écrasés en mémoire vive.",&aurora_font_12); lv_obj_set_style_text_align(msg,LV_TEXT_ALIGN_CENTER,0); AuroraLayout::align(msg,LV_ALIGN_CENTER,0,0);
+  lv_obj_t *b=button(root_,"RETOUR À L'ACCUEIL",event,190); lv_obj_set_user_data(b,(void*)BACK_MODE); AuroraLayout::align(b,LV_ALIGN_BOTTOM_MID,0,-18);
 }
 
 void AuroraUI::event(lv_event_t *e) {
-  if(!g_ui)return; lv_obj_t *target=lv_event_get_target(e);
+  if(!g_ui)return;
+#if defined(AURORA_BOARD_P4)
+  if(g_ui->sensorStopPending_) return;
+#endif
+  lv_obj_t *target=static_cast<lv_obj_t *>(lv_event_get_target(e));
   if(lv_event_get_code(e)==LV_EVENT_FOCUSED &&
-     (g_ui->screen_==Screen::Verify || g_ui->screen_==Screen::ExportPassword)) {
+     g_ui->keyboard_ && lv_obj_check_type(target,&lv_textarea_class)) {
     lv_keyboard_set_textarea(g_ui->keyboard_,target);
     if(g_ui->screen_==Screen::Verify) {
       for(uint8_t i=0;i<3;++i)
@@ -1186,20 +1545,24 @@ void AuroraUI::event(lv_event_t *e) {
     return;
   }
   uintptr_t a=(uintptr_t)lv_obj_get_user_data(target);
-  if(lv_event_get_code(e)==LV_EVENT_READY) a=(uintptr_t)lv_event_get_user_data(e);
+  if(lv_event_get_code(e)==LV_EVENT_READY || lv_event_get_code(e)==LV_EVENT_CANCEL)
+    a=(uintptr_t)lv_event_get_user_data(e);
   switch((Action)a){
     case START: if(!g_ui->selfTestPending_) g_ui->show(Screen::Mode); break;
     case OPEN_WALLET:
+      g_ui->wipeSession();
       g_ui->engine_.wipe(g_ui->wallet_); secureZero(g_ui->passphrase_,sizeof(g_ui->passphrase_));
       g_ui->loadedWallet_=false; g_ui->manualRestore_=false;
       secureZero(g_ui->importStatus_,sizeof(g_ui->importStatus_));
       g_ui->show(Screen::ImportName); break;
     case NEW_WALLET:
+      g_ui->wipeSession();
       g_ui->engine_.wipe(g_ui->wallet_); secureZero(g_ui->passphrase_,sizeof(g_ui->passphrase_));
       g_ui->loadedWallet_=false; g_ui->manualRestore_=false;
       secureZero(g_ui->exportStatus_,sizeof(g_ui->exportStatus_));
       g_ui->show(Screen::Setup); break;
     case RESTORE_WALLET:
+      g_ui->wipeSession();
       g_ui->engine_.wipe(g_ui->wallet_); secureZero(g_ui->passphrase_,sizeof(g_ui->passphrase_));
       g_ui->loadedWallet_=false; g_ui->manualRestore_=true; g_ui->kind_=AddressKind::NativeSegwit;
       g_ui->words_=12; g_ui->restoreWordIndex_=0; g_ui->restoreSuggestionCount_=0;
@@ -1238,10 +1601,7 @@ void AuroraUI::event(lv_event_t *e) {
     case VERIFY_SUGGESTION_0: case VERIFY_SUGGESTION_1: case VERIFY_SUGGESTION_2:
       g_ui->acceptVerifySuggestion(static_cast<uint8_t>(a-VERIFY_SUGGESTION_0)); break;
     case RESTORE_DERIVE: {
-      char *source=const_cast<char *>(lv_textarea_get_text(g_ui->passArea_));
-      const size_t length=source?strlen(source):0;
-      strlcpy(g_ui->passphrase_,source?source:"",sizeof(g_ui->passphrase_));
-      if(source) secureZero(source,length);
+      if(!g_ui->confirmPassphrase()) break;
       g_ui->show(Screen::Restoring); g_ui->generationDueMs_=millis()+100;
       break;
     }
@@ -1270,19 +1630,16 @@ void AuroraUI::event(lv_event_t *e) {
       }
       break;
     }
-    case TO_PASSPHRASE: g_ui->show(Screen::Passphrase); break;
+    case TO_PASSPHRASE: g_ui->show(Screen::Entropy); break;
     case TO_ENTROPY: {
-      char *source=const_cast<char *>(lv_textarea_get_text(g_ui->passArea_));
-      strlcpy(g_ui->passphrase_,source,sizeof(g_ui->passphrase_));
-      secureZero(source,strlen(source));
-      lv_textarea_set_text(g_ui->passArea_,"");
-      g_ui->show(Screen::Entropy);
+      if(!g_ui->entropyCollected_ || !g_ui->confirmPassphrase()) break;
+      g_ui->show(Screen::Generating); g_ui->generationDueMs_=millis()+100;
       break;
     }
     case NEXT_VERIFY: g_ui->show(Screen::Verify); break;
     case CHECK_VERIFY: if(g_ui->verifyWords())g_ui->show(Screen::Info); break;
     case SHOW_LOADED_PASSPHRASE:
-      if(g_ui->loadedWallet_ && !g_ui->manualRestore_ && g_ui->passphrase_[0])
+      if(g_ui->passphrase_[0])
         g_ui->show(Screen::PassphraseReveal);
       else
         g_ui->show(Screen::Info);
@@ -1338,12 +1695,23 @@ void AuroraUI::event(lv_event_t *e) {
       if(g_ui->passwordStatus_[0]) {
         g_ui->show(Screen::ExportPassword);
       } else {
-        g_ui->fileOperation_=FileOperation::Export; g_ui->show(Screen::FileProcessing);
-        g_ui->fileOperationDueMs_=millis()+100;
+        g_ui->pinForExport_=true;
+        g_ui->show(Screen::PinSetup);
       }
       break;
     }
     case DO_WIPE: g_ui->show(Screen::Wipe); break;
+    case PIN_SAVE: g_ui->submitPinSetup(); break;
+    case PIN_CHECK: g_ui->submitPinUnlock(); break;
+    case PIN_CANCEL:
+      if(!g_ui->pinGuard_.enabled() && !g_ui->pinForExport_) { g_ui->closeSession(); break; }
+      secureZero(g_ui->filePassword_,sizeof(g_ui->filePassword_));
+      secureZero(&g_ui->exportPin_,sizeof(g_ui->exportPin_));
+      g_ui->fileOperation_=FileOperation::None; g_ui->fileOperationDueMs_=0;
+      g_ui->pinForExport_=false; g_ui->qrContent_=QrContent::Address;
+      g_ui->revokeAccess(); g_ui->show(Screen::Info); break;
+    case LOCK_SESSION: g_ui->closeSession(); break;
+    case SHOW_WORDS: g_ui->show(Screen::Mnemonic); break;
     case BACK_MODE:
       g_ui->engine_.wipe(g_ui->wallet_); secureZero(g_ui->passphrase_,sizeof(g_ui->passphrase_));
       secureZero(g_ui->filePassword_,sizeof(g_ui->filePassword_));
@@ -1361,7 +1729,11 @@ void AuroraUI::event(lv_event_t *e) {
     case BACK_MNEMONIC: g_ui->show(Screen::Mnemonic); break;
     case BACK_VERIFY: g_ui->show(Screen::Verify); break;
     case BACK_INFO: g_ui->show(Screen::Info); break;
-    case BACK_BACKUP: g_ui->show(Screen::Backup); break;
+    case BACK_BACKUP:
+      secureZero(g_ui->filePassword_,sizeof(g_ui->filePassword_));
+      secureZero(&g_ui->exportPin_,sizeof(g_ui->exportPin_));
+      g_ui->pinForExport_=false;
+      g_ui->show(Screen::Backup); break;
     case BACK_IMPORT_NAME:
       secureZero(g_ui->filePassword_,sizeof(g_ui->filePassword_));
       g_ui->show(Screen::ImportName); break;

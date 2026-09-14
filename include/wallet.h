@@ -1,5 +1,5 @@
 #pragma once
-#include <Arduino.h>
+#include "platform/runtime.h"
 #include <Bitcoin.h>
 
 enum class AddressKind : uint8_t { Legacy, NestedSegwit, NativeSegwit, Taproot };

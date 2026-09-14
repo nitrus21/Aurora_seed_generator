@@ -1498,7 +1498,11 @@ const LV_ATTRIBUTE_MEM_ALIGN LV_ATTRIBUTE_LARGE_CONST uint8_t aurora_bitcoin_log
 };
 
 const lv_img_dsc_t aurora_bitcoin_logo = {
+#if LVGL_VERSION_MAJOR >= 9
+    .header = {.magic = LV_IMAGE_HEADER_MAGIC, .cf = LV_COLOR_FORMAT_RGB565, .w = 112, .h = 160, .stride = 224},
+#else
     .header = {.cf = LV_IMG_CF_TRUE_COLOR, .always_zero = 0, .reserved = 0, .w = 112, .h = 160},
+#endif
     .data_size = 35840,
     .data = aurora_bitcoin_logo_map,
 };
