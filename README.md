@@ -6,6 +6,7 @@ Firmware Bitcoin entièrement hors ligne pour **ESP32-2432S028(R)**, écran tact
 
 Version finale du code et des binaires inclus : **1.7.6**
 Notes de version : [luminosité, aperçu de collecte et 320 échantillons](webflasher/CHANGELOG.md)
+Installation Web : [AURORA Web Flasher](https://nitrus21.github.io/Aurora_seed_generator/)
 Environnement : **PlatformIO + Arduino**
 Cible : **ESP32-2432S028R / Cheap Yellow Display**
 Réseaux : **Wi-Fi et Bluetooth désactivés**
@@ -20,6 +21,7 @@ Réseaux : **Wi-Fi et Bluetooth désactivés**
 - [Fonctionnalités](#fonctionnalités)
 - [Parcours de l’application](#parcours-de-lapplication)
 - [Matériel nécessaire](#matériel-nécessaire)
+- [Installation depuis le Web Flasher](#installation-depuis-le-web-flasher)
 - [Installation rapide avec Visual Studio Code](#installation-rapide-avec-visual-studio-code)
 - [Compilation et flashage en ligne de commande](#compilation-et-flashage-en-ligne-de-commande)
 - [Vérification SHA-256 du firmware](#vérification-sha-256-du-firmware)
@@ -113,6 +115,14 @@ Le logo blanc utilisé sur cette page est également conservé dans le projet :
 - idéalement : un ordinateur hors ligne ou une machine dédiée pour la génération finale.
 
 Selon la révision de la carte, Windows peut demander le pilote du convertisseur USB-série, généralement CH340 ou CP210x. Vérifiez le composant présent sur votre propre carte avant d’installer un pilote.
+
+## Installation depuis le Web Flasher
+
+Ouvrez [AURORA Web Flasher](https://nitrus21.github.io/Aurora_seed_generator/) dans Chrome ou Microsoft Edge sur ordinateur, branchez l’ESP32-2432S028R avec un câble USB de données, puis choisissez **Installer AURORA v1.7.6** et le port correspondant à votre appareil.
+
+L’installeur utilise l’image complète `aurora-1.7.6-esp32-2432s028r.factory.bin` avec son bootloader et ses partitions. Une nouvelle installation peut effacer les données présentes en flash. Attendez la confirmation de fin, vérifiez **1.7.6** au démarrage et l’autotest **E00**, puis débranchez les données USB avant toute génération de secrets.
+
+Les [instructions du Web Flasher](webflasher/README.md) et les [empreintes des binaires](webflasher/firmware/SHA256SUMS.txt) sont conservées dans le dépôt. La compilation locale reste possible avec les étapes ci-dessous.
 
 ## Installation rapide avec Visual Studio Code
 
@@ -250,28 +260,30 @@ Cette empreinte concerne l’application seule, pas l’image fusionnée du Web 
 ### Windows PowerShell
 
 ```powershell
-Get-FileHash -Algorithm SHA256 .\.pio\build\esp32-2432S028R\firmware.bin
+Get-FileHash -Algorithm SHA256 .\webflasher\firmware\firmware.bin
 ```
 
 Pour obtenir uniquement la valeur :
 
 ```powershell
-(Get-FileHash -Algorithm SHA256 .\.pio\build\esp32-2432S028R\firmware.bin).Hash
+(Get-FileHash -Algorithm SHA256 .\webflasher\firmware\firmware.bin).Hash
 ```
 
 ### Linux
 
 ```bash
-sha256sum .pio/build/esp32-2432S028R/firmware.bin
+sha256sum webflasher/firmware/firmware.bin
 ```
 
 ### macOS
 
 ```bash
-shasum -a 256 .pio/build/esp32-2432S028R/firmware.bin
+shasum -a 256 webflasher/firmware/firmware.bin
 ```
 
-La casse des lettres n’a pas d’importance, mais les 64 caractères hexadécimaux doivent être identiques. Si l’empreinte diffère :
+Ces commandes contrôlent le binaire distribué. Pour contrôler une compilation locale, utilisez le chemin `.pio/build/esp32-2432S028R/firmware.bin` ; un autre environnement de compilation ou horodatage peut produire une empreinte différente.
+
+La casse des lettres n’a pas d’importance, mais les 64 caractères hexadécimaux doivent être identiques pour le même binaire distribué. Si l’empreinte diffère :
 
 1. ne flashez pas le fichier ;
 2. vérifiez que vous utilisez bien le binaire de la version 1.7.6 correspondant à cette empreinte ;
@@ -307,6 +319,12 @@ Au démarrage, AURORA affiche le splash et lance en arrière-plan un autotest bl
 | E60 | PBKDF2-HMAC-SHA-256 et AES-256-GCM Aurora Wallet |
 
 Si le code n’est pas `E00`, ne créez pas de portefeuille et notez le code exact.
+
+### Validation de la version 1.7.6
+
+Le 14 septembre 2026, les binaires 1.7.6 inclus dans ce dépôt ont été programmés sur la carte ESP32-2432S028R du projet, avec vérification des données écrites. Au redémarrage, l’autotest a renvoyé **E00 en 2 120 ms**, sans défaut de démarrage observé.
+
+Les tests natifs, le contrôle des binaires et les tests de l’écran LVGL avec matériel simulé ont réussi. Les gestes réels, la réponse de la photorésistance et le parcours complet d’un portefeuille de test restent à vérifier manuellement. E00 ne certifie pas l’entropie physique et ne constitue pas un audit de sécurité.
 
 ## Utilisation détaillée
 
@@ -582,8 +600,8 @@ Tout secret affiché peut être photographié ou observé. Le QR de clé privée
 | Écran noir | Vérifiez l’alimentation, le rétroéclairage GPIO21, les broches TFT et le pilote `ILI9341_2_DRIVER` |
 | Écran tourné ou tronqué | Vérifiez `AURORA_TFT_ROTATION`, `TFT_WIDTH` et `TFT_HEIGHT` |
 | Toucher inversé ou décalé | Ajustez `AURORA_TOUCH_SWAP_XY`, `AURORA_TOUCH_INVERT_X/Y` et les valeurs MIN/MAX |
-| Collecte bloquée avant 100 % | Faites des mouvements continus avec une pression suffisante et vérifiez le tactile dans le moniteur série |
-| Rien après 100 % | Attendez le changement d’écran ; si nécessaire, redémarrez et vérifiez que l’autotest affiche E00 |
+| Collecte bloquée avant 100 % | Bougez le doigt dans le cadre avec une pression suffisante jusqu’à 320 échantillons ; une lumière stable ne bloque pas la collecte |
+| Rien après 100 % | L’état vert reste visible une seconde avant la génération ; si le blocage persiste, redémarrez et vérifiez que l’autotest affiche E00 |
 | Suggestions incorrectes | Vérifiez que le mot est anglais et appartient à BIP39 ; la version doit être au moins 1.7.5 |
 | microSD absente | Reformatez en FAT32, réinsérez avant l’ouverture de la page et utilisez **ACTUALISER** |
 | Fichier déjà existant | Choisissez un autre nom ; AURORA refuse volontairement l’écrasement |
@@ -629,6 +647,14 @@ tools/
   patch_ubitcoin.py            Durcissement reproductible de uBitcoin
   make_splash_asset.py         Conversion du splash
   make_bitcoin_logo_asset.py   Conversion du logo
+tests/
+  native/                     Tests de collecte avec matériel simulé
+  release/verify.ps1          Cohérence de version, image fusionnée et SHA-256
+webflasher/
+  index.html                  Installeur français publié sur GitHub Pages
+  manifest.json               Version et image installées
+  firmware/                   Binaires 1.7.6, archive 1.7.5 et SHA256SUMS.txt
+  CHANGELOG.md                Notes de version et état de validation
 platformio.ini                 Cible, dépendances et broches TFT
 README.md                      Ce guide
 ```

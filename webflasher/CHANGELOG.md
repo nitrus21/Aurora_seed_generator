@@ -13,7 +13,7 @@
 
 Les formats BIP39, les choix de 12 à 24 mots, les dérivations Bitcoin, les passphrases et les exports sont inchangés. Le compteur indique une progression de collecte, pas une mesure d’entropie certifiée ; 320 échantillons ne signifient pas 320 bits de sécurité.
 
-Validation locale : tests natifs de collecte, tests de l’écran LVGL avec matériel simulé et compilation ESP32. Le binaire final 1.7.6 n’a pas encore été flashé ni validé physiquement ; l’autotest E00 et les gestes/luminosité restent à vérifier sur la carte avec cette version. Le projet reste expérimental et non audité.
+Validation : tests natifs de collecte, tests de l’écran LVGL avec matériel simulé, compilation ESP32 et contrôle des binaires réussis. Le 14 septembre 2026, les binaires finaux 1.7.6 ont été flashés sur l’ESP32-2432S028R du projet avec vérification des données écrites ; l’autotest a renvoyé **E00 en 2 120 ms** au redémarrage, sans défaut de démarrage observé. Le contrôle manuel des gestes, de la luminosité et du parcours complet reste à réaliser. Le projet reste expérimental et non audité.
 
 ## 1.7.5
 

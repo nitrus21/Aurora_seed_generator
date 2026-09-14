@@ -1,4 +1,4 @@
-# Tests de collecte d’entropie
+# Tests de collecte d’entropie — AURORA 1.7.6
 
 Sous Windows avec Visual Studio Build Tools (compilateur C++ et SDK Windows) :
 
@@ -24,4 +24,10 @@ Pour contrôler les binaires de la version finale inclus dans le dépôt, sans c
 
 Ce contrôle vérifie la cohérence des versions et du manifeste, les octets de chaque composant aux offsets prévus dans l’image fusionnée, toutes les empreintes SHA-256 et celles affichées dans le Web Flasher et le README.
 
-À vérifier sur la carte avant publication : autotest E00, fluidité tactile, réaction de la photorésistance lorsqu’on la couvre puis l’éclaire, bandeau défilant, rouge avant 50 %, orange jusqu’à 99 %, vert pendant une seconde à 100 %, retour pendant la collecte et pendant l’état vert, puis génération d’un portefeuille de test. Les tests natifs ne valident ni le bruit physique ni le câblage de la carte.
+## État de validation du 14 septembre 2026
+
+- Tests natifs de collecte et contrôle des binaires : réussis.
+- Écran LVGL avec matériel simulé : compteur 320, seuils de couleur, aperçu, pause verte, annulation et recommencement vérifiés.
+- Carte ESP32-2432S028R du projet : binaires finaux 1.7.6 flashés, données écrites vérifiées, puis **E00 en 2 120 ms** au redémarrage, sans défaut de démarrage observé.
+
+À vérifier manuellement avant tout usage réel : fluidité tactile, réaction de la photorésistance lorsqu’on la couvre puis l’éclaire, bandeau défilant, rouge avant 50 %, orange jusqu’à 99 %, vert pendant une seconde à 320 échantillons, retour pendant la collecte et pendant l’état vert, puis parcours complet d’un portefeuille de test sans fonds. Les tests natifs et E00 ne mesurent pas l’entropie physique et ne constituent pas un audit de sécurité.

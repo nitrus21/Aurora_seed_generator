@@ -4,7 +4,7 @@ Installeur Web en français pour **AURORA Seed Generator 1.7.6**, destiné exclu
 
 ## Utilisation
 
-Le Web Flasher doit être servi depuis une adresse HTTPS, par exemple avec GitHub Pages. Ouvrez ensuite `index.html` avec Chrome ou Microsoft Edge sur ordinateur, branchez l’ESP32 avec un câble USB de données et utilisez le bouton **Installer AURORA v1.7.6**.
+Ouvrez le [Web Flasher AURORA sur GitHub Pages](https://nitrus21.github.io/Aurora_seed_generator/) avec Chrome ou Microsoft Edge sur ordinateur, branchez l’ESP32 avec un câble USB de données et utilisez le bouton **Installer AURORA v1.7.6**. Une copie auto-hébergée doit également être servie en HTTPS.
 
 Une ouverture directe de `index.html` depuis l’Explorateur Windows ne permet pas d’utiliser Web Serial.
 
@@ -19,9 +19,19 @@ Une ouverture directe de `index.html` depuis l’Explorateur Windows ne permet p
 
 ESP Web Tools utilise l’image fusionnée `firmware/aurora-1.7.6-esp32-2432s028r.factory.bin` à l’offset `0x0000`. Elle est préparée en mode DIO, à 40 MHz, pour une flash de 4 Mo.
 
-L’image fusionnée 1.7.5 est conservée comme archive ; le manifeste installe uniquement la version 1.7.6. La préparation de ces fichiers et leur commit local ne publient pas automatiquement le site et ne flashent pas l’appareil.
+L’image fusionnée 1.7.5 est conservée comme archive ; le manifeste installe uniquement la version 1.7.6.
 
-Les empreintes SHA-256 sont disponibles dans `firmware/SHA256SUMS.txt`.
+Les empreintes SHA-256 sont disponibles dans [firmware/SHA256SUMS.txt](firmware/SHA256SUMS.txt). Depuis la racine du dépôt, `./tests/release/verify.ps1` vérifie le manifeste, les versions, les octets aux offsets prévus et les empreintes affichées.
+
+## Publication GitHub Pages
+
+Le workflow [Deploy AURORA Web Flasher to GitHub Pages](../.github/workflows/deploy-webflasher-pages.yml) publie le dossier `webflasher/` après un push sur `main` qui modifie ce dossier ou le workflow. Il peut aussi être lancé manuellement depuis GitHub Actions. Un commit local seul ne déclenche aucun déploiement.
+
+Après le déploiement, vérifiez que le site affiche **1.7.6**, que `manifest.json` référence l’image 1.7.6 et que l’empreinte de l’image téléchargée correspond à `SHA256SUMS.txt`. Les notes de version sont incluses localement ; elles ne dépendent pas de la création d’une GitHub Release.
+
+## Validation de l’appareil
+
+Le 14 septembre 2026, les composants binaires finaux 1.7.6 ont été flashés par port série sur l’ESP32-2432S028R du projet avec vérification des données écrites. Le redémarrage a produit **E00 en 2 120 ms**. Cette vérification ne constitue pas un essai de l’installation depuis le navigateur ni une validation physique des gestes et de la luminosité ; ces contrôles restent manuels.
 
 ## Sécurité
 
@@ -30,3 +40,4 @@ Les empreintes SHA-256 sont disponibles dans `firmware/SHA256SUMS.txt`.
 - Vérifiez l’empreinte SHA-256 avant publication ou distribution.
 - Ne débranchez jamais l’appareil pendant l’écriture.
 - Une nouvelle installation peut effacer les données déjà présentes sur la flash.
+- Après installation et vérification du démarrage, déconnectez les données USB et utilisez une alimentation autonome avant de générer des secrets.
