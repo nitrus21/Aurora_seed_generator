@@ -9,7 +9,7 @@
 // label copies discarded on editing/reallocation. Never overwrite other tasks'
 // heap or claim to sanitize the entire device's RAM/PSRAM/cache/framebuffers.
 typedef union AuroraUiHeader {
-#if defined(AURORA_BOARD_P4)
+#if defined(AURORA_BOARD_P4) || defined(AURORA_BOARD_CYD)
     struct {
         size_t size;
         union AuroraUiHeader *previous;
@@ -23,7 +23,7 @@ typedef union AuroraUiHeader {
     uint64_t integer_alignment;
 } AuroraUiHeader;
 
-#if defined(AURORA_BOARD_P4)
+#if defined(AURORA_BOARD_P4) || defined(AURORA_BOARD_CYD)
 static AuroraUiHeader *allocations;
 #if defined(ESP_PLATFORM)
 #include "freertos/FreeRTOS.h"
@@ -59,7 +59,7 @@ void *auroraUiAlloc(size_t size) {
     AuroraUiHeader *header = (AuroraUiHeader *)malloc(sizeof(AuroraUiHeader) + size);
     if(!header) return NULL;
     ALLOCATION_SIZE(header) = size;
-#if defined(AURORA_BOARD_P4)
+#if defined(AURORA_BOARD_P4) || defined(AURORA_BOARD_CYD)
     ALLOCATION_LOCK();
     header->owned.previous = NULL;
     header->owned.next = allocations;
@@ -74,7 +74,7 @@ void auroraUiFree(void *pointer) {
     if(!pointer) return;
     AuroraUiHeader *header = (AuroraUiHeader *)pointer - 1;
     const size_t total = sizeof(*header) + ALLOCATION_SIZE(header);
-#if defined(AURORA_BOARD_P4)
+#if defined(AURORA_BOARD_P4) || defined(AURORA_BOARD_CYD)
     // Keep the payload discoverable until it has actually been erased. Registry
     // metadata never contains secrets; remove it only after payload writeback.
     secureZero(pointer, ALLOCATION_SIZE(header));

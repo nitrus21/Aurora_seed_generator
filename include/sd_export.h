@@ -75,6 +75,17 @@ struct AuroraWalletData {
   AuroraPinRecord pin;
 };
 
+// Only a public fingerprint leaves the codec. The password-derived key is
+// always erased inside the read/write call; no session-key API is exposed.
+AuroraWalletReadResult readAuroraWalletFileChecked(const char *baseName,
+    const char *filePassword, AuroraWalletData &data, uint8_t fingerprint[32],
+    const uint8_t *expectedFingerprint = nullptr);
+
+// Authenticates a closed-file read-back. Failure preserves the encrypted backup.
+WalletExportResult writeAuroraWalletFileVerified(const char *baseName,
+    const char *filePassword, const WalletExportData &data, char *writtenPath,
+    size_t writtenPathLength, uint8_t fingerprint[32]);
+
 constexpr size_t AURORA_WALLET_MIN_PASSWORD_LENGTH = 12;
 
 const char *walletExportSuffix(WalletExportFormat format);

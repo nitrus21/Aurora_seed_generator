@@ -29,7 +29,9 @@ lock_path = root / "targets/waveshare_p4/.pio/aurora-build.lock"
 lock_path.parent.mkdir(parents=True, exist_ok=True)
 if not cyd:
     try:
-        build_lock = lock_path.open("a+b")
+        # Tests only read dependencies. A read handle still excludes the
+        # builder's FileShare.None lock without requiring write access here.
+        build_lock = lock_path.open("rb")
     except PermissionError:
         raise SystemExit("A P4 build is running. Wait before running the UI tests.")
 objects = output / "objects"
@@ -52,6 +54,8 @@ common = ["/nologo", "/utf-8", "/DLV_CONF_INCLUDE_SIMPLE", "/DLV_KCONFIG_IGNORE"
 if not cyd:
     # The C allocator must exercise the same P4 ownership registry as firmware.
     common += ["/DAURORA_BOARD_P4", "/DAURORA_NATIVE_TEST"]
+else:
+    common += ["/DAURORA_BOARD_CYD", "/DAURORA_NATIVE_TEST"]
 # Both VG-Lite ports contain a vg_lite_matrix.c, but this software renderer uses
 # neither. Exclude the disabled accelerator sources to keep object names unique.
 sources = [p for p in lvgl.glob("src/**/*.c") if p.name != "vg_lite_matrix.c"]

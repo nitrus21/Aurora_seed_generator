@@ -6,7 +6,15 @@ Prérequis : Python 3, outils C++ Visual Studio et SDK ESP-IDF installé par la 
 python tests/crypto/run.py
 ```
 
-Le test compile **`src/sd_export.cpp`, `src/pin_security.cpp` et Mbed TLS réel** avec une carte simulée uniquement en RAM. Il vérifie les vecteurs PBKDF2-HMAC-SHA-256/AES-256-GCM et BIP39 SHA-512 inchangés, l'équivalence des API, la lecture V1 de 1 120 octets avec firmware `1.7.6`, l'aller-retour V2 de 1 200 octets, le rejet d'un mauvais mot de passe, des altérations/troncatures, l'effacement après échec, le non-écrasement et le nettoyage d'une écriture dont la synchronisation échoue. Le PIN est testé avec zéros initiaux, bornes 4–8, caractères refusés, sels indépendants et blocage après trois erreurs cumulées même séparées par un succès.
+Le test compile **`src/sd_export.cpp`, `src/pin_security.cpp` et Mbed TLS réel** avec une carte simulée uniquement en RAM. Il vérifie les vecteurs PBKDF2-HMAC-SHA-256/AES-256-GCM et BIP39 SHA-512 inchangés, l'équivalence des API, la lecture V1 de 1 120 octets avec firmware `1.7.6`, l'aller-retour V2 de 1 200 octets, le rejet d'un mauvais mot de passe, des altérations/troncatures, l'effacement après échec, le non-écrasement et le nettoyage d'une écriture dont la synchronisation échoue. Les tests PIN sont conservés pour le CYD et la compatibilité V2 : zéros initiaux, bornes 4–8, caractères refusés, sels indépendants et blocage après trois erreurs cumulées même séparées par un succès. Ils ne décrivent pas un parcours PIN sur P4.
+
+Le nouveau parcours P4 est couvert par l'écriture **V1 sans PIN**, sans changement
+de taille ni de KDF, puis la relecture authentifiée du fichier écrit.
+`readAuroraWalletFileChecked` vérifie l'empreinte SHA-256 attendue avant
+d'autoriser la lecture ; une substitution, même chiffrée avec le même mot de
+passe, est refusée. `writeAuroraWalletFileVerified` relit et authentifie la
+sauvegarde avant de rendre son empreinte publique. Aucune de ces API ne fournit
+une clé de déchiffrement réutilisable à la session UI.
 
 Le contrôle préalable SD est également testé : carte vide acceptée sans écriture,
 absence de carte ou racine illisible refusées, montage/démontage équilibrés,
@@ -41,6 +49,13 @@ La dépendance P4 doit avoir été téléchargée par une configuration du proje
 Au besoin, `AURORA_TEST_UBITCOIN_LIB` désigne un autre répertoire `src` avec le
 même commit disponible dans son dépôt Git ; il est utilisé **en lecture seule**.
 Tous les essais et modifications de dépendances se font dans des copies `tmp/`.
+
+Par exemple, si seul le profil P4 3.x a été compilé :
+
+```powershell
+$env:AURORA_TEST_UBITCOIN_LIB = (Resolve-Path 'targets/waveshare_p4/.pio/build/waveshare-p4/_deps/ubitcoin-src/src').Path
+python tests/crypto/run_memory_hardening.py
+```
 
 Ces vérifications ne constituent pas une extraction physique de RAM P4, un test
 de rémanence après coupure, ni une preuve couvrant tous les spills du compilateur.

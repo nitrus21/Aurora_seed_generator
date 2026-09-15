@@ -12,7 +12,9 @@ __attribute__((noreturn)) void auroraSecurityPanic(void);
 
 // Boot only, before display/sensors/storage or any secret input. Does not erase
 // user files or live SDK allocations. The counts describe owned heap payloads,
-// not a forensic guarantee about all physical memory.
+// not a forensic guarantee about all physical memory. Wipes are unconditional;
+// volatile CPU readback verifies zeroes. A mismatch enters terminal reset before
+// display startup; it does not return success or expose the bytes in a log.
 bool auroraStartupMemoryScrub(size_t *internalBytes, size_t *externalBytes);
 #ifdef __cplusplus
 }

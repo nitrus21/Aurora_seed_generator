@@ -7,6 +7,8 @@
 #include <esp_bt.h>
 #include "board_config.h"
 #include "ui.h"
+#include "cyd_security.h"
+#include "secure_memory.h"
 
 namespace {
 TFT_eSPI tft;
@@ -25,6 +27,8 @@ void flushDisplay(lv_disp_drv_t *drv, const lv_area_t *area, lv_color_t *color) 
   uint32_t w = area->x2 - area->x1 + 1, h = area->y2 - area->y1 + 1;
   tft.startWrite(); tft.setAddrWindow(area->x1, area->y1, w, h);
   tft.pushColors(reinterpret_cast<uint16_t *>(&color->full), w * h, true); tft.endWrite();
+  // Synchronous SPI transfer completed; the strip no longer needs its pixels.
+  secureZero(color, w * h * sizeof(*color));
   lv_disp_flush_ready(drv);
 }
 
@@ -50,6 +54,10 @@ void readTouch(lv_indev_drv_t *, lv_indev_data_t *data) {
 }
 
 void setup() {
+  pinMode(AURORA_BACKLIGHT_PIN, OUTPUT); digitalWrite(AURORA_BACKLIGHT_PIN, LOW);
+  ui.emergencyWipeSecrets();
+  secureZero(pixels, sizeof(pixels));
+  if (!auroraCydBootCleanup()) auroraCydUiFailure();
   Serial.begin(115200);
   // Stop radios without erasing or writing Wi-Fi credentials in NVS.
   WiFi.disconnect(false, false); WiFi.mode(WIFI_OFF);
@@ -68,3 +76,8 @@ void setup() {
 }
 
 void loop() { lv_timer_handler(); ui.tick(); delay(5); }
+
+extern "C" void auroraCydWipeApplication(void) {
+  ui.emergencyWipeSecrets();
+  secureZero(pixels, sizeof(pixels));
+}

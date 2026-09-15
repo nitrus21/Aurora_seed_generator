@@ -12,11 +12,14 @@ Vérifications : conservation des coordonnées, de la pression, des timings et d
 
 Profil P4 : ni pression fictive ni luminosité fictive ; séparation des domaines microphone/caméra, rejet des doublons et séquences anciennes, bornes des tampons, contribution au résultat, effacement à l'annulation. Les sources complémentaires ne changent ni le seuil tactile ni l'aperçu indépendant.
 
-La compilation du véritable firmware utilise ses dépendances épinglées :
+La compilation du firmware P4 actif utilise ses dépendances épinglées :
 
 ```powershell
-pio run -e esp32-2432S028R
+.\targets\waveshare_p4\build.ps1 -Target waveshare-p4
 ```
+
+Pour un P4 1.x, utiliser `-Target waveshare-p4-rev1`. Les tests du profil CYD
+restent des contrôles de compatibilité : sa version publiée est figée en 1.9.2.
 
 Pour contrôler les binaires de la version finale inclus dans le dépôt, sans compiler ni flasher :
 
@@ -24,7 +27,7 @@ Pour contrôler les binaires de la version finale inclus dans le dépôt, sans c
 .\tests\release\verify.ps1 -ReleasedArtifactsOnly
 ```
 
-Ce contrôle vérifie le manifeste publié, les octets de chaque composant aux offsets prévus dans l’image fusionnée, toutes les empreintes SHA-256 et celles affichées dans le Web Flasher et le README. Sans l'option, une version finale identique dans les sources est aussi exigée ; une branche `-dev` est alors volontairement refusée.
+Ce contrôle vérifie le manifeste publié, les octets de chaque composant aux offsets prévus dans l’image fusionnée, toutes les empreintes SHA-256 et celles affichées dans le Web Flasher et le README. Sans l'option, une version finale identique dans les sources est aussi exigée ; la version P4 2.0.0 en développement ne correspond pas aux binaires publiés 1.9.2.
 
 ## Validation historique de la version publiée 1.7.6 (14 septembre 2026)
 

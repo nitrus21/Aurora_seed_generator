@@ -8,6 +8,11 @@
 namespace { AuroraUI ui; }
 
 extern "C" void app_main() {
+  // First application action on every boot, before GPIO/display initialization.
+  // The ROM and ESP-IDF have necessarily initialized the runtime before this.
+  auroraSecuritySetEmergencyWipe([] { ui.emergencyWipeSecrets(); });
+  ui.emergencyWipeSecrets();
+
   // The separate C6 must stay reset; not starting a Wi-Fi driver on P4 is
   // insufficient to disable firmware already installed on the radio module.
   ESP_ERROR_CHECK(gpio_set_level(static_cast<gpio_num_t>(AURORA_RADIO_RESET_PIN), 0));
@@ -16,14 +21,13 @@ extern "C" void app_main() {
   ESP_ERROR_CHECK(gpio_set_level(BSP_POWER_AMP_IO, 0));
   ESP_ERROR_CHECK(gpio_set_direction(BSP_POWER_AMP_IO, GPIO_MODE_OUTPUT));
 
-  // Every boot: clean allocatable RAM before enabling input/display, then erase
-  // all named model buffers explicitly. Never mount or modify the user's SD.
-  auroraSecuritySetEmergencyWipe([] { ui.emergencyWipeSecrets(); });
+  // Unconditionally erase and verify owned, allocatable RAM before any display
+  // or secret input. Do not try to recognize seeds in residual data. Never
+  // mount or modify the user's SD, or overwrite live SDK allocations.
   size_t internalCleaned = 0, externalCleaned = 0;
   if (!auroraStartupMemoryScrub(&internalCleaned, &externalCleaned))
     auroraSecurityPanic();
-  ui.emergencyWipeSecrets();
-  printf("AURORA: startup scrub %u internal / %u external bytes\n",
+  printf("AURORA: startup scrub verified %u internal / %u external bytes\n",
          (unsigned)internalCleaned, (unsigned)externalCleaned);
 
   lv_display_t *display = bsp_display_start();

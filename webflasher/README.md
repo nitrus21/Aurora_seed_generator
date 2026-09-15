@@ -1,6 +1,14 @@
 # AURORA Web Flasher
 
-Installeur Web en français pour les deux familles AURORA : **ESP32-2432S028R / CYD** et **Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3**. Le CYD propose la version finale **1.9.2** ainsi que l'ancienne **1.7.5**. Le P4 propose séparément les images finales pour les révisions silicium 1.x et 3.x.
+Installeur Web en français pour deux modèles :
+
+- **ESP32-2432S028R — Cheap Yellow Display (CYD)** : versions **1.9.2** et **1.7.5**.
+- **Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3** : version **1.9.2**, avec une image par famille de silicium **1.x** ou **3.x**.
+
+Le code Waveshare ESP32-P4 **2.0.0** en développement est documenté dans le
+[guide d'utilisation](../README.md#p4-200--mot-de-passe-uniquement).
+Les images **1.9.2** utilisent le mot de passe à l'ouverture, puis le PIN pour
+les consultations privées.
 
 ## Utilisation
 
@@ -12,12 +20,12 @@ Une ouverture directe de `index.html` depuis l’Explorateur Windows ne permet p
 
 | Choix | État | Image |
 |---|---|---|
-| CYD 1.9.2 | finale, recommandée | `aurora-1.9.2-esp32-2432s028r.factory.bin` |
-| CYD 1.7.5 | historique | `aurora-1.7.5-esp32-2432s028r.factory.bin` |
-| P4 révision 1.x | 1.9.2 finale | `aurora-1.9.2-esp32-p4-rev1.factory.bin` |
-| P4 révision 3.x | 1.9.2 finale | `aurora-1.9.2-esp32-p4-rev3.factory.bin` |
+| ESP32-2432S028R 1.9.2 | image publiée ; correctif 1.9.3 local non publié | `aurora-1.9.2-esp32-2432s028r.factory.bin` |
+| ESP32-2432S028R 1.7.5 | disponible | `aurora-1.7.5-esp32-2432s028r.factory.bin` |
+| Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 — silicium 1.x | 1.9.2 finale | `aurora-1.9.2-esp32-p4-rev1.factory.bin` |
+| Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 — silicium 3.x | 1.9.2 finale | `aurora-1.9.2-esp32-p4-rev3.factory.bin` |
 
-La version CYD 1.7.6 reste archivée dans `firmware/`, mais les choix demandés dans l'interface sont 1.9.2 et 1.7.5. Les images P4 1.x et 3.x ne sont pas interchangeables ; leurs en-têtes limitent aussi les révisions de silicium acceptées.
+Les images Waveshare ESP32-P4 1.x et 3.x correspondent à des révisions de silicium distinctes ; leurs en-têtes contrôlent les révisions acceptées.
 
 ## Disposition réelle de la flash CYD
 
@@ -32,7 +40,7 @@ ESP Web Tools utilise l’image fusionnée choisie à l’offset `0x0000`. Les i
 
 Pour le P4, le bootloader est à `0x2000`, les partitions à `0x8000` et l'application à `0x10000` dans une image fusionnée prévue pour une flash de 32 Mo.
 
-Les empreintes SHA-256 sont disponibles dans [firmware/SHA256SUMS.txt](firmware/SHA256SUMS.txt). Depuis la racine du dépôt, `./tests/release/verify.ps1` vérifie le manifeste, les versions, les octets aux offsets prévus et les empreintes affichées.
+Les empreintes SHA-256 sont disponibles dans [firmware/SHA256SUMS.txt](firmware/SHA256SUMS.txt). Depuis la racine du dépôt, `./tests/release/verify.ps1 -ReleasedArtifactsOnly` vérifie le manifeste publié, les versions, les octets aux offsets prévus et les empreintes affichées, indépendamment du code P4 2.0.0 en développement.
 
 ## Publication GitHub Pages
 
@@ -45,10 +53,6 @@ dépendance réseau de confiance ; une distribution à menace renforcée doit
 l'auto-héberger et vérifier son contenu.
 
 Après le déploiement, vérifiez les quatre choix, le changement de manifeste, de cible, de version, d'avertissement et d'empreinte. Chaque image téléchargée doit correspondre à `SHA256SUMS.txt`. Les notes de version sont incluses localement ; elles ne dépendent pas de la création d’une GitHub Release.
-
-## Validation de l’appareil
-
-Le 15 septembre 2026, les composants binaires finaux CYD 1.9.2 ont été flashés par port série sur l’ESP32-2432S028R du projet avec vérification des données écrites. Le redémarrage a produit **E00 en 2 145 ms**. L'application P4 1.x finale a aussi été écrite par port série sur un ESP32-P4 révision 1.3 de 32 Mo et vérifiée ; le démarrage a confirmé **AURORA 1.9.2**, le GT911, la PSRAM 32 Mo à 200 MHz et **E00 en 1 238 ms**, sans panic ni redémarrage pendant 35 secondes. Ces contrôles ne constituent pas encore un essai d’installation depuis le navigateur ; l'image P4 3.x reste à essayer sur un matériel 3.x réel.
 
 ## Sécurité
 

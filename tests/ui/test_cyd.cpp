@@ -4,6 +4,8 @@
 #include "Arduino.h"
 #include "Hash.h"
 #include "lvgl.h"
+#include "secure_lvgl_memory.h"
+extern "C" __declspec(noreturn) void auroraCydUiFailure(void) { abort(); }
 #define private public
 #include "ui.h"
 #undef private
@@ -19,9 +21,9 @@ extern "C" void auroraUiWipeAudit(const void *pointer,size_t size) {
 }
 WalletEngine::WalletEngine() {}
 WalletSelfTest WalletEngine::selfTest() { return WalletSelfTest::Ok; }
-bool WalletEngine::create(uint8_t,AddressKind,const char *,const uint8_t *,WalletOutput &) { return true; }
+bool WalletEngine::create(uint8_t,AddressKind,const char *,const uint8_t *,WalletOutput &out) { strlcpy(out.mnemonic,"PUBLIC-FIXTURE",sizeof(out.mnemonic)); return true; }
 bool WalletEngine::restore(const char *,uint8_t,AddressKind,const char *,WalletOutput &) { return true; }
-bool WalletEngine::accountXprv(const WalletOutput &,const char *,char *,size_t) { return false; }
+bool WalletEngine::accountXprv(const WalletOutput &,const char *,char *out,size_t) { out[0]=0; return true; }
 bool WalletEngine::rootXprvFromSeed(const uint8_t *,size_t,char *,size_t) { return false; }
 AezeedResult AezeedEngine::decode(const char *,const char *,AezeedDecoded &) { return AezeedResult::MemoryFailed; }
 void AezeedEngine::wipe(AezeedDecoded &out) { secureZero(&out,sizeof(out)); }
@@ -34,6 +36,22 @@ void wipeAuroraWalletData(AuroraWalletData &data) { secureZero(&data,sizeof(data
 WalletExportResult writeWalletExportFile(WalletExportFormat,const char *,const char *,const WalletExportData &,char *,size_t) { return WalletExportResult::NoCard; }
 AuroraWalletReadResult readAuroraWalletFile(const char *,const char *,AuroraWalletData &) { return AuroraWalletReadResult::NoCard; }
 AuroraWalletListResult listAuroraWalletFiles(char *out,size_t size,uint16_t &count) { if(size)out[0]=0; count=0; return AuroraWalletListResult::NoCard; }
+static unsigned reads=0;
+static bool changedFile=false;
+static uint32_t cryptoTime=0;
+AuroraWalletReadResult readAuroraWalletFileChecked(const char *,const char *password,
+    AuroraWalletData &out,uint8_t *fingerprint,const uint8_t *expected) {
+  ++reads; mock.time+=cryptoTime;
+  if(!sdReady || strcmp(password,"PUBLIC-TEST-PASSWORD") || (expected && changedFile))
+    return AuroraWalletReadResult::AuthenticationFailed;
+  secureZero(&out,sizeof(out)); out.wordCount=12; out.addressKind=2; out.fileVersion=2;
+  strlcpy(out.addressType,"native-segwit-p2wpkh",sizeof(out.addressType));
+  strlcpy(out.passphrase,"PUBLIC-TEST-PASSPHRASE",sizeof(out.passphrase));
+  if(fingerprint) memset(fingerprint,0x42,32);
+  return AuroraWalletReadResult::Ok;
+}
+WalletExportResult writeAuroraWalletFileVerified(const char *,const char *,const WalletExportData &data,
+    char *,size_t,uint8_t *) { assert(!data.pin); return WalletExportResult::NoCard; }
 #include "../../src/ui.cpp"
 #include "../../src/pin_security.cpp"
 
@@ -48,6 +66,9 @@ static void snapshot(AuroraUI &ui,const char *name) {
     lv_obj_t *child=lv_obj_get_child(ui.root_,i);
     if(lv_obj_check_type(child,&lv_btn_class) || lv_obj_check_type(child,&lv_textarea_class)) {
       lv_area_t area; lv_obj_get_coords(child,&area);
+      if (!(area.x1>=0 && area.x2<320 && area.y1>=0 && area.y2<240)) {
+        fprintf(stderr,"%s child %u: %d,%d..%d,%d\n",name,i,area.x1,area.y1,area.x2,area.y2);
+      }
       assert(area.x1>=0 && area.x2<320 && area.y1>=0 && area.y2<240);
     }
   }
@@ -97,13 +118,13 @@ int main() {
   for(unsigned i=0;i<3;++i) {
     ui.show(Screen::Mode); click(ui,actions[i]); assert(ui.screen_==destinations[i]);
   }
-  for(auto screen:{Screen::Setup,Screen::Passphrase,Screen::RestoreWords,Screen::RestorePassphrase,Screen::PinSetup}) {
+  for(auto screen:{Screen::Setup,Screen::Passphrase,Screen::RestoreWords,Screen::RestorePassphrase}) {
     ui.show(screen); assert(ui.screen_==screen && sdChecks==0);
   }
   for(auto screen:{Screen::Backup,Screen::ExportName,Screen::ExportPassword}) {
     ui.show(screen);
     assert(ui.screen_==Screen::SdRequired && ui.afterSd_==screen);
-    assert(!ui.keyboard_ && !ui.passArea_ && !ui.pinArea_ && !ui.restoreWordArea_);
+    assert(!ui.keyboard_ && !ui.passArea_ && !ui.restoreWordArea_);
   }
   snapshot(ui,"sd-required.ppm"); click(ui,RETRY_SD); assert(ui.screen_==Screen::SdRequired);
   sdReady=true; click(ui,RETRY_SD); assert(ui.screen_==Screen::ExportPassword);
@@ -113,28 +134,65 @@ int main() {
   assert(ui.passArea_ && ui.passConfirmArea_);
   lv_textarea_set_text(ui.passArea_,"same"); lv_textarea_set_text(ui.passConfirmArea_,"same");
   assert(ui.confirmPassphrase() && !strcmp(ui.passphrase_,"same"));
-  ui.show(Screen::Mode); ui.protectedSession_=true; ui.show(Screen::PinSetup);
-  snapshot(ui,"pin-setup.ppm");
-  lv_textarea_set_text(ui.pinArea_,"1234"); lv_textarea_set_text(ui.pinConfirmArea_,"1234");
-  lv_event_send(ui.keyboard_,LV_EVENT_READY,nullptr);
-  assert(ui.screen_==Screen::Info && ui.pinGuard_.enabled()); snapshot(ui,"info.ppm");
-  ui.qrContent_=AuroraUI::QrContent::PrivateKey; ui.show(Screen::Qr);
-  assert(ui.screen_==Screen::PinUnlock); snapshot(ui,"pin-unlock.ppm");
-  lv_textarea_set_text(ui.pinArea_,"1234"); sdReady=false; ui.submitPinUnlock();
-  assert(ui.screen_==Screen::Qr && ui.pinGuard_.failures()==0 && sdChecks==offlineChecks);
-  ui.show(Screen::Backup); assert(ui.screen_==Screen::SdRequired);
-  sdReady=true; click(ui,RETRY_SD); assert(ui.screen_==Screen::Backup);
-  ui.show(Screen::ExportName); assert(ui.screen_==Screen::PinUnlock);
-  lv_textarea_set_text(ui.pinArea_,"1234"); sdReady=false; ui.submitPinUnlock();
-  assert(ui.screen_==Screen::SdRequired && !ui.pinArea_ && ui.pinGuard_.failures()==0);
-  sdReady=true; click(ui,RETRY_SD);
-  assert(ui.screen_==Screen::PinUnlock && !lv_textarea_get_text(ui.pinArea_)[0]);
-  for(unsigned i=0;i<3;++i) {
-    mock.time+=1000000; lv_textarea_set_text(ui.pinArea_,"0000");
-    lv_event_send(ui.keyboard_,LV_EVENT_READY,nullptr);
+  ui.show(Screen::Mode); sdReady=true;
+  for(auto screen:{Screen::RestoreWords,Screen::ImportPassword,Screen::Passphrase}) {
+    ui.show(screen);
+    if(ui.restoreWordArea_) lv_textarea_set_text(ui.restoreWordArea_,"abandon");
+    if(ui.filePasswordArea_) lv_textarea_set_text(ui.filePasswordArea_,"PUBLIC-TEST-PASSWORD");
+    mock.time+=121000000; ui.tick();
+    assert(ui.screen_==Screen::Mode && !ui.sensitiveStateActive_ && !ui.filePassword_[0]);
+    assert(!ui.wallet_.mnemonic[0] && !ui.restoreWords_[0][0]);
   }
-  assert(ui.screen_==Screen::Mode && !ui.pinGuard_.enabled() && !ui.passphrase_[0]);
-  ui.show(Screen::Entropy); snapshot(ui,"entropy.ppm"); ui.show(Screen::Mode);
+  ui.show(Screen::Setup); ui.entropyCollected_=true; assert(ui.generate());
+  ui.show(Screen::Mnemonic); mock.time+=121000000; ui.tick();
+  assert(ui.screen_==Screen::Mode && !ui.wallet_.mnemonic[0]);
+  ui.show(Screen::ImportPassword);
+  lv_textarea_set_text(ui.filePasswordArea_,"PUBLIC-TEST-PASSWORD");
+  lv_event_send(ui.keyboard_,LV_EVENT_READY,nullptr);
+  mock.time+=200000; ui.tick();
+  assert(ui.screen_==Screen::Info && ui.fileSession_ && ui.protectedSession_);
+  assert(!ui.wallet_.mnemonic[0] && !ui.wallet_.privateWif[0] && !ui.passphrase_[0] && !ui.filePassword_[0]);
+  assert(ui.hasPassphrase()); snapshot(ui,"info.ppm");
+  const unsigned firstRead=reads;
+  for(unsigned round=0;round<3;++round) {
+    ui.show(Screen::Mnemonic); assert(ui.screen_==Screen::PrivatePassword);
+    snapshot(ui,"private-password.ppm");
+    lv_textarea_set_text(ui.filePasswordArea_,"PUBLIC-TEST-PASSWORD");
+    lv_event_send(ui.keyboard_,LV_EVENT_READY,nullptr);
+    mock.time+=200000; ui.tick();
+    assert(ui.screen_==Screen::Mnemonic && ui.privateLoaded_ && !ui.filePassword_[0]);
+    // Public marker deliberately injected after successful mock derivation.
+    strlcpy(ui.wallet_.mnemonic,"PUBLIC-TEST-WORDS",sizeof(ui.wallet_.mnemonic));
+    strlcpy(ui.wallet_.privateWif,"PUBLIC-TEST-WIF",sizeof(ui.wallet_.privateWif));
+    if(round==0) ui.show(Screen::Info);
+    else if(round==1) { mock.time+=16000000; ui.tick(); }
+    else { ui.closeSession(); }
+    assert(!ui.wallet_.mnemonic[0] && !ui.wallet_.privateWif[0] && !ui.privateLoaded_ && !ui.passphrase_[0]);
+  }
+  assert(reads==firstRead+3);
+  for(unsigned mode=0;mode<3;++mode) {
+    ui.show(Screen::Mode); ui.show(Screen::ImportPassword);
+    strlcpy(ui.filePassword_,"PUBLIC-TEST-PASSWORD",sizeof(ui.filePassword_));
+    assert(ui.performWalletImport()); ui.show(Screen::Info); ui.show(Screen::Mnemonic);
+    changedFile=mode==0; cryptoTime=mode==1?16000000:(mode==2?121000000:0);
+    lv_textarea_set_text(ui.filePasswordArea_,"PUBLIC-TEST-PASSWORD");
+    lv_event_send(ui.keyboard_,LV_EVENT_READY,nullptr); mock.time+=200000; ui.tick();
+    assert(ui.screen_!=Screen::Mnemonic && !ui.wallet_.mnemonic[0] && !ui.filePassword_[0]);
+    changedFile=false; cryptoTime=0;
+  }
+  ui.show(Screen::Mode); ui.show(Screen::ImportPassword);
+  lv_textarea_set_text(ui.filePasswordArea_,"PUBLIC-TEST-PASSWORD");
+  sdReady=false; lv_event_send(ui.keyboard_,LV_EVENT_READY,nullptr);
+  assert(ui.screen_==Screen::SdRequired && !ui.filePassword_[0]);
+  ui.show(Screen::Mode); ui.show(Screen::Entropy); snapshot(ui,"entropy.ppm"); ui.show(Screen::Mode);
   assert(wipes>100);
-  puts("PASS: real LVGL 8 CYD 320x240 menu unchanged, offline actions/passphrase/session PIN, SD save-only gate/retry/removal, 3 failures wipe, secure allocator");
+  // Terminal ownership walk: no LVGL operations are legal after this point.
+  void *first=auroraUiAlloc(256), *second=auroraUiAlloc(512);
+  assert(first && second); memset(first,0xa5,256); memset(second,0x5a,512);
+  strlcpy(ui.filePassword_,"PUBLIC-TEST-PASSWORD",sizeof(ui.filePassword_));
+  ui.emergencyWipeSecrets(); assert(!ui.filePassword_[0]);
+  assert(auroraUiTryFreezeAllocations()); auroraUiWipeFrozenAllocations();
+  for(unsigned i=0;i<256;++i) assert(static_cast<uint8_t *>(first)[i]==0);
+  for(unsigned i=0;i<512;++i) assert(static_cast<uint8_t *>(second)[i]==0);
+  puts("PASS: CYD LVGL8 password-only sessions, public-only idle state, 120s all-workflow expiry, 15s secret expiry, slow crypto, replaced file, SD removal, wiped UI allocations");
 }

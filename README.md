@@ -1,19 +1,23 @@
 # AURORA Seed Generator
 
-Firmware Bitcoin hors ligne, avec un noyau commun et deux cibles matérielles : **ESP32-2432S028(R)** (320 × 240) et portage **Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3** (480 × 800 portrait, version sans caméra fournie). Toute l’interface est en français ; seuls les mots de la phrase de récupération utilisent la liste anglaise officielle BIP39.
+AURORA est un générateur et lecteur de portefeuilles Bitcoin hors ligne. L'interface est en français ; les phrases de récupération utilisent la liste anglaise BIP39.
 
-> Le CYD est figé en version finale **1.9.2**. Le développement continue exclusivement sur le P4 sous la version **2.0.0**. Le Web Flasher conserve le choix CYD **1.7.5**, propose le CYD **1.9.2** par défaut et garde les images P4 1.9.2 jusqu'à la publication des deux profils P4 2.0.0. [Sécurité et compatibilité V1/V2](SECURITY.md) · [Architecture et validation P4](targets/waveshare_p4/README.md).
+## Appareils et versions
+
+| Appareil | Écran | Version du logiciel | Versions disponibles dans le Web Flasher |
+| --- | --- | --- | --- |
+| **ESP32-2432S028R — Cheap Yellow Display (CYD)** | 2,8 pouces, 320 × 240, tactile résistif XPT2046 | **1.9.3**, correctif CYD local | **1.9.2** et **1.7.5** |
+| **Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 (P4)** | 4,3 pouces, 480 × 800 portrait, tactile capacitif GT911 | **2.0.0**, version en développement | **1.9.2**, images distinctes pour silicium **1.x** et **3.x** |
+
+Les abréviations **CYD** et **P4** désignent ces deux modèles dans la suite du guide.
+Le P4 reste en 2.0.0. Le correctif 1.9.3 concerne uniquement le CYD ; les images du Web Flasher ne sont pas remplacées automatiquement.
+
+[Utilisation du mot de passe sur Waveshare ESP32-P4](#p4-200--mot-de-passe-uniquement) · [Compilation Waveshare ESP32-P4](targets/waveshare_p4/README.md) · [Web Flasher](https://nitrus21.github.io/Aurora_seed_generator/)
 
 ![Fond de l’écran de démarrage AURORA](assets/splash_320x240.png)
 
-Dernière version finale CYD et binaires inclus : **1.9.2**
-Version P4 en développement : **2.0.0**
-Versions Web Flasher : **CYD 1.9.2 / 1.7.5** et **P4 1.9.2 révisions 1.x / 3.x**
-Notes de version : [historique CYD et images P4](webflasher/CHANGELOG.md)
-Installation Web : [AURORA Web Flasher](https://nitrus21.github.io/Aurora_seed_generator/)
-Environnement : **PlatformIO + Arduino**
-Cible : **ESP32-2432S028R / Cheap Yellow Display**
-Réseaux : **Wi-Fi et Bluetooth désactivés**
+Environnement : **PlatformIO + ESP-IDF** pour Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 ; **PlatformIO + Arduino** pour ESP32-2432S028R.
+Utilisation : **hors ligne**.
 
 > [!CAUTION]
 > AURORA est un projet expérimental à auditer avant tout usage avec de vrais fonds. Un ESP32 généraliste n’est pas un élément sécurisé et n’offre pas la résistance physique d’un portefeuille matériel certifié. Commencez avec des montants de test, comparez toujours les adresses avec un logiciel reconnu et ne photographiez jamais une seed ou une clé privée.
@@ -21,7 +25,6 @@ Réseaux : **Wi-Fi et Bluetooth désactivés**
 ## Sommaire
 
 - [À quoi sert AURORA ?](#à-quoi-sert-aurora-)
-- [Ce qu’AURORA ne fait pas](#ce-quaurora-ne-fait-pas)
 - [Fonctionnalités](#fonctionnalités)
 - [Parcours de l’application](#parcours-de-lapplication)
 - [Matériel nécessaire](#matériel-nécessaire)
@@ -42,11 +45,11 @@ Réseaux : **Wi-Fi et Bluetooth désactivés**
 
 ## À quoi sert AURORA ?
 
-AURORA transforme un ESP32-2432S028R en générateur et lecteur de portefeuille Bitcoin hors ligne. Il permet de :
+Les deux appareils permettent de générer, restaurer et consulter un portefeuille Bitcoin hors ligne. AURORA permet de :
 
 - créer une phrase BIP39 anglaise de 12, 15, 18, 21 ou 24 mots ;
 - ajouter une passphrase BIP39 optionnelle ;
-- mélanger le générateur matériel de l’ESP32 avec des mouvements tactiles et la luminosité ;
+- mélanger le générateur matériel de l’ESP32 avec des mouvements tactiles et les capteurs propres à la carte ;
 - dériver une première adresse Bitcoin Mainnet selon BIP44, BIP49, BIP84 ou BIP86 ;
 - vérifier que la phrase a bien été recopiée ;
 - afficher l’adresse, la clé publique étendue du compte et leurs QR codes ;
@@ -57,34 +60,32 @@ AURORA transforme un ESP32-2432S028R en générateur et lecteur de portefeuille 
 - exporter un portefeuille vers un fichier Aurora Wallet chiffré ou un fichier Electrum privé ;
 - effacer les tampons sensibles de la session avant de revenir à l’accueil.
 
-## Ce qu’AURORA ne fait pas
-
-AURORA :
-
-- ne se connecte pas à Internet ;
-- ne consulte pas le solde d’une adresse ;
-- ne construit et ne signe pas de transaction ;
-- ne diffuse aucune transaction ;
-- ne remplace pas une sauvegarde physique durable de la seed ;
-- ne protège pas contre une personne ayant un accès physique prolongé à l’appareil ;
-- n’active pas automatiquement Secure Boot ni le chiffrement du flash ;
-- ne garantit pas qu’un portefeuille tiers interprétera une WIF avec le même type de script.
-
-La méthode recommandée consiste à utiliser AURORA hors ligne pour créer ou examiner les secrets, puis à utiliser uniquement une clé publique étendue ou un descripteur watch-only sur l’ordinateur connecté.
-
 ## Fonctionnalités
+
+| Fonction | ESP32-2432S028R — 1.9.3 | Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 — 2.0.0 |
+| --- | --- | --- |
+| Création et restauration BIP39 | 12, 15, 18, 21 ou 24 mots | 12, 15, 18, 21 ou 24 mots |
+| Adresses Bitcoin | Legacy, Nested SegWit, Native SegWit, Taproot | Legacy, Nested SegWit, Native SegWit, Taproot |
+| Sources de collecte | RNG matériel, tactile résistif, temps, photorésistance | RNG matériel, tactile capacitif, temps, microphones ; caméra OV5647 facultative |
+| Ouverture d'un fichier Aurora Wallet | Mot de passe du fichier | Mot de passe du fichier |
+| Consultation privée après ouverture | Nouvelle saisie du mot de passe du fichier | Nouvelle saisie du mot de passe du fichier |
+| Fichiers chiffrés lus | V1 et V2 | V1 et V2 |
+| Fichiers chiffrés créés | V1 | V1 |
+| Exports | Aurora Wallet chiffré et Electrum privé | Aurora Wallet chiffré et Electrum privé |
+
+**Fonction supplémentaire de la Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 :**
+récupération Umbrel/LND AEZEED vers une clé maître BIP32, avec affichage QR temporaire.
 
 - Liste anglaise officielle BIP39 de 2 048 mots et contrôle du checksum.
 - Toutes les combinaisons **12/15/18/21/24 mots × Legacy/Nested SegWit/Native SegWit/Taproot**.
 - Passphrase BIP39 ASCII optionnelle, de 0 à 63 caractères imprimables, saisie deux fois après la collecte.
-- PIN de 4 à 8 chiffres par fichier Aurora V2 ; trois erreurs ferment la session, sans effacer la carte.
-- Entropie tactile : coordonnées, pression et timings de 320 échantillons.
-- Luminosité : lecture de la photorésistance intégrée sur GPIO34 à chaque échantillon.
+- Entropie tactile : coordonnées et timings de 320 échantillons ; pression résistive sur CYD uniquement.
+- P4 : microphones et caméra facultative ; CYD : photorésistance intégrée sur GPIO34.
 - RNG matériel ESP32 activé explicitement autour de `esp_random()`.
-- Mélange final RNG + tactile + luminosité par SHA-256 avant création BIP39.
+- Mélange final du RNG, du tactile et des sources disponibles par SHA-256 avant création BIP39.
 - Aperçu hexadécimal défilant et jauge de collecte rouge, orange puis verte.
 - Dérivations Bitcoin Mainnet BIP44, BIP49, BIP84 et BIP86.
-- Affichage de huit mots maximum par page.
+- P4 : affichage de douze mots maximum par page.
 - Vérification de trois positions différentes tirées aléatoirement.
 - Suggestions BIP39 pendant la restauration et la vérification de sauvegarde.
 - Récupération Umbrel/LND AEZEED sur P4 : 24 mots, checksum CRC32C, scrypt et authentification AEZ v5.
@@ -100,31 +101,29 @@ La cryptographie Bitcoin repose principalement sur [uBitcoin](https://github.com
 
 ## Parcours de l’application
 
-![Schéma des parcours AURORA](assets/aurora_workflow.svg)
-
-Ce schéma décrit la version publiée 1.7.6. En développement : configuration → collecte → double passphrase → portefeuille → contrôle microSD à la sauvegarde ; la sauvegarde ajoute un PIN et l'ouverture n'affiche plus les secrets automatiquement. Voir le [parcours sécurisé actuel](SECURITY.md).
+La création suit les étapes suivantes : configuration du portefeuille, collecte
+d'entropie, double saisie de la passphrase éventuelle, affichage et vérification
+des mots, puis informations et sauvegarde sur microSD.
 
 L’accueil présente trois choix sur CYD et un quatrième sur P4 :
 
-1. **NOUVEAU PORTEFEUILLE** : création complète avec RNG matériel, entropie tactile et luminosité.
+1. **NOUVEAU PORTEFEUILLE** : création complète avec RNG matériel, entropie tactile et capteurs disponibles.
 2. **OUVRIR AURORA WALLET** : lecture d’un fichier `.aurora` chiffré présent à la racine de la microSD.
 3. **RESTAURER UNE SEED** : saisie manuelle d’une phrase existante, avec autocomplétion.
 4. **RÉCUPÉRER UMBREL / LND** (P4) : conversion hors ligne d’une seed AEZEED en clé maître BIP32 pour Sparrow.
 
-En **1.9.2**, sur **les deux appareils**, la création et la restauration
-fonctionnent sans microSD, y compris la passphrase et le PIN de session. La
-carte n'est exigée qu'à l'entrée de la sauvegarde/export, avec de nouveaux
-contrôles pendant sa préparation et avant écriture. Sans carte, l'écran
-**microSD requise** propose **RÉESSAYER** ou **FERMER** (effacement de la session).
-Une interruption de l'export efface son mot de passe et son PIN en préparation.
-Une carte vide lisible suffit ; cela ne signifie pas qu'un fichier a déjà été
-enregistré. Pour ouvrir un fichier existant, le lecteur affiche une erreur si
-la carte est absente. Ne jamais retirer la carte pendant une écriture.
+Sur **CYD 1.9.3 et P4 2.0.0**, la création et la restauration initiales fonctionnent sans
+microSD. La carte devient obligatoire à la sauvegarde/export, à l'ouverture
+d'un fichier et à chaque consultation privée de ce fichier. Des contrôles sont
+refaits pendant la préparation et avant l'écriture. Sans carte, l'export est
+bloqué ; **FERMER** efface la session. Une carte FAT32 vide lisible suffit pour
+préparer une sauvegarde, sans formatage ni création de fichier de test.
+Une interruption de l'export efface les identifiants saisis.
+Ne jamais retirer la carte pendant une écriture.
 
 Sur **P4 uniquement**, le menu d'action place le logo Bitcoin en haut au centre,
 puis quatre boutons centrés de **384 × 64 pixels**. La disposition à trois
-boutons du menu CYD est conservée ; ce matériel n'a pas assez de mémoire pour
-le déchiffrement scrypt AEZEED.
+boutons du menu ESP32-2432S028R donne accès à la création, à l'ouverture et à la restauration BIP39.
 
 Le logo blanc utilisé sur cette page est également conservé dans le projet :
 
@@ -132,11 +131,12 @@ Le logo blanc utilisé sur cette page est également conservé dans le projet :
 
 ## Matériel nécessaire
 
-- une carte **ESP32-2432S028R** avec écran ILI9341 2,8 pouces et dalle XPT2046 ;
+- pour le développement actif : une **Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3**, avec un firmware correspondant à sa révision silicium 1.x ou 3.x ;
+- pour la version ESP32-2432S028R : une **ESP32-2432S028R** avec écran ILI9341 2,8 pouces et dalle XPT2046 ;
 - un câble USB capable de transférer les données, pas uniquement de charger ;
 - un ordinateur Windows, macOS ou Linux ;
 - Visual Studio Code + PlatformIO, ou PlatformIO Core en ligne de commande ;
-- une carte microSD formatée en FAT32 pour enregistrer ou ouvrir des fichiers (création/restauration sans carte possibles en **1.9.2**) ;
+- une carte microSD formatée en FAT32 pour enregistrer ou ouvrir des fichiers et pour chaque consultation privée d'un fichier ouvert ; création/restauration initiales sans carte possibles ;
 - idéalement : un ordinateur hors ligne ou une machine dédiée pour la génération finale.
 
 Selon la révision de la carte, Windows peut demander le pilote du convertisseur USB-série, généralement CH340 ou CP210x. Vérifiez le composant présent sur votre propre carte avant d’installer un pilote.
@@ -150,6 +150,11 @@ L’installeur utilise une image complète avec son bootloader et ses partitions
 Les [instructions du Web Flasher](webflasher/README.md) et les [empreintes des binaires](webflasher/firmware/SHA256SUMS.txt) sont conservées dans le dépôt. La compilation locale reste possible avec les étapes ci-dessous.
 
 ## Installation rapide avec Visual Studio Code
+
+Les étapes ci-dessous décrivent l'**ESP32-2432S028R**, dont la version finale
+est 1.9.3. Pour le **P4 2.0.0**, ouvrir le même dépôt et utiliser le script
+[de compilation P4](targets/waveshare_p4/README.md#compilation) dans le terminal.
+Le bouton Build du projet racine compile le CYD, pas le P4.
 
 ### 1. Installer les outils
 
@@ -211,7 +216,23 @@ Fermez ensuite le moniteur série avant toute nouvelle commande de flashage, car
 
 ## Compilation et flashage en ligne de commande
 
-Placez-vous dans le dossier contenant `platformio.ini`.
+Depuis la racine du dépôt, compiler le **P4 actif** sous PowerShell avec le
+profil correspondant à la carte :
+
+```powershell
+# P4 révision 3.x
+.\targets\waveshare_p4\build.ps1 -Target waveshare-p4
+# Ou P4 révision 1.x, dont 1.3
+.\targets\waveshare_p4\build.ps1 -Target waveshare-p4-rev1
+```
+
+Ces commandes ne flashent rien. Les profils doivent être compilés séparément ;
+voir les [prérequis et contrôles P4](targets/waveshare_p4/README.md#compilation).
+Les commandes ci-dessous concernent l'**ESP32-2432S028R**. Pour installer sa
+version publiée 1.9.2, utiliser les binaires disponibles dans le Web Flasher.
+La compilation locale produit 1.9.3 : sa table de partitions doit être installée
+avec le programme. Un chargement du seul `firmware.bin` sur une ancienne table
+est refusé au démarrage. Aucun fichier microSD n’est effacé par ce contrôle.
 
 ### Vérifier PlatformIO
 
@@ -270,7 +291,7 @@ Sur une carte déjà initialisée avec exactement le même environnement AURORA,
 
 SHA-256 permet de vérifier que le fichier n’a pas changé entre sa création, son téléchargement et son flashage. Il ne prouve l’authenticité que si la valeur de référence a été obtenue par un canal de confiance.
 
-### Empreinte de la version finale CYD 1.9.2 compilée
+### Empreinte de l’image publiée CYD 1.9.2
 
 Fichier distribué : `webflasher/firmware/firmware.bin` (copie du build PlatformIO)
 Taille : **1 499 120 octets**
@@ -280,7 +301,7 @@ SHA-256 :
 222B4ADA067A3FCA2B3CAFC4EF83E20E9D2B7F1D6DD23D557F42DE7953F80515
 ```
 
-Cette empreinte concerne l’application seule, pas l’image fusionnée du Web Flasher. Les empreintes de tous les binaires sont dans [SHA256SUMS.txt](webflasher/firmware/SHA256SUMS.txt). Sous PowerShell, `./tests/release/verify.ps1` contrôle les versions, le manifeste, le contenu de l’image fusionnée et les empreintes, sans flasher l’appareil.
+Cette empreinte concerne l’application seule, pas l’image fusionnée du Web Flasher. Les empreintes de tous les binaires sont dans [SHA256SUMS.txt](webflasher/firmware/SHA256SUMS.txt). Sous PowerShell, `./tests/release/verify.ps1 -ReleasedArtifactsOnly` contrôle les versions, le manifeste, le contenu de l’image fusionnée et les empreintes, sans flasher l’appareil.
 
 ### Windows PowerShell
 
@@ -346,28 +367,8 @@ Au démarrage, AURORA affiche le splash et lance en arrière-plan un autotest bl
 
 Si le code n’est pas `E00`, ne créez pas de portefeuille et notez le code exact.
 
-### Validation de la version CYD 1.9.2
-
-Le 15 septembre 2026, une compilation 1.9.2 a été programmée sur
-l'ESP32-2432S028R du projet. Esptool a identifié un ESP32-D0WD-V3 révision 3.1,
-vérifié les zones écrites et redémarré la carte. L'autotest série a renvoyé
-**E00 en 2 145 ms**. L'image finale actuelle, reconstruite avec le thème sombre
-des claviers, a passé les contrôles logiciels mais n'a pas été reflashée sur ce
-CYD, qui n'était plus connecté.
-
-Le même jour, l'application P4 1.x finale a été programmée sur l'ESP32-P4
-révision 1.3 du projet après comparaison exacte de sa table de partitions.
-Esptool a vérifié les données écrites ; le démarrage confirme la version
-**1.9.2**, la PSRAM 32 Mo à 200 MHz, l'écran 480 × 800, le tactile GT911 et
-**E00 en 1 244 ms**, sans panic ni redémarrage pendant 35 secondes.
-
-L'image fusionnée du Web Flasher porte l'empreinte `8A1469BF006BF0185418FE8D067B53F685DDF705DAEB06ED271D80654AA73506`. L'installation depuis le navigateur reste à essayer séparément.
-
-### Validation historique de la version 1.7.6
-
-Le 14 septembre 2026, les binaires 1.7.6 inclus dans ce dépôt ont été programmés sur la carte ESP32-2432S028R du projet, avec vérification des données écrites. Au redémarrage, l’autotest a renvoyé **E00 en 2 120 ms**, sans défaut de démarrage observé.
-
-Les tests natifs, le contrôle des binaires et les tests de l’écran LVGL avec matériel simulé ont réussi. Les gestes réels, la réponse de la photorésistance et le parcours complet d’un portefeuille de test restent à vérifier manuellement. E00 ne certifie pas l’entropie physique et ne constitue pas un audit de sécurité.
+L'autotest contrôle les résultats cryptographiques intégrés. Il ne mesure pas
+l'entropie physique et ne constitue pas une certification de sécurité.
 
 ## Utilisation détaillée
 
@@ -386,10 +387,11 @@ Le nombre de mots détermine la quantité d’entropie BIP39, pas le format de l
 Tracez des mouvements irréguliers dans le cadre jusqu’à 100 %. Pour chaque échantillon, AURORA conserve les sources précédentes et mélange :
 
 - les coordonnées X/Y ;
-- la pression tactile ;
+- la pression tactile (CYD uniquement) ;
 - le compteur en microsecondes ;
 - une valeur provenant du RNG matériel ESP32 ;
-- la lecture lumineuse brute sur 12 bits de la photorésistance intégrée (GPIO34).
+- la lecture lumineuse brute sur 12 bits de la photorésistance intégrée GPIO34 (CYD uniquement) ;
+- les blocs microphone et caméra facultative disponibles (P4 uniquement, avec leur propre séquence).
 
 Après 320 échantillons, le mélange est condensé par SHA-256. La durée de collecte et un tirage matériel supplémentaire restent incorporés à la fin. Lors de la création BIP39, 32 nouveaux octets du RNG matériel sont mélangés avec ce résultat, puis condensés une seconde fois, comme auparavant.
 
@@ -401,12 +403,12 @@ Le bandeau « Aperçu du mélange » fait défiler quatre groupes hexadécimaux,
 
 Saisissez la même passphrase dans les deux champs de la même page, ou laissez les deux vides. La comparaison est exacte ; la confirmation n'est jamais préremplie. Limite inchangée : ASCII imprimable, 63 caractères.
 
-Une passphrase différente crée un autre portefeuille ; l'oublier rend les fonds associés irrécupérables. La saisir après l'entropie ne change pas la dérivation BIP39. Elle est distincte du mot de passe de chiffrement `.aurora` et du PIN d'accès aux secrets.
+Une passphrase différente crée un autre portefeuille ; l'oublier rend les fonds associés irrécupérables. Elle est distincte du mot de passe de chiffrement `.aurora`.
 
 #### 4/7 — Phrase de récupération
 
 - Recopiez les mots dans l’ordre exact.
-- AURORA affiche au maximum huit mots par page.
+- Le P4 affiche au maximum douze mots par page.
 - Utilisez **SUIVANT** et **PRÉCÉDENT** pour parcourir les pages.
 - Ne photographiez jamais l’écran.
 - Ne stockez jamais la phrase dans un service cloud ou une messagerie.
@@ -435,6 +437,41 @@ La clé privée n’apparaît qu’après une action volontaire sur **CLÉ PRIV�
 
 Vous pouvez exporter sur microSD, puis utiliser **EFFACER**. Cette action écrase les principaux buffers de la session et revient à l’accueil. Couper brutalement l’alimentation ne remplace pas l’action **EFFACER**.
 
+### P4 2.0.0 : mot de passe uniquement
+
+Le même parcours s’applique à l’**ESP32-2432S028R 1.9.3**.
+
+Sur la **Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3**, l'accès aux fichiers et aux
+consultations privées utilise le mot de passe du fichier. Après ouverture,
+la session conserve uniquement les informations publiques, le nom du fichier
+et son empreinte SHA-256.
+Cette empreinte n’est pas une clé et ne permet pas de déchiffrer le fichier.
+
+Pour consulter les mots, la passphrase ou la clé privée, ou exporter les secrets
+d’un fichier ouvert, il faut ressaisir son mot de passe. La microSD est relue,
+l’empreinte et l’authentification AES-GCM sont vérifiées, puis le portefeuille est
+recalculé et comparé. Le mot de passe et la clé de fichier sont effacés après
+utilisation ; les données privées de consultation sont effacées au retour,
+à l’annulation, à l’erreur ou à l’expiration. Changer de catégorie privée demande
+une nouvelle authentification. Une préparation d’export autorisée conserve les
+données nécessaires jusqu’à sa fin, avec une limite de 120 secondes.
+
+Les fichiers créés utilisent le **format V1** : AES-256-GCM et
+PBKDF2-HMAC-SHA-256 à 120 000 itérations. Les formats V1 et V2 sont lisibles
+avec leur mot de passe sur les deux appareils.
+
+Avant une première sauvegarde, une création/restauration doit encore conserver
+temporairement ses secrets pour terminer la vérification et l’export. Ce n’est
+pas une session de fichier rouvert : sans sauvegarde, les effacer impose de
+recommencer. Le verrouillage et 120 secondes d’inactivité effacent ce parcours.
+Le résultat AEZEED reste temporaire jusqu’à consultation ; quitter son QR ou
+atteindre 15 secondes d’affichage ferme et efface la session.
+
+Il n’y a aucune conservation volontaire de mot de passe ou de clé privée dans
+la flash interne. Cela ne signifie pas absence de secrets pendant les calculs
+en RAM, ni garantie d’effacement physique lors d’une coupure. L’export Electrum
+en clair reste une exception explicite choisie par l’utilisateur.
+
 ### Ouvrir un Aurora Wallet
 
 1. Formatez une microSD en FAT32.
@@ -443,11 +480,11 @@ Vous pouvez exporter sur microSD, puis utiliser **EFFACER**. Cette action écras
 4. Sélectionnez un fichier dans la liste déroulante.
 5. Utilisez **ACTUALISER** si la carte a été insérée après l’ouverture de la page.
 6. Saisissez le mot de passe du fichier.
-7. Patientez pendant PBKDF2 et AES-GCM, environ 15 secondes sur la carte testée.
+7. Patientez pendant PBKDF2, AES-GCM et la vérification du portefeuille ; la durée dépend de la carte et du firmware.
 
 Après déchiffrement, AURORA ne fait pas confiance aux valeurs enregistrées. Il valide la phrase BIP39, recalcule le portefeuille depuis les mots et la passphrase, puis compare l’adresse, le chemin, les clés étendues, la WIF et le descripteur. Une différence, un mauvais mot de passe ou un fichier modifié provoque un refus.
 
-L'ouverture affiche seulement les données publiques. Le PIN est requis pour révéler les mots, la passphrase ou le QR privé et pour exporter des secrets. Trois erreurs cumulées ferment la session ; les fichiers restent sur la carte. Les anciens V1 demandent un PIN temporaire, à rendre permanent en réexportant sous un nouveau nom. [Règles et limites](SECURITY.md).
+L’ouverture affiche seulement les données publiques. Le mot de passe du fichier est redemandé pour révéler les mots, la passphrase, le QR privé ou exporter des secrets. Les fichiers restent sur la carte. [Règles et limites](SECURITY.md).
 
 ### Restaurer une seed
 
@@ -455,7 +492,7 @@ L'ouverture affiche seulement les données publiques. Le PIN est requis pour ré
 2. Saisissez chaque mot anglais séparément.
 3. Touchez une des trois suggestions pour éviter les fautes.
 4. AURORA refuse la phrase si le checksum BIP39 est invalide.
-5. Saisissez et confirmez la passphrase BIP39 éventuelle, puis créez un PIN de session.
+5. Saisissez et confirmez la passphrase BIP39 éventuelle. Aucun PIN n’est demandé.
 6. Sélectionnez le type de dérivation dans la liste.
 7. Comparez l’adresse et utilisez les QR.
 8. Utilisez **EXPORTER** pour sauvegarder le portefeuille restauré.
@@ -477,8 +514,8 @@ strictement identique au scrypt LND ; aucun paramètre cryptographique n'est
 réduit. Environ 16 Mio de PSRAM temporaire sont nécessaires et sont écrasés
 avant libération.
 
-Après réussite, un PIN de session est obligatoire. Le `xprv` n'apparaît que sur
-l'écran privé temporisé. Dans Sparrow, créez un portefeuille, ouvrez
+Sur Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 2.0.0, le `xprv` apparaît sur
+l’écran privé ; quitter cet écran ou atteindre 15 secondes ferme et efface la session. Dans Sparrow, créez un portefeuille, ouvrez
 **Software Wallet**, puis importez-le comme **Master Private Key (BIP32)**.
 Recherchez les comptes usuels `m/49'/0'/0'`, `m/84'/0'/0'` et `m/86'/0'/0'`.
 
@@ -532,7 +569,9 @@ Ce fichier est volontairement non chiffré. Ne l’utilisez pas pour une démons
 
 ## Format chiffré Aurora Wallet
 
-Le conteneur binaire `.aurora` est écrit en **V2** ; la lecture **V1** reste disponible. Les deux versions utilisent sans changement :
+Le **CYD 1.9.3** et le **P4 2.0.0** écrivent V1 et lisent V1/V2.
+Les deux formats utilisent
+les paramètres suivants :
 
 - AES-256-GCM ;
 - une clé AES de 256 bits ;
@@ -545,7 +584,10 @@ Le conteneur binaire `.aurora` est écrit en **V2** ; la lecture **V1** reste di
 
 Le contenu chiffré comprend les mots BIP39, la passphrase éventuelle, le type d’adresse, le chemin, l’adresse, la clé publique étendue, la clé privée étendue, la WIF, le descripteur et la version du firmware.
 
-V2 ajoute un vérificateur PIN chiffré et passe de 1 120 à 1 200 octets. Le PIN ne modifie aucune clé et ne remplace pas le mot de passe. Un ancien firmware ne lit pas V2 ; les deux cartes doivent utiliser le nouveau firmware. [Format exact et migration](SECURITY.md#format-binaire-v2-et-migration).
+V1 fait 1 120 octets ; V2 fait 1 200 octets et contient en plus le
+vérificateur PIN chiffré historique, non utilisé pour les consultations actuelles.
+La Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 authentifie les consultations
+avec le mot de passe du fichier. Les fichiers existants sont préservés.
 
 AES-256 ne rend pas un mot de passe faible équivalent à une clé aléatoire de 256 bits. Utilisez une phrase de passe longue, unique et conservée séparément. Il n’existe ni porte dérobée ni récupération en cas de perte.
 
@@ -553,7 +595,10 @@ Après lecture ou écriture, AURORA écrase le mot de passe du fichier, la clé 
 
 ## Brochage et configuration matérielle
 
-### Brochage par défaut
+### Brochage ESP32-2432S028R
+
+Cette table ne s'applique pas au P4. Son BSP, son écran 480 × 800 et ses
+capteurs sont décrits dans le [README P4](targets/waveshare_p4/README.md).
 
 | Fonction | GPIO |
 |---|---:|
@@ -599,7 +644,6 @@ L’image source utilisée au démarrage est `assets/splash_320x240.png`. Pour l
 
 ```text
 python tools/make_splash_asset.py chemin/vers/nouvelle_image.png
-pio run
 ```
 
 Le script recadre en 4:3, redimensionne en 320 × 240 et régénère `src/assets/splash_img.c` au format RGB565. Le bouton, le titre et la version restent dessinés par LVGL.
@@ -610,16 +654,19 @@ Le logo blanc est `assets/bitcoin_logo_112x160.png`. Pour le régénérer après
 
 ```text
 python tools/make_bitcoin_logo_asset.py
-pio run
 ```
 
+Après génération, recompiler le profil P4 concerné avec `targets/waveshare_p4/build.ps1`.
 Ne modifiez pas directement les grands tableaux C générés si l’image PNG source peut être mise à jour proprement.
 
 ## Sécurité et limites
 
 ### Réseaux
 
-Au démarrage, le firmware coupe le Wi-Fi et le Bluetooth. Il n’efface pas les identifiants éventuellement présents en NVS afin d’éviter une écriture flash supplémentaire, mais il ne les utilise pas.
+Sur CYD, le firmware coupe le Wi-Fi et le Bluetooth au démarrage. Il n'efface
+pas les identifiants éventuellement présents en NVS, mais ne les utilise pas.
+Sur P4, aucun pilote réseau n'est lancé et le coprocesseur radio C6 est maintenu
+en reset selon le profil matériel ; voir les limites dans le [README P4](targets/waveshare_p4/README.md#vie-privée-et-arrêt).
 
 ### RNG
 
@@ -632,6 +679,12 @@ La lecture de luminosité et cette source SAR-ADC sont alternées : désactivati
 Les secrets doivent nécessairement exister en RAM pendant la dérivation et l’affichage. AURORA écrase explicitement ses buffers, les textes LVGL sensibles, les contextes cryptographiques principaux et plusieurs temporaires uBitcoin. Cela ne garantit pas l’effacement après un crash, une coupure brutale, une attaque DMA ou une analyse physique.
 
 ### Flash
+
+Sur **CYD 1.9.3**, le binaire exclut les routines de sauvegarde de crash et
+utilise un redémarrage silencieux sur panique. Avant l’accueil, la zone réservée
+`aurora_scrub` est contrôlée, effacée si nécessaire et relue ; les allocations
+libres obtenues par le nettoyage sont écrasées. Une erreur bloque l’utilisation.
+Ce contrôle n’efface ni les sauvegardes microSD ni les allocations système actives.
 
 La seed et les clés privées ne sont pas volontairement persistées dans le flash. Secure Boot et Flash Encryption ne sont pas activés automatiquement, car leur provisioning peut écrire des eFuses irréversibles. Sans ces protections, une personne ayant accès au matériel peut remplacer le firmware par une version malveillante.
 
@@ -678,6 +731,10 @@ Tout secret affiché peut être photographié ou observé. Le QR de clé privée
 
 ## Dépendances épinglées
 
+Le **P4** utilise ESP-IDF 5.5.5, LVGL 9.5.0 et le BSP Waveshare 1.0.1,
+avec le même commit uBitcoin durci. Voir sa [configuration dédiée](targets/waveshare_p4/README.md#compilation).
+La table suivante concerne l'**ESP32-2432S028R** :
+
 | Composant | Version ou révision |
 |---|---|
 | Plateforme PlatformIO Espressif32 | `6.9.0` |
@@ -694,18 +751,17 @@ Ne mettez pas ces dépendances à jour sans relancer les vecteurs de test, exami
 assets/
   splash_320x240.png           Image du splash
   bitcoin_logo_112x160.png     Logo blanc de l’accueil
-  aurora_workflow.svg          Schéma utilisé dans ce README
 include/
   board_config.h               Brochage, rotation et calibration
   version.h                    Version affichée sur le splash
   secure_memory.h              Effacement anti-optimisation
   hardware_rng.h               Activation de la source RNG ESP32
-  entropy.h                    Mélange tactile + luminosité, SHA-256 et aperçu HMAC
+  entropy.h                    Mélange RNG/tactile/capteurs, SHA-256 et aperçu HMAC
   wallet.h                     Interface du moteur Bitcoin
   sd_export.h                  Types d’export et lecture Aurora Wallet
   ui.h                         État et parcours LVGL
 src/
-  main.cpp                     Initialisation écran, tactile et radios
+  main.cpp                     Initialisation CYD : écran, tactile et radios
   wallet.cpp                   BIP39, BIP32, adresses et autotests
   sd_export.cpp                Electrum et conteneur Aurora Wallet
   ui.cpp                       Interface française
@@ -716,14 +772,21 @@ tools/
   make_bitcoin_logo_asset.py   Conversion du logo
 tests/
   native/                     Tests de collecte avec matériel simulé
+  crypto/                     Codec V1/V2 et temporaires cryptographiques
+  ui/                         Parcours P4/CYD avec matériel simulé, lanceur run.py
+  memory/                     Effacement, cache et ordre de démarrage P4
+  storage/                    Durée de vie des tampons de fichiers
   release/verify.ps1          Cohérence de version, image fusionnée et SHA-256
+targets/waveshare_p4/
+  build.ps1                   Compilation P4 selon révision silicium
+  main/                       Initialisation P4, pilotes et nettoyage mémoire
 webflasher/
   index.html                  Installeur français publié sur GitHub Pages
   manifest.json               Image CYD 1.9.2 installée par défaut
   manifests/                  Choix CYD 1.7.5 et P4 par révision
   firmware/                   Images CYD/P4, archives et SHA256SUMS.txt
   CHANGELOG.md                Notes de version et état de validation
-platformio.ini                 Cible, dépendances et broches TFT
+platformio.ini                 Cible ESP32-2432S028R, dépendances et broches TFT
 README.md                      Ce guide
 ```
 

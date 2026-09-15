@@ -17,6 +17,10 @@
 #define LV_USE_LOG 0
 #define LV_USE_ASSERT_NULL 1
 #define LV_USE_ASSERT_MALLOC 1
+#if defined(AURORA_BOARD_CYD)
+#define LV_ASSERT_HANDLER_INCLUDE "cyd_security.h"
+#define LV_ASSERT_HANDLER auroraCydUiFailure();
+#endif
 #define LV_FONT_MONTSERRAT_10 0
 #define LV_FONT_MONTSERRAT_12 0
 #define LV_FONT_MONTSERRAT_14 1

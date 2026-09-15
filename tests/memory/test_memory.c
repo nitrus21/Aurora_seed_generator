@@ -30,6 +30,7 @@ static unsigned heapCalls, failHeapCall, mallocCalls, wipes;
 static bool failUiMalloc, dramPointer, externalPointer, cacheFailure;
 static bool interruptsDisabled, cpuStalled, freezeAvailable;
 static unsigned currentCore, msyncCalls, romCalls;
+static unsigned corruptSyncCall;
 static unsigned char *expectedSyncNext;
 static size_t expectedSyncRemaining;
 static uint32_t romMaps[2];
@@ -50,6 +51,7 @@ static void resetMock(void) {
     dramPointer = freezeAvailable = true;
     externalPointer = false;
     currentCore = msyncCalls = romCalls = 0;
+    corruptSyncCall = 0;
     expectedSyncNext = NULL; expectedSyncRemaining = 0;
     allocation_lock = 0;
     terminal_cleanup = false;
@@ -127,6 +129,8 @@ int esp_cache_msync(void *pointer, size_t size, int flags) {
         expectedSyncNext += size; expectedSyncRemaining -= size;
     }
     allBytes(pointer, size, 0); ++msyncCalls;
+    // Simulate a failed wipe/readback, including at the final byte of a block.
+    if (msyncCalls == corruptSyncCall) ((unsigned char *)pointer)[size - 1] = 0x7B;
     return cacheFailure ? -1 : ESP_OK;
 }
 void rv_utils_intr_global_disable(void) { interruptsDisabled = true; }
@@ -155,6 +159,7 @@ static void testStartup(void) {
     slot(80, MALLOC_CAP_INTERNAL, false); slot(32, MALLOC_CAP_INTERNAL, false);
     slot(256, MALLOC_CAP_INTERNAL, true); // Live SDK memory must remain untouched.
     slot(1, MALLOC_CAP_SPIRAM, false); // Tiny unusable tails are explicitly excluded.
+    memset(slots[0].bytes, 0, slots[0].size); // Already-zero blocks are still wiped/verified.
     size_t internal = 999, external = 999;
     assert(auroraStartupMemoryScrub(&internal, &external));
     assert(internal == 112 && external == 576 && heapCalls == 4 && msyncCalls == 8);
@@ -212,6 +217,43 @@ static void testZero(void) {
     puts("PASS: large unaligned buffer requests contiguous cache writebacks, each at most 64 KiB, through the final partial chunk.");
 }
 
+static void testStartupReadback(void) {
+    // Both payload and temporary chain metadata must be verified; either
+    // corruption must reset rather than permit the caller to start the UI.
+    for (unsigned failure = 1; failure <= 4; ++failure) {
+        resetMock();
+        slot(64, MALLOC_CAP_SPIRAM, false);
+        slot(64, MALLOC_CAP_INTERNAL, false);
+        corruptSyncCall = failure;
+        size_t internal, external;
+        if (setjmp(restartTarget) == 0) {
+            (void)auroraStartupMemoryScrub(&internal, &external);
+            assert(false && "Corrupt startup wipe must never reach display startup");
+        }
+        assert(terminal_cleanup && interruptsDisabled && cpuStalled && romCalls == 2);
+    }
+    resetMock();
+    static unsigned char large[131089];
+    memset(large, 0xA5, sizeof(large));
+    expectedSyncNext = large + 3; expectedSyncRemaining = 131077;
+    scrubAndVerifyOwned(large + 3, 131077);
+    assert(msyncCalls == 3 && expectedSyncRemaining == 0);
+    allBytes(large, 3, 0xA5); allBytes(large + 3, 131077, 0);
+    allBytes(large + 131080, 9, 0xA5);
+    expectedSyncNext = NULL;
+    for (unsigned failure = 1; failure <= 3; ++failure) {
+        resetMock(); memset(large, 0xA5, sizeof(large));
+        corruptSyncCall = failure;
+        if (setjmp(restartTarget) == 0) {
+            scrubAndVerifyOwned(large + 3, 131077);
+            assert(false && "Every chunk, including the short tail, must be verified");
+        }
+        assert(terminal_cleanup && msyncCalls == failure && romCalls == 2);
+        allBytes(large, 3, 0xA5); allBytes(large + 131080, 9, 0xA5);
+    }
+    puts("PASS: startup verifies each wiped payload/metadata; injected nonzero readback resets before UI; bounded chunks preserve adjacent bytes.");
+}
+
 static void testPanic(bool freeze) {
     resetMock();
     currentCore = freeze ? 0 : 1;
@@ -255,7 +297,7 @@ static void testFatalZero(void) {
 }
 
 int main(void) {
-    testStartup(); testStartupFailures(); testZero();
+    testStartup(); testStartupFailures(); testZero(); testStartupReadback();
     testPanic(true); testPanic(false); testFatalZero();
     puts("PASS: emergency callback and frozen registry wipe, no GUI/allocation/SDK-cache-lock calls after CPU stall.");
     puts("LIMIT: SDK stubs cannot establish physical cache writeback, DMA quiescence, watchdog timing or power-cut erasure.");

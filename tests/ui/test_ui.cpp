@@ -10,6 +10,7 @@
 #undef private
 #include "sensors.h"
 #include "secure_lvgl_memory.h"
+#include "platform/crypto.h"
 static unsigned wipedAllocations=0;
 extern "C" void auroraUiWipeAudit(const void *pointer,size_t size) {
   for(size_t i=0;i<size;++i) assert(static_cast<const uint8_t *>(pointer)[i]==0);
@@ -21,8 +22,16 @@ static WalletOutput importedWallet{};
 static AuroraWalletData importedData{};
 static bool importOk=false, exportOk=false;
 static unsigned exportCalls=0, xprvCalls=0, importCalls=0;
+static unsigned sessionReadCalls=0;
+static bool sessionReadOk=true;
+static bool sessionFileChanged=false;
+static uint32_t accountXprvDelayMs=0;
+static uint8_t mockFingerprint[32]{};
 static uint32_t lifecycleTick=0, operationDelayMs=0;
 static void consumeOperationDelay() { lifecycleTick+=operationDelayMs; operationDelayMs=0; }
+static void advanceBlockingDelay(uint32_t &delayMs) {
+  lifecycleTick+=delayMs; mock.time+=delayMs*1000; delayMs=0;
+}
 static bool sdReady=true;
 static unsigned sdChecks=0, sdFailOnCheck=0;
 bool auroraSdReady() { ++sdChecks; return sdReady && sdChecks!=sdFailOnCheck; }
@@ -31,6 +40,7 @@ WalletSelfTest WalletEngine::selfTest() { return WalletSelfTest::Ok; }
 bool WalletEngine::create(uint8_t, AddressKind, const char *, const uint8_t *, WalletOutput &) { consumeOperationDelay(); return true; }
 bool WalletEngine::restore(const char *, uint8_t, AddressKind, const char *, WalletOutput &out) { consumeOperationDelay(); out=importedWallet; return true; }
 bool WalletEngine::accountXprv(const WalletOutput &, const char *, char *out, size_t size) {
+  advanceBlockingDelay(accountXprvDelayMs);
   ++xprvCalls; strlcpy(out,"test-xprv",size); return true;
 }
 bool WalletEngine::rootXprvFromSeed(const uint8_t *,size_t,char *out,size_t size) {
@@ -47,16 +57,58 @@ uint8_t WalletEngine::bip39Suggestions(const char *, char *, size_t, uint8_t) { 
 const char *walletExportSuffix(WalletExportFormat kind) { return kind == WalletExportFormat::AuroraWallet ? ".aurora" : ".json"; }
 bool auroraWalletCryptoSelfTest() { return true; }
 void wipeAuroraWalletData(AuroraWalletData &data) { secureZero(&data, sizeof(data)); }
-WalletExportResult writeWalletExportFile(WalletExportFormat, const char *, const char *, const WalletExportData &data, char *path, size_t size) {
+WalletExportResult writeWalletExportFile(WalletExportFormat format, const char *, const char *, const WalletExportData &data, char *path, size_t size) {
   consumeOperationDelay();
-  ++exportCalls; assert(data.pin && auroraPinRecordValid(*data.pin));
+  ++exportCalls;
+  if(format==WalletExportFormat::AuroraWallet) assert(!data.pin);
   strlcpy(path,"/fixture.aurora",size); return exportOk && sdReady?WalletExportResult::Ok:WalletExportResult::NoCard;
 }
 AuroraWalletReadResult readAuroraWalletFile(const char *, const char *, AuroraWalletData &out) {
   consumeOperationDelay();
   ++importCalls;
+  wipeAuroraWalletData(out);
   if(!importOk || !sdReady) return AuroraWalletReadResult::NoCard;
   out=importedData; return AuroraWalletReadResult::Ok;
+}
+static void resetMockFileAccess() {
+  for(size_t i=0;i<32;++i) mockFingerprint[i]=static_cast<uint8_t>(0xa0+i);
+  sessionFileChanged=false; sessionReadOk=true;
+}
+AuroraWalletReadResult readAuroraWalletFileChecked(const char *name,const char *password,
+    AuroraWalletData &out,uint8_t *fingerprint,const uint8_t *expected) {
+  if(fingerprint) secureZero(fingerprint,32);
+  wipeAuroraWalletData(out);
+  if(expected) {
+    ++sessionReadCalls; consumeOperationDelay();
+    if(!sdReady || !sessionReadOk) return AuroraWalletReadResult::ReadFailed;
+    if(sessionFileChanged || memcmp(expected,mockFingerprint,32) ||
+       !password || strcmp(password,"test-password-only")) return AuroraWalletReadResult::AuthenticationFailed;
+    out=importedData;
+  } else {
+    const auto result=readAuroraWalletFile(name,password,out);
+    if(result!=AuroraWalletReadResult::Ok) return result;
+  }
+  if(fingerprint) memcpy(fingerprint,mockFingerprint,32);
+  return AuroraWalletReadResult::Ok;
+}
+WalletExportResult writeAuroraWalletFileVerified(const char *name,const char *password,
+    const WalletExportData &data,char *path,size_t size,uint8_t *fingerprint) {
+  if(fingerprint) secureZero(fingerprint,32);
+  const auto result=writeWalletExportFile(WalletExportFormat::AuroraWallet,name,password,data,path,size);
+  if(result!=WalletExportResult::Ok) return result;
+  importedData={}; importedData.fileVersion=1;
+  importedData.addressKind=data.addressKind; importedData.wordCount=data.wordCount;
+  strlcpy(importedData.addressType,data.addressType,sizeof(importedData.addressType));
+  strlcpy(importedData.derivationPath,data.derivationPath,sizeof(importedData.derivationPath));
+  strlcpy(importedData.mnemonic,data.mnemonic,sizeof(importedData.mnemonic));
+  strlcpy(importedData.passphrase,data.passphrase,sizeof(importedData.passphrase));
+  strlcpy(importedData.address,data.address,sizeof(importedData.address));
+  strlcpy(importedData.accountXpub,data.accountXpub,sizeof(importedData.accountXpub));
+  strlcpy(importedData.accountXprv,data.accountXprv,sizeof(importedData.accountXprv));
+  strlcpy(importedData.privateWif,data.privateWif,sizeof(importedData.privateWif));
+  strlcpy(importedData.receiveDescriptor,data.receiveDescriptor,sizeof(importedData.receiveDescriptor));
+  ++mockFingerprint[0]; if(fingerprint) memcpy(fingerprint,mockFingerprint,32);
+  return WalletExportResult::Ok;
 }
 AuroraWalletListResult listAuroraWalletFiles(char *out, size_t size, uint16_t &count) { if(size) out[0]=0; count=0; return AuroraWalletListResult::NoCard; }
 namespace AuroraSensors {
@@ -116,6 +168,7 @@ static void fixture(AuroraUI &ui) {
   strlcpy(ui.wallet_.address, "bc1qfixtureonlyneverusethisaddress0000000000000000", sizeof(ui.wallet_.address));
   strlcpy(ui.wallet_.accountXpub, "zpub-fixture-only-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789", sizeof(ui.wallet_.accountXpub));
   strlcpy(ui.wallet_.privateWif, "L1-fixture-only-not-a-real-private-key-0123456789", sizeof(ui.wallet_.privateWif));
+  strlcpy(ui.wallet_.privateDescriptor, "pkh(private-fixture-only)", sizeof(ui.wallet_.privateDescriptor));
   strlcpy(ui.wallet_.path, "m/84'/0'/0'/0/0", sizeof(ui.wallet_.path));
 }
 static void click(AuroraUI &ui, Action action) {
@@ -126,6 +179,7 @@ static void click(AuroraUI &ui, Action action) {
       lv_obj_send_event(child,LV_EVENT_CLICKED,nullptr); return;
     }
   }
+  fprintf(stderr,"Missing action %u on screen %u\n",unsigned(action),unsigned(ui.screen_));
   assert(false && "Expected button missing");
 }
 static lv_obj_t *actionButton(AuroraUI &ui, Action action) {
@@ -150,15 +204,62 @@ static void assertSessionWiped(const AuroraUI &ui) {
   zero(ui.restoreSuggestions_,sizeof(ui.restoreSuggestions_));
   zero(ui.verifySuggestions_,sizeof(ui.verifySuggestions_));
   zero(ui.umbrelRootXprv_,sizeof(ui.umbrelRootXprv_));
-  zero(&ui.exportPin_,sizeof(ui.exportPin_));
-  assert(!ui.sensitiveStateActive_ && !ui.protectedSession_ && !ui.pinGuard_.enabled());
+  zero(ui.sessionFingerprint_,sizeof(ui.sessionFingerprint_));
+  zero(ui.sessionBaseName_,sizeof(ui.sessionBaseName_));
+  assert(!ui.fileSession_ && !ui.privateLoaded_ && !ui.sessionHasPassphrase_);
+  assert(!ui.sensitiveStateActive_ && !ui.protectedSession_);
   assert(ui.access_==AuroraUI::Access::None && ui.requestedAccess_==AuroraUI::Access::None);
   assert(ui.fileOperation_==AuroraUI::FileOperation::None && !ui.fileOperationDueMs_);
-  assert(!ui.generationDueMs_ && !ui.entropyCollected_ && !ui.pinArea_);
+  assert(!ui.generationDueMs_ && !ui.entropyCollected_);
+}
+static void assertPrivateStateAbsent(const AuroraUI &ui) {
+  const auto zero=[](const void *data,size_t size) {
+    const auto *bytes=static_cast<const uint8_t *>(data);
+    for(size_t i=0;i<size;++i) assert(!bytes[i]);
+  };
+  zero(ui.wallet_.mnemonic,sizeof(ui.wallet_.mnemonic));
+  zero(ui.wallet_.privateWif,sizeof(ui.wallet_.privateWif));
+  zero(ui.wallet_.privateDescriptor,sizeof(ui.wallet_.privateDescriptor));
+  zero(ui.passphrase_,sizeof(ui.passphrase_));
+  zero(ui.filePassword_,sizeof(ui.filePassword_));
+  assert(!ui.privateLoaded_);
+}
+static void assertPublicFileSession(const AuroraUI &ui) {
+  assert(ui.wallet_.valid && ui.protectedSession_ && ui.fileSession_);
+  assertPrivateStateAbsent(ui);
+  const auto contains=[](const void *haystack,size_t length,const uint8_t *needle,size_t count) {
+    const auto *bytes=static_cast<const uint8_t *>(haystack);
+    for(size_t i=0;i+count<=length;++i) if(!memcmp(bytes+i,needle,count)) return true;
+    return false;
+  };
+  if(auroraPinRecordValid(importedData.pin))
+    assert(!contains(&ui,sizeof(ui),importedData.pin.verifier,sizeof(importedData.pin.verifier)));
+}
+static void prepareImportedFixture(AuroraUI &ui,const AuroraPinRecord &pin,const char *passphrase="") {
+  ui.closeSession(); fixture(ui); importedWallet=ui.wallet_;
+  importedData={}; importedData.fileVersion=2; importedData.pin=pin; importedData.wordCount=ui.words_;
+  importedData.addressKind=static_cast<uint8_t>(ui.wallet_.kind);
+  strlcpy(importedData.addressType,addressKindName(ui.wallet_.kind),sizeof(importedData.addressType));
+  strlcpy(importedData.mnemonic,ui.wallet_.mnemonic,sizeof(importedData.mnemonic));
+  strlcpy(importedData.passphrase,passphrase,sizeof(importedData.passphrase));
+  strlcpy(importedData.derivationPath,ui.wallet_.path,sizeof(importedData.derivationPath));
+  strlcpy(importedData.address,ui.wallet_.address,sizeof(importedData.address));
+  strlcpy(importedData.accountXpub,ui.wallet_.accountXpub,sizeof(importedData.accountXpub));
+  strlcpy(importedData.accountXprv,"test-xprv",sizeof(importedData.accountXprv));
+  strlcpy(importedData.privateWif,ui.wallet_.privateWif,sizeof(importedData.privateWif));
+  strlcpy(importedData.receiveDescriptor,ui.wallet_.watchDescriptor,sizeof(importedData.receiveDescriptor));
+  ui.show(AuroraUI::Screen::Mode); resetMockFileAccess();
+  importOk=true; sdReady=true;
+  strlcpy(ui.importBaseName_,"fixture",sizeof(ui.importBaseName_));
+  strlcpy(ui.filePassword_,"test-password-only",sizeof(ui.filePassword_));
+}
+static void runMockImport(AuroraUI &ui) {
+  ui.fileOperation_=AuroraUI::FileOperation::Import;
+  ui.show(AuroraUI::Screen::FileProcessing); ui.fileOperationDueMs_=millis(); ui.tick();
 }
 static void blocked(const AuroraUI &ui) {
   assert(ui.screen_==AuroraUI::Screen::SdRequired && !ui.keyboard_);
-  assert(!ui.passArea_ && !ui.passConfirmArea_ && !ui.pinArea_ && !ui.pinConfirmArea_);
+  assert(!ui.passArea_ && !ui.passConfirmArea_);
   assert(!ui.filePasswordArea_ && !ui.filePasswordConfirmArea_ && !ui.restoreWordArea_);
   for(auto *area:ui.verifyArea_) assert(!area);
 }
@@ -246,6 +347,147 @@ static void testTransientWordCopies(AuroraUI &ui) {
   puts("PASS: P4 word suggestions erased at screen changes and restore success; stale full phrases erased on back/count changes and reconstructed only after final word");
 }
 
+static void enterPrivatePassword(AuroraUI &ui,const char *password="test-password-only") {
+  assert(ui.screen_==AuroraUI::Screen::PrivatePassword);
+  lv_textarea_set_text(ui.filePasswordArea_,password);
+  lv_obj_send_event(ui.keyboard_,LV_EVENT_READY,nullptr);
+  if(ui.screen_==AuroraUI::Screen::FileProcessing) { mock.time+=101000; ui.tick(); }
+}
+static void testPasswordFileSessions(AuroraUI &ui) {
+  using Screen=AuroraUI::Screen;
+  AuroraPinRecord legacyPin{}; assert(auroraPinCreate("01234567",legacyPin));
+  for(uint8_t version:{1,2}) {
+    prepareImportedFixture(ui,legacyPin,"fixture-passphrase");
+    importedData.fileVersion=version;
+    if(version==1) secureZero(&importedData.pin,sizeof(importedData.pin));
+    runMockImport(ui); assert(ui.screen_==Screen::Info); assertPublicFileSession(ui);
+    for(Action action:{REVEAL_PRIVATE,SHOW_WORDS,SHOW_LOADED_PASSPHRASE}) {
+      auto *button=actionButton(ui,action); assert(button);
+      assert(lv_color_eq(lv_obj_get_style_bg_color(button,LV_PART_MAIN),DANGER));
+    }
+    auto *publicButton=actionButton(ui,TO_QR_ADDRESS); assert(publicButton);
+    assert(lv_color_eq(lv_obj_get_style_bg_color(publicButton,LV_PART_MAIN),SUCCESS));
+    snapshot(ui,"password-public-info.ppm");
+    for(auto destination:{Screen::Mnemonic,Screen::Verify,Screen::PassphraseReveal,
+        Screen::ExportWarning,Screen::ExportName,Screen::ExportPassword}) {
+      ui.show(destination); assert(ui.screen_==Screen::PrivatePassword);
+      assertPrivateStateAbsent(ui);
+      ui.show(Screen::Info); assertPublicFileSession(ui);
+    }
+    // Public metadata stays accessible without a secret or a PIN form.
+    click(ui,TO_QR_ADDRESS); assert(ui.screen_==Screen::Qr); assertPublicFileSession(ui);
+    click(ui,TO_INFO);
+    click(ui,SHOW_WORDS); assert(ui.screen_==Screen::PrivatePassword);
+    assertPublicFileSession(ui); snapshot(ui,"private-password.ppm");
+    enterPrivatePassword(ui,"wrong-password-only");
+    assert(ui.screen_==Screen::PrivatePassword && ui.importStatus_[0]); assertPublicFileSession(ui);
+    enterPrivatePassword(ui);
+    assert(ui.screen_==Screen::Mnemonic && ui.privateLoaded_ && ui.wallet_.mnemonic[0]);
+    assert(!ui.filePassword_[0]);
+    assert(!actionButton(ui,BACK_MODE_WIPE) && !actionButton(ui,BACK_ENTROPY));
+    auto *back=actionButton(ui,TO_INFO); assert(back);
+    assert(!strcmp(lv_label_get_text(lv_obj_get_child(back,0)),"RETOUR"));
+    const auto grant=ui.accessGrantedMs_;
+    click(ui,MNEMONIC_NEXT); assert(ui.mnemonicPage_==1 && ui.accessGrantedMs_==grant);
+    click(ui,TO_INFO); assertPublicFileSession(ui); assertDisplayReplaced(ui);
+    for(Action action:{SHOW_LOADED_PASSPHRASE,REVEAL_PRIVATE,SHOW_WORDS}) {
+      click(ui,action); assert(ui.screen_==Screen::PrivatePassword);
+      // Cancel destroys edited password copies too.
+      lv_textarea_set_text(ui.filePasswordArea_,"cancel-password-only");
+      lv_obj_send_event(ui.keyboard_,LV_EVENT_CANCEL,nullptr);
+      assert(ui.screen_==Screen::Info); assertPublicFileSession(ui); assertDisplayReplaced(ui);
+      click(ui,action); enterPrivatePassword(ui);
+      assert(ui.privateLoaded_ && !ui.filePassword_[0]);
+      mock.time+=15001000; ui.tick();
+      assert(ui.screen_==Screen::Info); assertPublicFileSession(ui);
+    }
+    // Switching private categories cannot reuse the preceding authorization.
+    click(ui,SHOW_WORDS); enterPrivatePassword(ui);
+    ui.show(Screen::PassphraseReveal);
+    assert(ui.screen_==Screen::PrivatePassword); assertPublicFileSession(ui);
+    enterPrivatePassword(ui); assert(ui.screen_==Screen::PassphraseReveal);
+    click(ui,TO_INFO);
+    // No SD / substituted file / authenticated but inconsistent wallet.
+    click(ui,SHOW_WORDS); sdReady=false;
+    lv_textarea_set_text(ui.filePasswordArea_,"test-password-only");
+    ui.submitPrivatePassword(); blocked(ui); assertPrivateStateAbsent(ui);
+    sdReady=true; click(ui,RETRY_SD); assert(ui.screen_==Screen::PrivatePassword);
+    for(unsigned failure=0;failure<3;++failure) {
+      sessionFileChanged=failure==0; sessionReadOk=failure!=1;
+      const char original=importedData.accountXprv[0];
+      if(failure==2) importedData.accountXprv[0]='X';
+      enterPrivatePassword(ui); assert(ui.screen_==Screen::PrivatePassword);
+      assertPrivateStateAbsent(ui);
+      importedData.accountXprv[0]=original;
+    }
+    sessionFileChanged=false; sessionReadOk=true;
+    enterPrivatePassword(ui); assert(ui.screen_==Screen::Mnemonic);
+    click(ui,TO_INFO); assertPublicFileSession(ui);
+    // Slow work cannot renew a private grant or the idle deadline.
+    click(ui,SHOW_WORDS); accountXprvDelayMs=AuroraUI::SECRET_VISIBLE_MS;
+    enterPrivatePassword(ui); assert(ui.screen_==Screen::Info); assertPrivateStateAbsent(ui);
+    click(ui,SHOW_WORDS); accountXprvDelayMs=AuroraUI::SESSION_IDLE_MS;
+    enterPrivatePassword(ui); assert(ui.screen_==Screen::Mode); assertSessionWiped(ui);
+  }
+  prepareImportedFixture(ui,legacyPin); runMockImport(ui);
+  auto *noPassphrase=actionButton(ui,SHOW_LOADED_PASSPHRASE); assert(noPassphrase);
+  assert(lv_obj_has_state(noPassphrase,LV_STATE_DISABLED));
+  assert(!lv_obj_has_flag(noPassphrase,LV_OBJ_FLAG_HIDDEN));
+  // A direct protected write with no password authorization must do nothing.
+  const unsigned blockedWrites=exportCalls,blockedDerivations=xprvCalls;
+  ui.performWalletExport();
+  assert(!ui.exportSucceeded_ && exportCalls==blockedWrites && xprvCalls==blockedDerivations);
+  assertPrivateStateAbsent(ui);
+  // New file: password+confirmation directly schedules export, no PIN.
+  ui.closeSession(); fixture(ui); importedWallet=ui.wallet_;
+  strlcpy(ui.passphrase_,"fixture-passphrase",sizeof(ui.passphrase_));
+  exportOk=true; sdReady=true;
+  ui.show(Screen::ExportPassword);
+  lv_textarea_set_text(ui.filePasswordArea_,"test-password-only");
+  lv_textarea_set_text(ui.filePasswordConfirmArea_,"test-password-only");
+  lv_obj_send_event(ui.keyboard_,LV_EVENT_READY,nullptr);
+  assert(ui.screen_==Screen::FileProcessing);
+  mock.time+=101000; ui.tick();
+  assert(ui.exportSucceeded_ && ui.screen_==Screen::Info && importedData.fileVersion==1);
+  assertPublicFileSession(ui);
+  // Re-export needs the OLD file password, then asks separately for a NEW one.
+  ui.show(Screen::ExportName); assert(ui.screen_==Screen::PrivatePassword);
+  enterPrivatePassword(ui); assert(ui.screen_==Screen::ExportName);
+  ui.show(Screen::ExportPassword); assert(ui.privateLoaded_);
+  lv_textarea_set_text(ui.filePasswordArea_,"different-password-only");
+  lv_textarea_set_text(ui.filePasswordConfirmArea_,"mismatched-password-only");
+  lv_obj_send_event(ui.keyboard_,LV_EVENT_READY,nullptr);
+  assert(ui.screen_==Screen::ExportPassword && !ui.filePassword_[0]);
+  // Failed write and expiry both return to public, empty private state.
+  exportOk=false;
+  lv_textarea_set_text(ui.filePasswordArea_,"test-password-only");
+  lv_textarea_set_text(ui.filePasswordConfirmArea_,"test-password-only");
+  lv_obj_send_event(ui.keyboard_,LV_EVENT_READY,nullptr);
+  mock.time+=101000; ui.tick(); assertPrivateStateAbsent(ui);
+  ui.show(Screen::Info);
+  ui.show(Screen::ExportWarning); enterPrivatePassword(ui);
+  const unsigned before=exportCalls;
+  accountXprvDelayMs=AuroraUI::EXPORT_AUTH_MS;
+  ui.performWalletExport(); assert(exportCalls==before); assertPrivateStateAbsent(ui);
+  ui.closeSession();
+  // Explicit Electrum plaintext export remains available from an unsaved wallet.
+  fixture(ui); ui.show(Screen::ExportName);
+  ui.exportFormat_=WalletExportFormat::ElectrumPrivate; exportOk=true;
+  ui.performWalletExport(); assert(ui.exportSucceeded_);
+  ui.closeSession(); assertSessionWiped(ui);
+  for(unsigned route=0;route<4;++route) {
+    prepareImportedFixture(ui,legacyPin); runMockImport(ui);
+    click(ui,SHOW_WORDS); enterPrivatePassword(ui);
+    if(route==0) ui.closeSession();
+    if(route==1) { mock.time+=120001000; ui.tick(); }
+    if(route==2) { ui.begin(); ui.selfTestPending_=false; }
+    if(route==3) { ui.emergencyWipeSecrets(); ui.clear(); }
+    assertSessionWiped(ui); assertDisplayReplaced(ui);
+  }
+  puts("PASS: password-only V1/V2 import, private reauthentication, no retained password/PIN/key/capsule, cancellation/expiry/lock/boot cleanup");
+  puts("PASS: file identity binding, SD removal/errors, new pinless export and existing Electrum exception");
+}
+
 static void testSensitiveLifecycle(AuroraUI &ui) {
   using Screen=AuroraUI::Screen;
   AuroraSensors::acknowledge=true;
@@ -268,7 +510,6 @@ static void testSensitiveLifecycle(AuroraUI &ui) {
     if(ui.restoreWordArea_) lv_textarea_set_text(ui.restoreWordArea_,"abandon");
     if(ui.passArea_) lv_textarea_set_text(ui.passArea_,"fixture-passphrase");
     if(ui.filePasswordArea_) lv_textarea_set_text(ui.filePasswordArea_,"fixture-password");
-    if(ui.pinArea_) lv_textarea_set_text(ui.pinArea_,"1234");
     strlcpy(ui.restoreWords_[0],"ability",sizeof(ui.restoreWords_[0]));
     strlcpy(ui.restoreMnemonic_,"abandon ability",sizeof(ui.restoreMnemonic_));
     strlcpy(ui.umbrelRootXprv_,"test-only-xprv",sizeof(ui.umbrelRootXprv_));
@@ -314,7 +555,7 @@ static void testSensitiveLifecycle(AuroraUI &ui) {
 
   // Screen transitions must check expiration themselves, before building
   // another sensitive page, without waiting for the next periodic tick.
-  for(auto destination:{Screen::Mnemonic,Screen::PinSetup,Screen::Info,Screen::GenerationError,Screen::SdRequired}) {
+  for(auto destination:{Screen::Mnemonic,Screen::PrivatePassword,Screen::Info,Screen::GenerationError,Screen::SdRequired}) {
     ui.show(Screen::RestoreWords); fixture(ui);
     lifecycleTick+=AuroraUI::SESSION_IDLE_MS;
     ui.show(destination); assert(ui.screen_==Screen::Mode); assertSessionWiped(ui);
@@ -352,7 +593,7 @@ static void testSensitiveLifecycle(AuroraUI &ui) {
   for(auto operation:{AuroraUI::FileOperation::Import,AuroraUI::FileOperation::Export}) {
     for(bool succeeds:{false,true}) {
       ui.closeSession(); fixture(ui);
-      importOk=exportOk=succeeds; ui.exportPin_=importedData.pin;
+      importOk=exportOk=succeeds;
       ui.fileOperation_=operation; ui.show(Screen::FileProcessing); ui.fileOperationDueMs_=millis();
       const auto calls=operation==AuroraUI::FileOperation::Import?importCalls:exportCalls;
       operationDelayMs=AuroraUI::SESSION_IDLE_MS;
@@ -401,7 +642,7 @@ static void testSensitiveLifecycle(AuroraUI &ui) {
   ui.closeSession(); assert(!mock.rngEnabled);
   lv_tick_set_cb([]() -> uint32_t { return millis(); });
   lv_disp_trig_activity(nullptr);
-  puts("PASS: all P4 workflows expire from entry at 120 s, including pre-PIN words/passwords, errors, back routes, deadline and tick wraparound");
+  puts("PASS: all P4 workflows expire from entry at 120 s, including initial words/passwords, errors, back routes, deadline and tick wraparound");
   puts("PASS: explicit/idle lock wipes immediately during stalled sensor shutdown; deferred secret screen and operations cannot resume");
   puts("PASS: security-error/startup cleanup and memory-only emergency wipe of fixed owned buffers");
   puts("PASS: elapsed deadline inside blocking generation/restore/AEZEED/import/export discards returned secrets before the next screen");
@@ -611,11 +852,8 @@ int main() {
   assert(lv_obj_get_style_text_font(ui.passArea_,LV_PART_MAIN)==&aurora_font_24);
   lv_obj_update_layout(ui.passArea_); assert(lv_obj_get_height(ui.passArea_)>=60);
   lv_obj_send_event(ui.keyboard_,LV_EVENT_READY,nullptr);
-  mock.time+=101000; ui.tick(); assert(ui.screen_==Screen::PinSetup && ui.umbrelRootXprv_[0]);
-  lv_textarea_set_text(ui.pinArea_,"2468"); lv_textarea_set_text(ui.pinConfirmArea_,"2468");
-  ui.submitPinSetup(); assert(ui.screen_==Screen::UmbrelResult && ui.pinGuard_.enabled());
-  click(ui,UMBREL_SHOW_XPRV); assert(ui.screen_==Screen::PinUnlock);
-  lv_textarea_set_text(ui.pinArea_,"2468"); ui.submitPinUnlock(); assert(ui.screen_==Screen::UmbrelQr);
+  mock.time+=101000; ui.tick(); assert(ui.screen_==Screen::UmbrelResult && ui.umbrelRootXprv_[0]);
+  click(ui,UMBREL_SHOW_XPRV); assert(ui.screen_==Screen::UmbrelQr);
   strlcpy(ui.umbrelRootXprv_,
       "xprv9s21ZrQH143K3-fixture-only-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-012345",
       sizeof(ui.umbrelRootXprv_));
@@ -637,11 +875,11 @@ int main() {
   }
   assert(umbrelQrCount==1 && umbrelValueCount==1);
   snapshot(ui,"umbrel-qr.ppm");
-  mock.time+=15001000; ui.tick(); assert(ui.screen_==Screen::UmbrelResult);
-  click(ui,LOCK_SESSION); assert(ui.screen_==Screen::Mode && !ui.umbrelRootXprv_[0]);
+  mock.time+=15001000; ui.tick();
+  assert(ui.screen_==Screen::Mode && !ui.umbrelRootXprv_[0]);
   for(auto screen:{Screen::Setup,Screen::RestoreSetup,Screen::ImportName,
                   Screen::Passphrase,Screen::RestoreWords,Screen::RestorePassphrase,
-                  Screen::ImportPassword,Screen::PinSetup}) {
+                  Screen::RestoreSetup}) {
     ui.closeSession(); const unsigned before=sdChecks; ui.show(screen);
     assert(ui.screen_==screen && sdChecks==before);
   }
@@ -680,7 +918,7 @@ int main() {
       Screen::UmbrelWarning, Screen::UmbrelPassphrase, Screen::UmbrelProcessing, Screen::UmbrelResult,
       Screen::UmbrelQr, Screen::Generating, Screen::FileProcessing, Screen::GenerationError,
       Screen::SecurityError, Screen::ExportWarning, Screen::ExportName, Screen::ExportPassword,
-      Screen::Wipe, Screen::PinSetup, Screen::PinUnlock, Screen::SdRequired}) {
+      Screen::Wipe, Screen::SdRequired}) {
     ui.show(screen); fixture(ui); lv_obj_update_layout(ui.root_);
     assert(lv_obj_get_width(ui.root_) == 480 && lv_obj_get_height(ui.root_) == 800);
     assertHeaderSeparation(ui);
@@ -778,182 +1016,10 @@ int main() {
     sdReady=true; click(ui,RETRY_SD); assert(ui.screen_==screen && !lv_textarea_get_text(ui.filePasswordArea_)[0]);
     ui.closeSession();
   }
-  fixture(ui); ui.pinForExport_=true;
-  strlcpy(ui.filePassword_,"test-password-only",sizeof(ui.filePassword_));
-  ui.show(Screen::PinSetup);
-  lv_textarea_set_text(ui.pinArea_,"1234"); lv_textarea_set_text(ui.pinConfirmArea_,"1234");
-  sdReady=false; ui.submitPinSetup(); blocked(ui);
-  assert(ui.afterSd_==Screen::ExportPassword && !ui.filePassword_[0] && !exportCalls);
-  assert(!auroraPinRecordValid(ui.exportPin_) && !ui.pinGuard_.enabled());
-  sdReady=true; click(ui,RETRY_SD); assert(ui.screen_==Screen::ExportPassword);
-  ui.closeSession();
-  // Removal between successful validation and the delayed operation screen.
-  fixture(ui); ui.pinForExport_=true; ui.show(Screen::PinSetup);
-  strlcpy(ui.filePassword_,"test-password-only",sizeof(ui.filePassword_));
-  lv_textarea_set_text(ui.pinArea_,"1234"); lv_textarea_set_text(ui.pinConfirmArea_,"1234");
-  sdFailOnCheck=sdChecks+2; ui.submitPinSetup(); blocked(ui);
-  assert(ui.afterSd_==Screen::ExportPassword && !ui.fileOperationDueMs_ && !ui.filePassword_[0]);
-  assert(!auroraPinRecordValid(ui.exportPin_) && !exportCalls);
-  sdFailOnCheck=0; ui.closeSession();
-  // Import uses the existing reader's inline error, not the save-only dialog.
-  ui.show(Screen::ImportPassword); lv_textarea_set_text(ui.filePasswordArea_,"test-password-only");
-  sdReady=false; offlineChecks=sdChecks;
-  lv_obj_send_event(ui.keyboard_,LV_EVENT_READY,nullptr);
-  assert(ui.screen_==Screen::FileProcessing && sdChecks==offlineChecks);
-  mock.time+=101000; ui.tick();
-  assert(importCalls==1 && ui.screen_==Screen::ImportPassword && ui.importStatus_[0] && !ui.filePassword_[0]);
-  sdReady=true; ui.closeSession();
-  fixture(ui); strlcpy(ui.passphrase_,"fixture-passphrase",sizeof(ui.passphrase_));
-  AuroraPinRecord pin{}; assert(auroraPinCreate("01234567",pin));
-  ui.pinGuard_.begin(pin); ui.protectedSession_=ui.loadedWallet_=true;
-  lv_disp_trig_activity(nullptr);
-  ui.show(Screen::Info); snapshot(ui,"protected-info.ppm");
-  const auto expectButton=[&](Action action,const char *text,lv_color_t color) {
-    auto *b=actionButton(ui,action); assert(b);
-    assert(!strcmp(lv_label_get_text(lv_obj_get_child(b,0)),text));
-    assert(lv_color_eq(lv_obj_get_style_bg_color(b,LV_PART_MAIN),color));
-  };
-  expectButton(TO_QR_ADDRESS,"CLÉ PUBLIQUE",SUCCESS);
-  expectButton(REVEAL_PRIVATE,"CLÉ PRIVÉE",DANGER);
-  expectButton(SHOW_WORDS,"MOTS",DANGER);
-  expectButton(SHOW_LOADED_PASSPHRASE,"PASSPHRASE",DANGER);
-  expectButton(TO_BACKUP,"EXPORTER",ORANGE);
-  click(ui,TO_QR_ADDRESS); assert(ui.screen_==Screen::Qr);
-  click(ui,TO_QR_PUBLIC); assert(ui.screen_==Screen::Qr);
-  click(ui,TO_INFO); assert(ui.screen_==Screen::Info);
-  secureZero(ui.passphrase_,sizeof(ui.passphrase_)); ui.show(Screen::Info);
-  assert(lv_obj_has_state(actionButton(ui,SHOW_LOADED_PASSPHRASE),LV_STATE_DISABLED));
-  assert(!lv_obj_has_flag(actionButton(ui,SHOW_LOADED_PASSPHRASE),LV_OBJ_FLAG_HIDDEN));
-  click(ui,SHOW_LOADED_PASSPHRASE); assert(ui.screen_==Screen::Info && !ui.pinArea_);
-  snapshot(ui,"protected-info-no-passphrase.ppm");
-  strlcpy(ui.passphrase_,"fixture-passphrase",sizeof(ui.passphrase_)); ui.show(Screen::Info);
-  assert(!lv_obj_has_state(actionButton(ui,SHOW_LOADED_PASSPHRASE),LV_STATE_DISABLED));
-  // Created and reopened wallets use the same review screen, never the wizard.
-  for(bool loaded:{false,true}) {
-    ui.loadedWallet_=loaded; click(ui,SHOW_WORDS); assert(ui.screen_==Screen::PinUnlock);
-    lv_textarea_set_text(ui.pinArea_,"01234567"); ui.submitPinUnlock();
-    assert(ui.screen_==Screen::Mnemonic && ui.mnemonicPage_==0);
-    assert(!actionButton(ui,BACK_MODE_WIPE) && !actionButton(ui,BACK_ENTROPY));
-    lv_obj_update_layout(ui.root_);
-    unsigned headerItems=0;
-    for(uint32_t i=0;i<lv_obj_get_child_cnt(ui.root_);++i) {
-      auto *child=lv_obj_get_child(ui.root_,i);
-      if(lv_obj_get_y(child)>=100) continue;
-      assert(lv_obj_check_type(child,&lv_label_class));
-      assert(!strcmp(lv_label_get_text(child),"Phrase de récupération"));
-      ++headerItems;
-    }
-    assert(headerItems==1);
-    expectButton(TO_INFO,"RETOUR",ORANGE);
-    snapshot(ui,"protected-words-page-1.ppm");
-    const auto grant=ui.accessGrantedMs_;
-    click(ui,MNEMONIC_NEXT); assert(ui.mnemonicPage_==1 && ui.accessGrantedMs_==grant);
-    assert(actionButton(ui,MNEMONIC_PREVIOUS) && !actionButton(ui,SHOW_LOADED_PASSPHRASE));
-    snapshot(ui,"protected-words-page-2.ppm");
-    click(ui,TO_INFO); assert(ui.screen_==Screen::Info && ui.access_==AuroraUI::Access::None);
-    click(ui,SHOW_WORDS); assert(ui.screen_==Screen::PinUnlock && ui.mnemonicPage_==0);
-    lv_obj_send_event(ui.keyboard_,LV_EVENT_CANCEL,nullptr);
-  }
-  ui.words_=12; click(ui,SHOW_WORDS);
-  lv_textarea_set_text(ui.pinArea_,"01234567"); ui.submitPinUnlock();
-  assert(!actionButton(ui,MNEMONIC_NEXT) && !actionButton(ui,MNEMONIC_PREVIOUS));
-  expectButton(TO_INFO,"RETOUR",ORANGE); click(ui,TO_INFO); ui.words_=24;
-  click(ui,LOCK_SESSION); assert(ui.screen_==Screen::Mode); assertSessionWiped(ui);
-  assertDisplayReplaced(ui);
-  fixture(ui); strlcpy(ui.passphrase_,"fixture-passphrase",sizeof(ui.passphrase_));
-  ui.pinGuard_.begin(pin); ui.protectedSession_=ui.loadedWallet_=true;
-  lv_disp_trig_activity(nullptr); ui.show(Screen::Info);
-  for(auto screen:{Screen::Mnemonic,Screen::PassphraseReveal,Screen::Verify,
-                   Screen::ExportWarning,Screen::ExportName,Screen::ExportPassword}) {
-    ui.show(screen); assert(ui.screen_==Screen::PinUnlock);
-    ui.show(Screen::Info); assert(ui.access_==AuroraUI::Access::None);
-  }
-  ui.qrContent_=AuroraUI::QrContent::PrivateKey; ui.show(Screen::Qr);
-  assert(ui.screen_==Screen::PinUnlock); snapshot(ui,"pin-unlock.ppm");
-  lv_textarea_set_text(ui.pinArea_,"0000"); ui.submitPinUnlock();
-  assert(ui.pinGuard_.failures()==1);
-  lv_obj_send_event(ui.keyboard_,LV_EVENT_CANCEL,nullptr);
-  assert(ui.screen_==Screen::Info);
-  ui.show(Screen::Mnemonic);
-  assert(ui.pinGuard_.failures()==1); mock.time+=1000000;
-  sdReady=false; offlineChecks=sdChecks;
-  lv_textarea_set_text(ui.pinArea_,"01234567"); lv_obj_send_event(ui.keyboard_,LV_EVENT_READY,nullptr);
-  assert(ui.screen_==Screen::Mnemonic && ui.pinGuard_.failures()==1);
-  assert(sdChecks==offlineChecks);
-  ui.show(Screen::PassphraseReveal); assert(ui.screen_==Screen::PinUnlock);
-  lv_textarea_set_text(ui.pinArea_,"01234567"); ui.submitPinUnlock();
-  assert(ui.screen_==Screen::PassphraseReveal);
-  mock.time+=15001000; ui.tick(); assert(ui.screen_==Screen::Info && !ui.passArea_);
-  assert(ui.access_==AuroraUI::Access::None && ui.wallet_.valid);
-  assertDisplayReplaced(ui);
-  ui.show(Screen::Mnemonic); lv_textarea_set_text(ui.pinArea_,"0000"); ui.submitPinUnlock();
-  mock.time+=1000000; lv_textarea_set_text(ui.pinArea_,"0000"); ui.submitPinUnlock();
-  assert(ui.screen_==Screen::Mode && !ui.wallet_.valid && !ui.protectedSession_ && !ui.pinGuard_.enabled());
-  assert(!ui.passphrase_[0] && !ui.wallet_.mnemonic[0] && !ui.wallet_.privateWif[0]);
-  assertSessionWiped(ui); assertDisplayReplaced(ui);
-  fixture(ui); ui.protectedSession_=true; ui.legacyImported_=true;
-  ui.show(Screen::Mnemonic); assert(ui.screen_==Screen::PinSetup);
-  snapshot(ui,"pin-setup.ppm");
-  lv_textarea_set_text(ui.pinArea_,"1234"); lv_textarea_set_text(ui.pinConfirmArea_,"1235");
-  ui.submitPinSetup(); assert(!ui.pinGuard_.enabled());
-  lv_textarea_set_text(ui.pinArea_,"1234"); lv_textarea_set_text(ui.pinConfirmArea_,"1234");
-  ui.submitPinSetup(); assert(ui.screen_==Screen::Info && ui.pinGuard_.enabled());
-  assert(!sdReady && sdChecks==offlineChecks); // Session PIN also works offline.
-  mock.time+=120001000; ui.tick(); assert(ui.screen_==Screen::Mode && !ui.wallet_.valid);
-  assertSessionWiped(ui);
-  assertDisplayReplaced(ui);
-  sdReady=true;
-  fixture(ui); importedWallet=ui.wallet_;
-  importedData.fileVersion=2; importedData.pin=pin; importedData.wordCount=24;
-  importedData.addressKind=static_cast<uint8_t>(ui.wallet_.kind);
-  strlcpy(importedData.addressType,addressKindName(ui.wallet_.kind),sizeof(importedData.addressType));
-  strlcpy(importedData.mnemonic,ui.wallet_.mnemonic,sizeof(importedData.mnemonic));
-  strlcpy(importedData.derivationPath,ui.wallet_.path,sizeof(importedData.derivationPath));
-  strlcpy(importedData.address,ui.wallet_.address,sizeof(importedData.address));
-  strlcpy(importedData.accountXpub,ui.wallet_.accountXpub,sizeof(importedData.accountXpub));
-  strlcpy(importedData.accountXprv,"test-xprv",sizeof(importedData.accountXprv));
-  strlcpy(importedData.privateWif,ui.wallet_.privateWif,sizeof(importedData.privateWif));
-  strlcpy(importedData.receiveDescriptor,ui.wallet_.watchDescriptor,sizeof(importedData.receiveDescriptor));
-  ui.show(Screen::Mode); importOk=true;
-  ui.fileOperation_=AuroraUI::FileOperation::Import;
-  ui.show(Screen::FileProcessing); ui.fileOperationDueMs_=millis(); ui.tick();
-  assert(ui.screen_==Screen::Info && ui.protectedSession_ && ui.pinGuard_.enabled());
-  const unsigned derivations=xprvCalls;
-  ui.performWalletExport(); assert(!exportCalls && xprvCalls==derivations);
-  ui.show(Screen::ExportName); assert(ui.screen_==Screen::PinUnlock);
-  lv_textarea_set_text(ui.pinArea_,"0000"); ui.submitPinUnlock();
-  assert(ui.pinGuard_.failures()==1); mock.time+=1000000;
-  lv_textarea_set_text(ui.pinArea_,"01234567"); sdReady=false; ui.submitPinUnlock(); blocked(ui);
-  assert(ui.afterSd_==Screen::ExportName && ui.pinGuard_.failures()==1);
-  assert(ui.access_==AuroraUI::Access::None);
-  sdReady=true; click(ui,RETRY_SD);
-  assert(ui.screen_==Screen::PinUnlock && !lv_textarea_get_text(ui.pinArea_)[0]);
-  lv_textarea_set_text(ui.pinArea_,"01234567"); ui.submitPinUnlock();
-  assert(ui.screen_==Screen::ExportName);
-  ui.pinForExport_=true; ui.show(Screen::PinSetup);
-  lv_textarea_set_text(ui.pinArea_,"9876"); lv_textarea_set_text(ui.pinConfirmArea_,"9876");
-  exportOk=true; ui.submitPinSetup(); mock.time+=101000; ui.tick();
-  assert(exportCalls==1 && ui.screen_==Screen::Info && !ui.filePassword_[0]);
-  assert(auroraPinVerify("9876",ui.pinGuard_.record()) && !auroraPinRecordValid(ui.exportPin_));
-  ui.show(Screen::ExportWarning); lv_textarea_set_text(ui.pinArea_,"9876"); ui.submitPinUnlock();
-  mock.time+=120001000; ui.performWalletExport(); assert(exportCalls==1);
-  ui.closeSession(); importedData.fileVersion=1; importedData.pin={};
-  ui.fileOperation_=AuroraUI::FileOperation::Import;
-  ui.show(Screen::FileProcessing); ui.fileOperationDueMs_=millis(); ui.tick();
-  assert(ui.screen_==Screen::PinSetup && ui.legacyImported_);
-  ui.closeSession(); importedData.fileVersion=2; importedData.pin=pin;
-  importedData.address[0]='x';
-  assert(!ui.performWalletImport() && !ui.wallet_.valid && !ui.passphrase_[0]);
-  fixture(ui); ui.protectedSession_=true; ui.pinGuard_.begin(pin);
-  lv_disp_trig_activity(nullptr); sdReady=false; ui.show(Screen::Backup); blocked(ui);
-  mock.time+=120001000; ui.tick();
-  assert(ui.screen_==Screen::Mode && !ui.wallet_.valid && !ui.pinGuard_.enabled());
+  testPasswordFileSessions(ui);
   sdReady=true;
   testTransientWordCopies(ui);
   testSensitiveLifecycle(ui);
-  puts("PASS: V2 import opens public info, V1 requires PIN setup, actual export entry point enforces grant and promotes new file PIN only on success");
-  puts("PASS: centered P4 logo and 4-button menu including Umbrel recovery, offline creation/restoration/session PIN, SD required only for save/export");
-  puts("PASS: passphrase confirmation, per-action PIN, persistent failure count, 3 errors close/wipe, secret/session timeouts, mandatory legacy PIN");
   assert(wipedAllocations>1000);
   puts("PASS: LVGL free/realloc allocations wiped before release, including earlier edited text copies");
   puts("PASS: native 480x800 screens, portrait collection, threshold, sensor stop interlock, cancel/restart");

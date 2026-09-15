@@ -13,10 +13,10 @@ class AuroraUI {
   void onTouchSample(int16_t x, int16_t y, uint16_t pressure);
 #if defined(AURORA_BOARD_P4)
   void refreshDisplayAfterClear();
+#endif
   // Caller must quiesce tasks before terminal-failure use. No LVGL calls,
   // allocation, sensor/peripheral access, or release of dynamic buffers.
   void emergencyWipeSecrets() noexcept;
-#endif
 
  private:
   enum class Screen : uint8_t {
@@ -25,9 +25,11 @@ class AuroraUI {
     UmbrelWarning, UmbrelPassphrase, UmbrelProcessing, UmbrelResult, UmbrelQr,
     Setup, Passphrase, Entropy, Generating, FileProcessing, GenerationError,
     SecurityError, Mnemonic, PassphraseReveal, Verify, Info, Qr, Backup, ExportWarning,
-    ExportName, ExportPassword, Wipe, PinSetup, PinUnlock, SdRequired
+    ExportName, ExportPassword, Wipe,
+    PrivatePassword,
+    SdRequired
   };
-  enum class FileOperation : uint8_t { None, Export, Import };
+  enum class FileOperation : uint8_t { None, Export, Import, PrivateRead };
   enum class QrContent : uint8_t { Address, AccountXpub, PrivateKey };
   void show(Screen screen);
   void clear();
@@ -53,8 +55,6 @@ class AuroraUI {
   void buildExportPassword(); void buildWipe();
   void buildPassphraseFields(bool restoring);
   bool confirmPassphrase();
-  void buildPinSetup(); void buildPinUnlock();
-  void submitPinSetup(); void submitPinUnlock();
   bool needsSd(Screen screen) const;
   bool ensureSd(Screen resume);
   void buildSdRequired();
@@ -63,17 +63,29 @@ class AuroraUI {
   enum class Access : uint8_t { None, Words, Passphrase, PrivateQr, Export };
   Access accessFor(Screen screen) const;
   bool authorized(Access access) const;
+  void wipeFileCredentials();
+  bool hasPassphrase() const;
   void revokeAccess();
   bool generate(); void selectVerifyWords(); bool verifyWords();
   bool renderQr(lv_obj_t *parent, const char *data, int size = 158, int x = 6, int y = 42);
   void performWalletExport(); bool performWalletImport();
   static void event(lv_event_t *e);
+  void dropPrivateState();
+  void startFileSession(const uint8_t fingerprint[32], const char *baseName);
+  bool loadPrivateWallet();
+  void submitPrivatePassword();
+  // Public identity only: no password, PIN verifier, capsule or file key.
+  uint8_t sessionFingerprint_[32]{};
+  bool fileSession_ = false;
+  bool privateLoaded_ = false;
+  bool sessionHasPassphrase_ = false;
+  char sessionBaseName_[25]{};
+  // Sticky for the entire workflow, including initial inputs and error pages.
+  // Only wiping the session ends it; screen navigation never renews its timer.
+  bool sensitiveStateActive_ = false;
 #if defined(AURORA_BOARD_P4)
   void buildPortraitEntropy();
   void updatePortraitSensors();
-  // Sticky for the entire workflow, including pre-PIN inputs and error pages.
-  // Only wiping the session ends it; screen navigation never renews its timer.
-  bool sensitiveStateActive_ = false;
   bool displayRefreshPending_ = false;
   bool sensorStopPending_ = false;
   Screen afterSensorStop_ = Screen::Mode;
@@ -92,25 +104,17 @@ class AuroraUI {
   WalletEngine engine_;
   WalletOutput wallet_{};
   TouchEntropy entropy_;
-  AuroraPinGuard pinGuard_;
-  AuroraPinRecord exportPin_{};
   bool protectedSession_ = false;
-  bool legacyImported_ = false;
-  bool pinForExport_ = false;
   bool entropyCollected_ = false;
   bool exportSucceeded_ = false;
   Access access_ = Access::None;
   Access requestedAccess_ = Access::None;
-  Screen afterPin_ = Screen::Info;
+  Screen afterAuthentication_ = Screen::Info;
   uint32_t accessGrantedMs_ = 0;
-  uint32_t pinRetryMs_ = 0;
-  bool pinRetryPending_ = false;
   static constexpr uint32_t SECRET_VISIBLE_MS = 15000;
   static constexpr uint32_t SESSION_IDLE_MS = 120000;
   static constexpr uint32_t EXPORT_AUTH_MS = 120000;
   lv_obj_t *passConfirmArea_ = nullptr;
-  lv_obj_t *pinArea_ = nullptr;
-  lv_obj_t *pinConfirmArea_ = nullptr;
   lv_obj_t *securityStatus_ = nullptr;
   uint8_t mixedEntropy_[32]{};
   uint8_t words_ = 12;

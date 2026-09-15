@@ -115,7 +115,6 @@ class TouchEntropy {
     secureZero(auxSequence_, sizeof(auxSequence_));
     secureZero(auxCount_, sizeof(auxCount_));
   }
-#if defined(AURORA_BOARD_P4)
   // Terminal-failure/startup path: no peripheral operations or heap allocation
   // in the pinned uBitcoin SHA256 implementation (its context is inline).
   // The caller owns task quiescence; normal cancel() still disables the RNG.
@@ -131,7 +130,6 @@ class TouchEntropy {
     secureZero(auxSequence_, sizeof(auxSequence_));
     secureZero(auxCount_, sizeof(auxCount_));
   }
-#endif
  private:
   SHA256 sha_;
   uint8_t previewKey_[32]{};

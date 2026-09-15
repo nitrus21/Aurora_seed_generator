@@ -2,7 +2,8 @@
 
 Run the V1 patch first. Both pristine V1 and already supplemented trees are
 validated against whole-file SHA-256 values; changed/partial sources fail closed.
-This script is deliberately not part of the frozen CYD build.
+CYD 1.9.3 also applies this portable supplement via harden_cyd.py. Its memory
+wipe stays portable; the conditional P4 hardware implementation is unchanged.
 """
 from pathlib import Path
 import argparse

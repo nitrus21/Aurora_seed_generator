@@ -1,5 +1,5 @@
 if(CMAKE_BUILD_EARLY_EXPANSION)
-    idf_component_register(REQUIRES mbedtls esp_timer bootloader_support fatfs esp_driver_gpio esp_mm)
+    idf_component_register(REQUIRES mbedtls esp_timer bootloader_support fatfs esp_driver_gpio esp_mm esp_security)
     return()
 endif()
 
@@ -28,7 +28,7 @@ idf_component_register(SRCS "main.cpp" "sensors.cpp" "storage.cpp" "ui_portrait.
     "${AURORA_ROOT}/src/secure_lvgl_memory.c"
     "${AURORA_ROOT}/src/ui.cpp" ${AURORA_ASSETS} ${PORTRAIT_ASSETS} ${BITCOIN_SOURCES}
     INCLUDE_DIRS "." "${AURORA_ROOT}/include" "${ubitcoin_SOURCE_DIR}/src"
-    REQUIRES mbedtls esp_timer bootloader_support fatfs esp_driver_gpio esp_mm)
+    REQUIRES mbedtls esp_timer bootloader_support fatfs esp_driver_gpio esp_mm esp_security)
 target_compile_definitions(${COMPONENT_LIB} PUBLIC AURORA_BOARD_P4=1 USE_STDONLY=1)
 include("${AURORA_ROOT}/targets/waveshare_p4/cmake/crypto_hardening.cmake")
 target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-unused-variable)

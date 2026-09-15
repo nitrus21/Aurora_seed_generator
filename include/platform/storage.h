@@ -51,7 +51,7 @@ class AuroraStorage {
 #include <SD.h>
 #include <SPI.h>
 #include "board_config.h"
-using AuroraFile = File;
+#include "platform/cyd_file.h"
 class AuroraStorage {
  public:
   AuroraStorage() : spi_(HSPI) {}
@@ -59,13 +59,13 @@ class AuroraStorage {
     pinMode(AURORA_SD_CS, OUTPUT);
     digitalWrite(AURORA_SD_CS, HIGH);
     spi_.begin(AURORA_SD_CLK, AURORA_SD_MISO, AURORA_SD_MOSI, AURORA_SD_CS);
-    return SD.begin(AURORA_SD_CS, spi_, AURORA_SD_FREQUENCY) && SD.cardType() != CARD_NONE;
+    return SD.begin(AURORA_SD_CS, spi_, AURORA_SD_FREQUENCY, "/sd") && SD.cardType() != CARD_NONE;
   }
   void end() { SD.end(); spi_.end(); }
   bool exists(const char *path) { return SD.exists(path); }
   bool remove(const char *path) { return SD.remove(path); }
-  bool sync(AuroraFile &file) { file.flush(); return file.getWriteError() == 0; }
-  AuroraFile open(const char *path, bool write = false) { return SD.open(path, write ? FILE_WRITE : FILE_READ); }
+  bool sync(AuroraFile &file) { return file.flush(); }
+  AuroraFile open(const char *path, bool write = false) { return AuroraFile::open(path, write); }
  private:
   SPIClass spi_;
 };

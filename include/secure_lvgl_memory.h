@@ -7,7 +7,7 @@ extern "C" {
 void *auroraUiAlloc(size_t size);
 void *auroraUiRealloc(void *pointer, size_t size);
 void auroraUiFree(void *pointer);
-#if defined(AURORA_BOARD_P4)
+#if defined(AURORA_BOARD_P4) || defined(AURORA_BOARD_CYD)
 // Terminal cleanup only: after a successful freeze there is no resume/unlock.
 bool auroraUiTryFreezeAllocations(void);
 void auroraUiWipeFrozenAllocations(void);

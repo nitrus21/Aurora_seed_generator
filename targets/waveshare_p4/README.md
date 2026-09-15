@@ -1,13 +1,12 @@
-# AURORA — ESP32-P4
+# AURORA — Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3
 
-Version P4 en développement : **2.0.0**, branche `codex/waveshare-p4-480x800`. Le CYD reste figé en **1.9.2**. La microSD requise à la sauvegarde, les protections PIN et la confirmation de passphrase sont décrites dans [SECURITY.md](../../SECURITY.md), sans modification des dérivations du portefeuille ou du fichier.
-Carte visée : **Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3**, sans suffixe `-C`.
-Ne pas confondre une compilation et un démarrage réussis avec une certification indépendante : les limites physiques et risques résiduels documentés restent applicables.
+Version du logiciel : **2.0.0**, en développement.
+Carte : **Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3**, modèle sans suffixe `-C`.
+Le modèle **ESP32-2432S028R — Cheap Yellow Display (CYD)** dispose du correctif local **1.9.3** ; son image publiée reste en **1.9.2**.
 
-Validation matérielle finale : AURORA 1.9.2 a été écrite sur un P4 révision
-1.3 de 32 Mo ; le démarrage série a confirmé l'application 1.9.2, la PSRAM
-32 Mo à 200 MHz, le GT911 et l'autotest E00 en 1 238 ms, sans panic ni
-redémarrage pendant 35 secondes.
+L'ouverture des fichiers et chaque consultation privée utilisent le mot de passe
+du fichier. Les exports Aurora Wallet sont au format V1 et les fichiers V1/V2
+sont lisibles. Voir le [parcours d'utilisation](../../README.md#p4-200--mot-de-passe-uniquement).
 
 ## Un seul noyau, deux firmwares
 
@@ -16,34 +15,34 @@ Le dossier racine reste le seul dépôt de travail. Il n'y a pas de copie à syn
 | Élément | Code commun / différences |
 | --- | --- |
 | BIP39, BIP32, BIP44/49/84/86, autotests | `src/wallet.cpp`, même uBitcoin épinglé et durci |
-| Fichiers chiffrés `.aurora`, exports Electrum | `src/sd_export.cpp`, lecture V1 et écriture/lecture V2 communes |
-| PIN et effacement des allocations LVGL | `src/pin_security.cpp`, `src/secure_lvgl_memory.c` |
+| Fichiers chiffrés `.aurora`, exports Electrum | `src/sd_export.cpp`, lecture V1/V2 ; nouvelles écritures V1 sans PIN |
+| Lecture des vérificateurs V2 | `src/pin_security.cpp`, validation de compatibilité des anciens fichiers |
+| Effacement des allocations LVGL | `src/secure_lvgl_memory.c` |
 | Mélange aléatoire et aperçu HMAC indépendant | `include/entropy.h` |
 | Parcours et actions utilisateur | `src/ui.cpp` |
-| CYD | Arduino, TFT_eSPI, XPT2046, LDR GPIO34, microSD SPI |
-| P4 | ESP-IDF, BSP Waveshare, LVGL 9, GT911, ES7210, OV5647 facultative, microSD SDMMC |
+| ESP32-2432S028R | Arduino, TFT_eSPI, XPT2046, LDR GPIO34, microSD SPI |
+| Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 | ESP-IDF, BSP Waveshare, LVGL 9, GT911, ES7210, OV5647 facultative, microSD SDMMC |
 
-Les écrans P4 sont rendus avec des widgets natifs dans une surface **480 × 800 portrait** et des polices agrandies, pas dans un framebuffer 320 × 240 étiré. L'écran d'entropie possède une disposition portrait dédiée. Les QR conservent leur forme carrée ; la caméra conserve son rapport d'aspect.
+Les écrans P4 sont rendus avec des widgets natifs dans une surface **480 × 800 portrait** et des polices adaptées à cette résolution. L'écran d'entropie possède une disposition portrait dédiée. Les QR conservent leur forme carrée ; la caméra conserve son rapport d'aspect.
 
 Le menu **Choisissez une action** du P4 place le logo Bitcoin en haut au centre,
 entièrement sous le séparateur d'en-tête, au-dessus de quatre boutons centrés de
 **384 × 64 pixels** (80 % de la largeur),
 et propose **RÉCUPÉRER UMBREL / LND**. Ce parcours déchiffre AEZEED avec
 les paramètres scrypt officiels dans une allocation PSRAM temporaire d'environ
-16 Mio, puis expose le `xprv` maître BIP32 derrière le PIN de session. Il ne
-restaure pas les canaux Lightning.
-Ce changement de disposition ne concerne pas le CYD.
+16 Mio, puis expose le `xprv` maître BIP32 dans un QR temporaire.
+Le retour ou 15 secondes d'affichage ferment et effacent cette session.
+Il ne restaure pas les canaux Lightning.
 Tous les écrans P4 vérifient aussi que leurs informations et contrôles restent
 sous le séparateur sans le masquer ni le couper.
-Les quatre boutons actuels conservent leur position verticale afin de réserver
-une cinquième rangée de 64 pixels. Les boutons d'action standards du P4, dont
+Les boutons d'action standards du P4, dont
 **PRÉCÉDENT** et **SUIVANT**, utilisent eux aussi une hauteur uniforme de
 64 pixels.
 
 ## Capteurs et collecte
 
-- CYD : coordonnées, pression résistive, temps, photorésistance et RNG matériel conservés.
-- P4 : coordonnées capacitives et temps, RNG matériel, deux microphones ES7210 ; aucune pression ni photorésistance inventées.
+- ESP32-2432S028R : coordonnées, pression résistive, temps, photorésistance et RNG matériel.
+- Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 : coordonnées capacitives et temps, RNG matériel, deux microphones via ES7210.
 - OV5647 : détection au début de chaque collecte. Absence normale sur la carte sans caméra ; connecter une caméra compatible **appareil éteint**, puis recommencer la collecte. Ce n'est pas une prise en charge du branchement à chaud.
 - Audio : blocs PCM 16 bits, deux canaux, 16 kHz ; indicateur de niveau sonore.
 - Caméra : capture RGB565 via CSI/ISP, SHA-256 des pixels acquis et aperçu local à fréquence limitée. Aucun faux échantillon si une lecture échoue.
@@ -58,15 +57,39 @@ Le coprocesseur radio ESP32-C6 est maintenu en reset actif bas sur GPIO54 selon 
 
 ## Compatibilité microSD
 
-Sur **CYD et P4**, la création/restauration et le PIN de session fonctionnent
-sans carte. La microSD FAT32 doit être détectée et sa racine lisible à l'entrée
-de la sauvegarde/export, puis durant sa préparation et avant l'écriture. Sinon
-l'écran **microSD requise** bloque l'export, avec **RÉESSAYER** et **FERMER**
-seulement. Une carte vide lisible est acceptée, sans formatage ni fichier de
-test. L'ouverture d'un fichier conserve les erreurs de carte dans le lecteur.
-Pas de surveillance continue de chaque frappe ni de changement des règles PIN.
+Sur **P4 2.0.0**, la création/restauration initiale fonctionne sans carte.
+La microSD FAT32 doit être détectée et sa racine lisible à l'entrée de la
+sauvegarde/export, puis durant sa préparation et avant l'écriture. Sans carte,
+l'écran **microSD requise** bloque l'export, avec **RÉESSAYER** et **FERMER**.
+Une carte vide lisible est acceptée, sans formatage ni fichier de test.
 
-FAT32, mêmes noms et suffixes sur les deux appareils. Lecture V1 conservée ; nouvelles écritures V2 avec PIN par fichier. En-tête de 46 octets, PBKDF2-HMAC-SHA-256 (120 000 itérations à l'écriture), AES-256-GCM et tag de 16 octets restent inchangés. V2 ajoute 80 octets chiffrés pour le vérificateur PIN : fichier total de 1 200 octets contre 1 120 en V1. Aucun champ spécifique au matériel. Les anciens firmwares ne lisent pas V2 ; mettre les deux cartes à jour. [Migration V1/V2](../../SECURITY.md#format-binaire-v2-et-migration).
+L'ouverture et chaque consultation privée d'un fichier requièrent sa présence
+sur la microSD et une nouvelle saisie du mot de passe. La relecture vérifie
+l'empreinte SHA-256 du fichier et son authentification AES-GCM. Entre deux
+consultations, seuls les renseignements publics, le nom et l'empreinte restent
+en mémoire. Le mot de passe et la clé de déchiffrement sont effacés après utilisation.
+Les secrets calculés et les saisies sont temporaires et effacés en sortie.
+Une consultation privée est limitée à 15 secondes, traitement compris ; une
+préparation d'export autorisée à 120 secondes. Les secrets d'une première
+création/restauration non sauvegardée restent nécessaires jusqu'à la fermeture
+ou l'expiration d'inactivité de 120 secondes.
+
+| Firmware | Lecture | Nouvelle écriture |
+| --- | --- | --- |
+| Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 — 2.0.0 | V1 et V2, mot de passe | V1, 1 120 octets |
+| ESP32-2432S028R — 1.9.3 | V1 et V2, mot de passe par consultation | V1 sans PIN, 1 120 octets |
+
+FAT32, mêmes noms et suffixes sur les deux appareils. L'en-tête de 46 octets,
+PBKDF2-HMAC-SHA-256 à 120 000 itérations à l'écriture, AES-256-GCM, le sel de
+16 octets, le nonce de 12 octets et le tag de 16 octets restent inchangés.
+V2 ajoute uniquement 80 octets chiffrés pour le vérificateur PIN.
+Aucun fichier existant n'est converti automatiquement.
+
+Le démarrage et le verrouillage nettoient les tampons possédés par l'application,
+sans supprimer les sauvegardes de la microSD. Une coupure brutale ne permet pas
+d'exécuter un effacement ; ce nettoyage ne garantit pas l'absence de rémanence
+physique. L'export Electrum volontairement en clair reste disponible et doit
+être traité comme une sauvegarde privée non chiffrée.
 
 Un fichier créé sur l'un est destiné à être ouvert sur l'autre avec le même mot de passe. Même seed + même passphrase BIP39 + même dérivation = même portefeuille. La compatibilité cryptographique n'élimine pas les essais croisés de lecture/écriture sur les vrais lecteurs SD. Aucun formatage automatique, aucun écrasement volontaire d'un fichier existant. Ne jamais retirer une carte pendant une écriture.
 
@@ -75,9 +98,6 @@ Un fichier créé sur l'un est destiné à être ouvert sur l'autre avec le mêm
 Depuis la racine du dépôt, avec PlatformIO Core 6.1.19 ou ultérieur et accès aux registres de dépendances :
 
 ```powershell
-# Appareil d'origine
-pio run -e esp32-2432S028R
-
 # P4 révision 3.x, PSRAM 250 MHz
 .\targets\waveshare_p4\build.ps1
 
@@ -102,15 +122,13 @@ cmd /c tests\native\run.cmd
 python tests/crypto/run.py
 python tests/ui/run.py
 python tests/ui/run.py --cyd
-python tests/crypto/verify_p4_images.py
+python tests/crypto/verify_p4_images.py --profile waveshare-p4
 powershell -File tests/release/verify.ps1 -ReleasedArtifactsOnly
 ```
 
-Les tests natifs nécessitent les outils C++ Visual Studio et Python ; ceux de l'interface et du chiffrement utilisent les dépendances téléchargées par le build P4. Le contrôle des images nécessite une compilation des deux profils. Ils couvrent le mélange, les données du format V1, les écrans 480 × 800, le verrou d'arrêt des capteurs, les vecteurs cryptographiques, le rejet des fichiers altérés, les limites de silicium et les octets de l'image factory. Les cartes et capteurs sont simulés dans les tests PC : ils ne remplacent pas la recette ci-dessous.
+Les tests natifs nécessitent les outils C++ Visual Studio et Python ; ceux de l'interface et du chiffrement utilisent les dépendances téléchargées par le build P4. Contrôler l'image immédiatement après chaque compilation avec le profil correspondant (`waveshare-p4` ou `waveshare-p4-rev1`) : changer de profil peut recréer le répertoire de build et supprimer l'autre image. Ils couvrent le mélange, V1/V2, les écrans 480 × 800, le verrou d'arrêt des capteurs, les vecteurs cryptographiques, le rejet des fichiers altérés, les limites de silicium et les octets de l'image factory. Les cartes et capteurs sont simulés dans les tests PC : ils ne remplacent pas la recette ci-dessous.
 
-Lancer les tests UI **après** le build P4 et les tests crypto, sans compilation P4 simultanée : la configuration ESP-IDF peut remplacer les sources LVGL gérées. Le verrou de fichier empêche cette concurrence. Les tests supplémentaires couvrent V2/PIN, double passphrase, expiration, fermeture après trois erreurs et effacement des allocations LVGL avant libération.
-
-Résultats et limites de la vérification logicielle : [VALIDATION.md](VALIDATION.md).
+Lancer les tests UI **après** le build P4 et les tests crypto, sans compilation P4 simultanée : la configuration ESP-IDF peut remplacer les sources LVGL gérées. Le verrou de fichier empêche cette concurrence. Les tests P4 couvrent le mot de passe par catégorie privée, la liaison au fichier, les erreurs de relecture, la double passphrase, les expirations et l'effacement avant libération. Les tests de vérificateurs PIN concernent uniquement la compatibilité des anciens fichiers V2. Les tests de mémoire et de temporaires sont détaillés dans [tests/ui/README.md](../../tests/ui/README.md).
 
 ## Recette matérielle obligatoire
 
@@ -120,8 +138,8 @@ Résultats et limites de la vérification logicielle : [VALIDATION.md](VALIDATIO
 4. Vérifier microphones, puis refaire la collecte avec OV5647 : image, compteur réel, variations sonores, absence de données après sortie.
 5. Tester annulation, redémarrage de collecte, source muette/bloquée et erreurs I2C/CSI ; aucun accès aux secrets si l'arrêt échoue.
 6. Échanger un portefeuille **de test sans fonds** dans les deux sens entre CYD et P4 ; comparer adresse, dérivation et exports.
-7. Sur les deux cartes, créer/restaurer sans SD jusqu'au portefeuille, y compris passphrase et PIN de session ; le dialogue SD ne doit apparaître qu'à la sauvegarde/export. À l'ouverture d'un fichier sans carte, vérifier l'erreur du lecteur. Réessayer un export sans carte doit rester bloqué ; une carte FAT32 vide doit permettre de poursuivre. Retirer la carte pendant la préparation de l'export puis valider : saisie effacée, aucune écriture ni tentative PIN consommée. Réinsérer et réessayer, puis vérifier FERMER et la conservation du compteur d'erreurs PIN. Tester aussi carte pleine, fichier existant, mauvais mot de passe et fichier altéré ; aucun formatage ni perte d'un fichier préexistant. Ne pas retirer pendant une écriture.
-8. Tester double passphrase, PIN avec zéros initiaux, trois erreurs séparées par annulation, expiration à 15 s et inactivité à 120 s. Mesurer la latence PIN et la stabilité mémoire sur plusieurs cycles ; confirmer que l'adresse reste identique à celle d'un logiciel de référence.
+7. Sur P4, créer/restaurer sans SD jusqu'au portefeuille, sans PIN ; la sauvegarde doit exiger une carte FAT32 lisible. Ouvrir des fichiers V1/V2 avec leur mot de passe, puis vérifier qu'une nouvelle consultation privée le redemande et relit le même fichier. Tester absence/retrait de carte hors écriture, substitution de fichier, carte pleine, fichier existant, mauvais mot de passe, annulation et fichier altéré : aucune révélation après échec, aucun formatage ni perte d'une sauvegarde préexistante. L'ESP32-2432S028R 1.9.3 redemande également le mot de passe pour les consultations privées. Ne pas retirer pendant une écriture.
+8. Tester double passphrase, expiration privée à 15 s traitement compris, préparation d'export à 120 s et inactivité à 120 s, y compris lors de la première création. Vérifier le retour aux seules données publiques entre consultations, l'effacement au verrouillage et le nettoyage au démarrage. Mesurer la stabilité mémoire sur plusieurs cycles ; confirmer que l'adresse reste identique à celle d'un logiciel de référence. Utiliser exclusivement des données publiques de test pour examiner les tampons.
 9. Avec une seed AEZEED de test sans fonds, ouvrir **RÉCUPÉRER UMBREL / LND**, vérifier le résultat avec et sans passphrase, puis importer le XPRV dans Sparrow. Comparer les premières adresses des comptes BIP49, BIP84 et BIP86. Confirmer aussi qu'une mauvaise passphrase est rejetée, que le QR privé expire après 15 s et qu'aucun canal Lightning n'est présenté comme récupéré.
 
 ## Références matérielles et pilotes

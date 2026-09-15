@@ -219,30 +219,34 @@ bool writeAuroraWallet(AuroraFile &file, const char *password,
   uint8_t tag[TAG_SIZE] = {};
   uint8_t *cipher = nullptr;
   bool ok = false;
-
-  if (!data.pin || !auroraPinRecordValid(*data.pin) || !fillPayload(data, payload.wallet)) goto cleanup;
-  memcpy(payload.wallet.magic, PAYLOAD_MAGIC_V2, sizeof(payload.wallet.magic));
-  payload.pin = *data.pin;
-  cipher = new (std::nothrow) uint8_t[sizeof(payload)];
+  const bool withPin = data.pin != nullptr; // Legacy V2 fixtures/compatibility only.
+  const size_t payloadLength = withPin ? sizeof(payload) : sizeof(payload.wallet);
+  if ((withPin && (!data.pin || !auroraPinRecordValid(*data.pin))) ||
+      !fillPayload(data, payload.wallet)) goto cleanup;
+  if (withPin) {
+    memcpy(payload.wallet.magic, PAYLOAD_MAGIC_V2, sizeof(payload.wallet.magic));
+    payload.pin = *data.pin;
+  }
+  cipher = new (std::nothrow) uint8_t[payloadLength];
   if (!cipher) goto cleanup;
 
-  memcpy(header, FILE_MAGIC_V2, sizeof(FILE_MAGIC_V2));
-  header[8] = FILE_VERSION_V2;
+  memcpy(header, withPin ? FILE_MAGIC_V2 : FILE_MAGIC, sizeof(FILE_MAGIC));
+  header[8] = withPin ? FILE_VERSION_V2 : FILE_VERSION;
   header[9] = KDF_PBKDF2_HMAC_SHA256;
   header[10] = CIPHER_AES_256_GCM;
   putLe32(header + 12, KDF_ITERATIONS);
   hardwareRandomFill(header + SALT_OFFSET, SALT_SIZE);
   hardwareRandomFill(header + NONCE_OFFSET, NONCE_SIZE);
-  putLe16(header + 44, static_cast<uint16_t>(sizeof(payload)));
+  putLe16(header + 44, static_cast<uint16_t>(payloadLength));
 
   delay(1);
   if (!deriveKey(password, header + SALT_OFFSET, SALT_SIZE,
                  KDF_ITERATIONS, key)) goto cleanup;
   if (!aesGcmEncrypt(key, header + NONCE_OFFSET, header, sizeof(header),
-                     reinterpret_cast<const uint8_t *>(&payload), sizeof(payload),
+                     reinterpret_cast<const uint8_t *>(&payload), payloadLength,
                      cipher, tag)) goto cleanup;
   ok = file.write(header, sizeof(header)) == sizeof(header) &&
-       file.write(cipher, sizeof(payload)) == sizeof(payload) &&
+       file.write(cipher, payloadLength) == payloadLength &&
        file.write(tag, sizeof(tag)) == sizeof(tag);
 
 cleanup:
@@ -251,7 +255,7 @@ cleanup:
   secureZero(key, sizeof(key));
   secureZero(tag, sizeof(tag));
   if (cipher) {
-    secureZero(cipher, sizeof(AuroraPayloadV2));
+    secureZero(cipher, payloadLength);
     delete[] cipher;
   }
   return ok;
@@ -267,6 +271,45 @@ bool validAuroraData(const WalletExportData &data) {
          present(data.mnemonic) && data.passphrase && present(data.address) &&
          present(data.accountXpub) && present(data.accountXprv) &&
          present(data.privateWif) && present(data.receiveDescriptor);
+}
+
+bool fileFingerprint(const uint8_t header[HEADER_SIZE], const uint8_t *cipher,
+                     size_t cipherLength, const uint8_t tag[TAG_SIZE],
+                     uint8_t fingerprint[32]) {
+  mbedtls_md_context_t context;
+  mbedtls_md_init(&context);
+  const mbedtls_md_info_t *info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
+  const bool ok = info && mbedtls_md_setup(&context, info, 0) == 0 &&
+                  mbedtls_md_starts(&context) == 0 &&
+                  mbedtls_md_update(&context, header, HEADER_SIZE) == 0 &&
+                  mbedtls_md_update(&context, cipher, cipherLength) == 0 &&
+                  mbedtls_md_update(&context, tag, TAG_SIZE) == 0 &&
+                  mbedtls_md_finish(&context, fingerprint) == 0;
+  mbedtls_md_free(&context);
+  secureZero(&context, sizeof(context));
+  if (!ok) secureZero(fingerprint, 32);
+  return ok;
+}
+
+bool sameFileFingerprint(const uint8_t left[32], const uint8_t right[32]) {
+  uint8_t difference = 0;
+  for (size_t i = 0; i < 32; ++i) difference |= left[i] ^ right[i];
+  return difference == 0;
+}
+
+bool verifiedExportMatches(const AuroraWalletData &actual, const WalletExportData &expected) {
+  return actual.fileVersion == (expected.pin ? FILE_VERSION_V2 : FILE_VERSION) &&
+         actual.addressKind == expected.addressKind && actual.wordCount == expected.wordCount &&
+         strcmp(actual.addressType, expected.addressType) == 0 &&
+         strcmp(actual.derivationPath, expected.derivationPath) == 0 &&
+         strcmp(actual.mnemonic, expected.mnemonic) == 0 &&
+         strcmp(actual.passphrase, expected.passphrase) == 0 &&
+         strcmp(actual.address, expected.address) == 0 &&
+         strcmp(actual.accountXpub, expected.accountXpub) == 0 &&
+         strcmp(actual.accountXprv, expected.accountXprv) == 0 &&
+         strcmp(actual.privateWif, expected.privateWif) == 0 &&
+         strcmp(actual.receiveDescriptor, expected.receiveDescriptor) == 0 &&
+         (!expected.pin || memcmp(&actual.pin, expected.pin, sizeof(actual.pin)) == 0);
 }
 
 }
@@ -305,7 +348,7 @@ WalletExportResult writeWalletExportFile(WalletExportFormat format,
   if (format == WalletExportFormat::AuroraWallet) {
     if (!validAuroraData(data)) return WalletExportResult::InvalidData;
     if (!validPassword(filePassword)) return WalletExportResult::WeakPassword;
-    if (!data.pin || !auroraPinRecordValid(*data.pin)) return WalletExportResult::InvalidPin;
+    if (data.pin && !auroraPinRecordValid(*data.pin)) return WalletExportResult::InvalidPin;
   }
 
   char path[56] = {};
@@ -335,7 +378,11 @@ WalletExportResult writeWalletExportFile(WalletExportFormat format,
                       ? writeElectrum(file, data)
                       : writeAuroraWallet(file, filePassword, data);
   ok = storage.sync(file) && ok;
+#if defined(AURORA_BOARD_CYD)
+  ok = file.close() && ok;
+#else
   file.close();
+#endif
   if (!ok) storage.remove(path);
   storage.end();
 
@@ -344,9 +391,12 @@ WalletExportResult writeWalletExportFile(WalletExportFormat format,
   return WalletExportResult::Ok;
 }
 
-AuroraWalletReadResult readAuroraWalletFile(const char *baseName,
-                                            const char *filePassword,
-                                            AuroraWalletData &data) {
+static AuroraWalletReadResult readAuroraWalletFileImpl(const char *baseName,
+                                                       const char *filePassword,
+                                                       const uint8_t *expectedFingerprint,
+                                                       AuroraWalletData &data,
+                                                       uint8_t *outputFingerprint) {
+  if (outputFingerprint) secureZero(outputFingerprint, 32);
   wipeAuroraWalletData(data);
   if (!validBaseName(baseName)) return AuroraWalletReadResult::InvalidName;
   if (!validPassword(filePassword)) return AuroraWalletReadResult::WeakPassword;
@@ -376,6 +426,7 @@ AuroraWalletReadResult readAuroraWalletFile(const char *baseName,
   uint8_t header[HEADER_SIZE] = {};
   uint8_t tag[TAG_SIZE] = {};
   uint8_t key[KEY_SIZE] = {};
+  uint8_t fingerprint[32] = {};
   AuroraPayloadV2 storagePayload{};
   AuroraPayloadV1 &payload = storagePayload.wallet;
   bool version2 = false;
@@ -411,11 +462,34 @@ AuroraWalletReadResult readAuroraWalletFile(const char *baseName,
       result = AuroraWalletReadResult::ReadFailed;
       goto cleanup_file;
     }
+    // Recheck after the reads: never accept a prefix of an
+    // unexpectedly extended/replaced file. All bytes hashed below were read
+    // from this same open handle and the GCM tag authenticates that snapshot.
+    {
+      uint8_t extra = 0;
+      const bool exactLength = file.size() == expectedSize && file.read(&extra, 1) == 0;
+      secureZero(&extra, sizeof(extra));
+      if (!exactLength) {
+        result = AuroraWalletReadResult::InvalidFormat;
+        goto cleanup_file;
+      }
+    }
     file.close();
     storage.end();
     delay(1);
-    if (!deriveKey(filePassword, header + SALT_OFFSET, SALT_SIZE, iterations, key) ||
-        !aesGcmDecrypt(key, header + NONCE_OFFSET, header, sizeof(header),
+    if (!fileFingerprint(header, cipher, cipherLength, tag, fingerprint)) {
+      result = AuroraWalletReadResult::AuthenticationFailed;
+      goto cleanup_memory;
+    }
+    if (expectedFingerprint && !sameFileFingerprint(fingerprint, expectedFingerprint)) {
+      result = AuroraWalletReadResult::AuthenticationFailed;
+      goto cleanup_memory;
+    }
+    if (!deriveKey(filePassword, header + SALT_OFFSET, SALT_SIZE, iterations, key)) {
+      result = AuroraWalletReadResult::AuthenticationFailed;
+      goto cleanup_memory;
+    }
+    if (!aesGcmDecrypt(key, header + NONCE_OFFSET, header, sizeof(header),
                        cipher, cipherLength, tag,
                        reinterpret_cast<uint8_t *>(&storagePayload))) {
       result = AuroraWalletReadResult::AuthenticationFailed;
@@ -440,6 +514,7 @@ AuroraWalletReadResult readAuroraWalletFile(const char *baseName,
   strlcpy(data.receiveDescriptor, payload.receiveDescriptor, sizeof(data.receiveDescriptor));
   data.fileVersion = version2 ? FILE_VERSION_V2 : FILE_VERSION;
   if (version2) data.pin = storagePayload.pin;
+  if (outputFingerprint) memcpy(outputFingerprint, fingerprint, 32);
   result = AuroraWalletReadResult::Ok;
   goto cleanup_memory;
 
@@ -450,12 +525,43 @@ cleanup_memory:
   secureZero(header, sizeof(header));
   secureZero(tag, sizeof(tag));
   secureZero(key, sizeof(key));
+  secureZero(fingerprint, sizeof(fingerprint));
   secureZero(&storagePayload, sizeof(storagePayload));
   if (cipher) {
     secureZero(cipher, allocatedLength);
     delete[] cipher;
   }
   if (result != AuroraWalletReadResult::Ok) wipeAuroraWalletData(data);
+  return result;
+}
+
+AuroraWalletReadResult readAuroraWalletFile(const char *baseName,
+    const char *filePassword, AuroraWalletData &data) {
+  return readAuroraWalletFileImpl(baseName, filePassword, nullptr, data, nullptr);
+}
+
+AuroraWalletReadResult readAuroraWalletFileChecked(const char *baseName,
+    const char *filePassword, AuroraWalletData &data, uint8_t fingerprint[32],
+    const uint8_t *expectedFingerprint) {
+  return readAuroraWalletFileImpl(baseName, filePassword, expectedFingerprint, data, fingerprint);
+}
+
+WalletExportResult writeAuroraWalletFileVerified(const char *baseName,
+    const char *filePassword, const WalletExportData &data, char *writtenPath,
+    size_t writtenPathLength, uint8_t fingerprint[32]) {
+  if (fingerprint) secureZero(fingerprint, 32);
+  WalletExportResult result = writeWalletExportFile(WalletExportFormat::AuroraWallet,
+      baseName, filePassword, data, writtenPath, writtenPathLength);
+  if (result != WalletExportResult::Ok) return result;
+  // No decryption key escapes this call. Read-back failures preserve the backup.
+  AuroraWalletData verified{};
+  if (readAuroraWalletFileChecked(baseName, filePassword, verified, fingerprint) !=
+          AuroraWalletReadResult::Ok || !verifiedExportMatches(verified, data)) {
+    if (fingerprint) secureZero(fingerprint, 32);
+    if (writtenPath && writtenPathLength) writtenPath[0] = '\0';
+    result = WalletExportResult::WriteFailed;
+  }
+  wipeAuroraWalletData(verified);
   return result;
 }
 

@@ -7,6 +7,140 @@ extern "C" const char *const *mnemonic_wordlist(void) { return wordlist; }
 #include "../../src/sd_export.cpp"
 #include "../../src/pin_security.cpp"
 
+#if defined(AURORA_BOARD_P4)
+template <typename T>
+static bool allZero(const T &value) {
+  const auto *bytes = reinterpret_cast<const uint8_t *>(&value);
+  for (size_t i = 0; i < sizeof(value); ++i) if (bytes[i]) return false;
+  return true;
+}
+
+static void fingerprintFixture(const std::vector<uint8_t> &file, uint8_t output[32]) {
+  assert(mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256),
+                    file.data(), file.size(), output) == 0);
+}
+
+static void testSessionAccess(const WalletExportData &fixture, const char *password) {
+  AuroraWalletData opened{};
+  uint8_t access[32]{};
+  uint8_t expectedFingerprint[32]{};
+  uint8_t independentKey[32]{};
+  const auto original = testCard.at("/test.aurora");
+  fingerprintFixture(original, expectedFingerprint);
+  assert(deriveKey(password, original.data() + SALT_OFFSET, SALT_SIZE,
+                   getLe32(original.data() + 12), independentKey));
+  assert(readAuroraWalletFileChecked("test", password, opened, access) == AuroraWalletReadResult::Ok);
+  assert(!memcmp(access, expectedFingerprint, sizeof(expectedFingerprint)));
+  assert(!strcmp(opened.accountXprv, fixture.accountXprv));
+  wipeAuroraWalletData(opened);
+  assert(readAuroraWalletFileChecked("test", password, opened, nullptr, access) == AuroraWalletReadResult::Ok);
+  assert(!strcmp(opened.mnemonic, fixture.mnemonic));
+
+  assert(readAuroraWalletFileChecked("test", "wrong-password-only", opened, nullptr, access) == AuroraWalletReadResult::AuthenticationFailed);
+  assert(allZero(opened));
+  expectedFingerprint[0] ^= 1;
+  assert(readAuroraWalletFileChecked("test", password, opened, nullptr, expectedFingerprint) == AuroraWalletReadResult::AuthenticationFailed);
+  assert(allZero(opened));
+  assert(readAuroraWalletFileChecked("test", nullptr, opened, nullptr, access) == AuroraWalletReadResult::WeakPassword);
+  assert(allZero(opened));
+
+  // A different valid file, even with the same password, cannot replace the
+  // file bound to an already-open public session.
+  char path[80]{};
+  assert(writeWalletExportFile(WalletExportFormat::AuroraWallet, "replacement", password, fixture, path, sizeof(path)) == WalletExportResult::Ok);
+  testCard["/test.aurora"] = testCard.at("/replacement.aurora");
+  assert(readAuroraWalletFileChecked("test", password, opened, nullptr, access) == AuroraWalletReadResult::AuthenticationFailed);
+  assert(allZero(opened));
+  // Fingerprint matching is not a replacement for authenticating the GCM tag.
+  for (size_t offset : {size_t(16), size_t(32), size_t(100), original.size() - 1}) {
+    testCard["/test.aurora"] = original;
+    testCard["/test.aurora"][offset] ^= 1;
+    fingerprintFixture(testCard.at("/test.aurora"), expectedFingerprint);
+    assert(readAuroraWalletFileChecked("test", password, opened, nullptr, expectedFingerprint) == AuroraWalletReadResult::AuthenticationFailed);
+    assert(allZero(opened));
+  }
+  for (size_t offset : {size_t(0), size_t(8), size_t(9), size_t(10), size_t(11), size_t(12), size_t(44)}) {
+    testCard["/test.aurora"] = original;
+    testCard["/test.aurora"][offset] ^= 0x80;
+    if (offset == 12) putLe32(testCard["/test.aurora"].data() + 12, KDF_ITERATIONS_MAX + 1);
+    assert(readAuroraWalletFileChecked("test", password, opened, nullptr, access) == AuroraWalletReadResult::InvalidFormat);
+    assert(allZero(opened));
+  }
+  testCard["/test.aurora"] = original; testCard["/test.aurora"].pop_back();
+  assert(readAuroraWalletFileChecked("test", password, opened, nullptr, access) == AuroraWalletReadResult::InvalidFormat);
+  assert(allZero(opened));
+  testCard["/test.aurora"] = original; testCard["/test.aurora"].push_back(0);
+  assert(readAuroraWalletFileChecked("test", password, opened, nullptr, access) == AuroraWalletReadResult::InvalidFormat);
+  assert(allZero(opened));
+  testCard["/test.aurora"] = original;
+  testAppendAfterHeader = true;
+  assert(readAuroraWalletFileChecked("test", password, opened, nullptr, access) == AuroraWalletReadResult::InvalidFormat);
+  assert(allZero(opened));
+  testCard["/test.aurora"] = original;
+
+  // Every failure must erase pre-existing outputs, including failures before
+  // mounting/reading the card. No file key is returned by the public API.
+  struct Failure { const char *name; const char *password; AuroraWalletReadResult result; };
+  for (const auto failure : {
+      Failure{"../test", password, AuroraWalletReadResult::InvalidName},
+      Failure{"test", "short", AuroraWalletReadResult::WeakPassword},
+      Failure{"missing", password, AuroraWalletReadResult::NotFound},
+      Failure{"test", "not-the-right-password", AuroraWalletReadResult::AuthenticationFailed}}) {
+    memset(&opened, 0xa5, sizeof(opened)); memset(&access, 0xa5, sizeof(access));
+    assert(readAuroraWalletFileChecked(failure.name, failure.password, opened, access) == failure.result);
+    assert(allZero(opened) && allZero(access));
+  }
+  for (unsigned fault = 0; fault < 3; ++fault) {
+    memset(&opened, 0xa5, sizeof(opened)); memset(&access, 0xa5, sizeof(access));
+    testCardReady = fault != 0; testReadOpenOk = fault != 1;
+    testReadLimit = fault == 2 ? 8 : static_cast<size_t>(-1);
+    const auto expected = fault == 0 ? AuroraWalletReadResult::NoCard :
+                          fault == 1 ? AuroraWalletReadResult::OpenFailed : AuroraWalletReadResult::ReadFailed;
+    assert(readAuroraWalletFileChecked("test", password, opened, access) == expected);
+    assert(allZero(opened) && allZero(access));
+    testCardReady = true; testReadOpenOk = true; testReadLimit = static_cast<size_t>(-1);
+  }
+
+  assert(writeAuroraWalletFileVerified("session-write", password, fixture, path, sizeof(path), access) == WalletExportResult::Ok);
+  assert(!strcmp(path, "/session-write.aurora"));
+  fingerprintFixture(testCard.at(path), expectedFingerprint);
+  assert(!memcmp(access, expectedFingerprint, sizeof(expectedFingerprint)));
+  assert(readAuroraWalletFileChecked("session-write", password, opened, nullptr, access) == AuroraWalletReadResult::Ok);
+  assert(!strcmp(opened.mnemonic, fixture.mnemonic));
+  const auto written = testCard.at(path);
+  assert(writeAuroraWalletFileVerified("session-write", password, fixture, path, sizeof(path), access) == WalletExportResult::AlreadyExists);
+  assert(allZero(access) && !path[0] && testCard.at("/session-write.aurora") == written);
+
+  testBeforeReadOpen = [](const char *filePath) { testCard.at(filePath).back() ^= 1; };
+  memset(&access, 0xa5, sizeof(access));
+  assert(writeAuroraWalletFileVerified("session-tamper", password, fixture, path, sizeof(path), access) == WalletExportResult::WriteFailed);
+  assert(allZero(access) && !path[0] && testCard.count("/session-tamper.aurora"));
+  testBeforeReadOpen = nullptr;
+  testReadOpenOk = false;
+  memset(&access, 0xa5, sizeof(access));
+  assert(writeAuroraWalletFileVerified("session-open-error", password, fixture, path, sizeof(path), access) == WalletExportResult::WriteFailed);
+  assert(allZero(access) && !path[0] && testCard.count("/session-open-error.aurora"));
+  testReadOpenOk = true;
+
+  // Substitution by another authentic wallet with the same password must also
+  // fail read-back validation, without deleting either encrypted backup.
+  auto different = fixture; different.mnemonic = "public different test mnemonic";
+  assert(writeWalletExportFile(WalletExportFormat::AuroraWallet, "different", password, different, path, sizeof(path)) == WalletExportResult::Ok);
+  testBeforeReadOpen = [](const char *filePath) { testCard.at(filePath) = testCard.at("/different.aurora"); };
+  memset(&access, 0xa5, sizeof(access));
+  assert(writeAuroraWalletFileVerified("session-substituted", password, fixture, path, sizeof(path), access) == WalletExportResult::WriteFailed);
+  assert(allZero(access) && !path[0] && testCard.count("/session-substituted.aurora") && testCard.count("/different.aurora"));
+  testBeforeReadOpen = nullptr;
+  assert(testCard.at("/test.aurora") == original);
+  assert(testMounts == testUnmounts);
+  wipeAuroraWalletData(opened); secureZero(access,sizeof(access));
+  secureZero(expectedFingerprint, sizeof(expectedFingerprint));
+  secureZero(independentKey, sizeof(independentKey));
+  assert(allZero(access) && allZero(opened));
+  puts("PASS: password-only reread, no key output, exact SHA256 binding, wrong-password/tag/replacement/format rejection, failure-output wipe, authenticated read-back and preservation of written backups");
+}
+#endif
+
 int main() {
   {
     uint8_t scryptKey[32]{};
@@ -90,6 +224,9 @@ int main() {
   assert(!strcmp(restored.accountXprv, fixture.accountXprv) && restored.addressKind == 2 && restored.wordCount == 12);
   assert(restored.fileVersion==2 && auroraPinVerify("01234567",restored.pin));
   assert(original[9]==KDF_PBKDF2_HMAC_SHA256 && getLe32(original.data()+12)==120000);
+#if defined(AURORA_BOARD_P4)
+  testSessionAccess(fixture, filePassword);
+#endif
   assert(auroraPinCreate("4321",another));
   auto otherFile=fixture; otherFile.pin=&another;
   assert(writeWalletExportFile(WalletExportFormat::AuroraWallet,"other",filePassword,otherFile,path,sizeof(path))==WalletExportResult::Ok);
@@ -112,6 +249,15 @@ int main() {
   assert(readAuroraWalletFile("test", filePassword, restored) == AuroraWalletReadResult::Ok);
   assert(!strcmp(restored.mnemonic, fixture.mnemonic));
   assert(restored.fileVersion==1 && !auroraPinRecordValid(restored.pin));
+#if defined(AURORA_BOARD_P4)
+  uint8_t legacyAccess[32]{};
+  assert(readAuroraWalletFileChecked("test", filePassword, restored, legacyAccess) == AuroraWalletReadResult::Ok);
+  uint8_t legacyFingerprint[32]{}; fingerprintFixture(released, legacyFingerprint);
+  assert(!memcmp(legacyAccess, legacyFingerprint, sizeof(legacyFingerprint)));
+  assert(readAuroraWalletFileChecked("test", filePassword, restored, nullptr, legacyAccess) == AuroraWalletReadResult::Ok);
+  assert(restored.fileVersion == 1 && !strcmp(restored.mnemonic, fixture.mnemonic));
+  secureZero(legacyAccess,sizeof(legacyAccess)); secureZero(legacyFingerprint, sizeof(legacyFingerprint));
+#endif
   testCard["/test.aurora"] = original;
   assert(writeWalletExportFile(WalletExportFormat::AuroraWallet, "test", filePassword, fixture, path, sizeof(path)) == WalletExportResult::AlreadyExists);
   assert(testCard.at("/test.aurora") == original);
@@ -132,6 +278,15 @@ int main() {
       noPin.data()+HEADER_SIZE,noPin.data()+HEADER_SIZE+sizeof(invalidPayload)));
   assert(readAuroraWalletFile("test",filePassword,restored)==AuroraWalletReadResult::InvalidFormat);
   assert(!memcmp(&restored,zeros.data(),zeros.size()));
+#if defined(AURORA_BOARD_P4)
+  uint8_t invalidFingerprint[32]{}; fingerprintFixture(noPin, invalidFingerprint);
+  assert(readAuroraWalletFileChecked("test", filePassword, restored, nullptr, invalidFingerprint) == AuroraWalletReadResult::InvalidFormat);
+  assert(allZero(restored));
+  uint8_t invalidAccess[32]{}; memset(&invalidAccess, 0xa5, sizeof(invalidAccess));
+  assert(readAuroraWalletFileChecked("test", filePassword, restored, invalidAccess) == AuroraWalletReadResult::InvalidFormat);
+  assert(allZero(restored) && allZero(invalidAccess));
+  secureZero(invalidAccess,sizeof(invalidAccess)); secureZero(invalidFingerprint, sizeof(invalidFingerprint));
+#endif
   for (size_t offset : {size_t(16), size_t(32), size_t(100), original.size() - 1}) {
     testCard["/test.aurora"] = original; testCard["/test.aurora"][offset] ^= 1;
     assert(readAuroraWalletFile("test", filePassword, restored) == AuroraWalletReadResult::AuthenticationFailed);
@@ -141,8 +296,21 @@ int main() {
   assert(readAuroraWalletFile("test", filePassword, restored) == AuroraWalletReadResult::InvalidFormat);
   testCard["/test.aurora"] = original;
   auto missingPin=fixture; missingPin.pin=nullptr;
+#if defined(AURORA_BOARD_P4)
+  uint8_t pinlessFingerprint[32]{};
+  assert(writeAuroraWalletFileVerified("no-pin",filePassword,missingPin,path,sizeof(path),pinlessFingerprint)==WalletExportResult::Ok);
+  assert(readAuroraWalletFileChecked("no-pin",filePassword,restored,nullptr,pinlessFingerprint)==AuroraWalletReadResult::Ok);
+  assert(restored.fileVersion==1 && allZero(restored.pin));
+  assert(!strcmp(restored.mnemonic,missingPin.mnemonic));
+  assert(testCard.at("/no-pin.aurora").size()==HEADER_SIZE+sizeof(AuroraPayloadV1)+TAG_SIZE);
+  assert(getLe32(testCard.at("/no-pin.aurora").data()+12)==KDF_ITERATIONS);
+  wipeAuroraWalletData(restored);
+#else
   assert(writeWalletExportFile(WalletExportFormat::AuroraWallet,"no-pin",filePassword,missingPin,path,sizeof(path))==WalletExportResult::InvalidPin);
+#endif
+#if !defined(AURORA_BOARD_P4)
   assert(!testCard.count("/no-pin.aurora"));
+#endif
   testSyncOk = false;
   assert(writeWalletExportFile(WalletExportFormat::AuroraWallet, "failure", filePassword, fixture, path, sizeof(path)) == WalletExportResult::WriteFailed);
   assert(!testCard.count("/failure.aurora") && testCard.at("/test.aurora") == original);

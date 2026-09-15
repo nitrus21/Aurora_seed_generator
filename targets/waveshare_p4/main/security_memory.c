@@ -70,6 +70,24 @@ typedef struct ScrubBlock {
     size_t size;
 } ScrubBlock;
 
+static void scrubAndVerifyOwned(void *pointer, size_t size) {
+    // Verify only bytes currently owned by this startup operation, after the
+    // secure wipe and its cache writeback. Reads are volatile so an optimized
+    // build cannot replace this check with the known value of the writes.
+    // This CPU-visible readback is not an independent physical RAM/cache test.
+    uint8_t *bytes = pointer;
+    for (size_t offset = 0; offset < size;) {
+        size_t chunk = size - offset;
+        if (chunk > 65536) chunk = 65536;
+        auroraSecureZero(bytes + offset, chunk);
+        const volatile uint8_t *check = bytes + offset;
+        for (size_t i = 0; i < chunk; ++i) {
+            if (check[i] != 0) auroraSecurityPanic();
+        }
+        offset += chunk;
+    }
+}
+
 static bool scrubOwnedHeap(uint32_t caps, size_t *total) {
     ScrubBlock *blocks = NULL;
     bool ok = true;
@@ -81,7 +99,7 @@ static bool scrubOwnedHeap(uint32_t caps, size_t *total) {
         if (size < sizeof(ScrubBlock)) break;
         ScrubBlock *block = heap_caps_malloc(size, caps);
         if (!block) { ok = false; break; }
-        auroraSecureZero(block, size);
+        scrubAndVerifyOwned(block, size);
         block->next = blocks;
         block->size = size;
         blocks = block;
@@ -91,7 +109,7 @@ static bool scrubOwnedHeap(uint32_t caps, size_t *total) {
     while (blocks) {
         ScrubBlock *next = blocks->next;
         // Includes the temporary chain metadata before returning ownership.
-        auroraSecureZero(blocks, sizeof(*blocks));
+        scrubAndVerifyOwned(blocks, sizeof(*blocks));
         heap_caps_free(blocks);
         blocks = next;
     }

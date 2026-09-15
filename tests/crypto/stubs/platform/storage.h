@@ -10,6 +10,10 @@ inline std::map<std::string, std::vector<uint8_t>> testCard;
 inline bool testSyncOk = true;
 inline bool testCardReady = true, testRootReadable = true;
 inline unsigned testMounts = 0, testUnmounts = 0;
+inline bool testReadOpenOk = true;
+inline size_t testReadLimit = static_cast<size_t>(-1);
+inline void (*testBeforeReadOpen)(const char *) = nullptr;
+inline bool testAppendAfterHeader = false;
 class AuroraFile {
  public:
   std::string path;
@@ -22,8 +26,10 @@ class AuroraFile {
   size_t read(uint8_t *out, size_t length) {
     if (!valid || directory) return 0;
     auto &bytes = testCard.at(path);
-    length = std::min(length, bytes.size() - position);
-    memcpy(out, bytes.data() + position, length); position += length; return length;
+    length = std::min({length, bytes.size() - position, testReadLimit});
+    memcpy(out, bytes.data() + position, length); position += length;
+    if (testAppendAfterHeader) { bytes.push_back(0); testAppendAfterHeader = false; }
+    return length;
   }
   size_t write(const uint8_t *data, size_t length) {
     if (!valid || directory) return 0;
@@ -48,6 +54,9 @@ class AuroraStorage {
     if (write) {
       if (exists(path)) return {};
       testCard[path] = {};
+    } else {
+      if (testBeforeReadOpen) testBeforeReadOpen(path);
+      if (!testReadOpenOk) return {};
     }
     return {path, 0, 0, exists(path), false};
   }

@@ -21,7 +21,8 @@ constexpr size_t NONCE_OFFSET = 32;
 constexpr size_t NONCE_SIZE = 12;
 constexpr size_t TAG_SIZE = 16;
 constexpr size_t KEY_SIZE = 32;
-// V1 is frozen and read-only. New files require a per-file PIN and use V2.
+// Wire layouts stay frozen. P4 password-only files reuse V1 (same AES-GCM and
+// password KDF as V2, without the obsolete PIN record). CYD still writes V2.
 constexpr uint8_t FILE_MAGIC_V2[8] = {'A','U','R','O','R','A','W','2'};
 constexpr uint8_t PAYLOAD_MAGIC_V2[8] = {'A','U','R','D','A','T','0','2'};
 constexpr uint8_t FILE_VERSION_V2 = 2;

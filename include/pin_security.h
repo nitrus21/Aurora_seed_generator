@@ -2,8 +2,9 @@
 #include <stddef.h>
 #include <stdint.h>
 
-// An interface lock, NOT a second encryption factor. This verifier belongs
-// inside the authenticated, encrypted wallet payload and never stores the PIN.
+// Legacy CYD interface lock and V2 wire compatibility, NOT a second encryption
+// factor. Current CYD/P4 validate old records on read but have no PIN session or input.
+// The verifier belongs inside the authenticated, encrypted wallet payload.
 struct AuroraPinRecord {
   uint8_t salt[16];
   uint8_t verifier[64];
