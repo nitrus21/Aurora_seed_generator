@@ -11,6 +11,9 @@ class AuroraUI {
   void begin();
   void tick();
   void onTouchSample(int16_t x, int16_t y, uint16_t pressure);
+#if defined(AURORA_BOARD_P4)
+  void refreshDisplayAfterClear();
+#endif
 
  private:
   enum class Screen : uint8_t {
@@ -25,9 +28,11 @@ class AuroraUI {
   enum class QrContent : uint8_t { Address, AccountXpub, PrivateKey };
   void show(Screen screen);
   void clear();
-  lv_obj_t *header(const char *title, const char *step = nullptr);
+  lv_obj_t *header(const char *title, const char *step = nullptr, bool showBrand = true);
   lv_obj_t *button(lv_obj_t *parent, const char *text, lv_event_cb_t cb, int w = 126);
   lv_obj_t *label(lv_obj_t *parent, const char *text, const lv_font_t *font = &aurora_font_14);
+  lv_obj_t *explanation(lv_obj_t *parent, const char *text,
+                        const lv_font_t *font = &aurora_font_10);
   void buildSplash(); void buildMode(); void buildImportName(); void buildImportPassword();
   void buildRestoreSetup(); void buildRestoreWords(); void buildRestorePassphrase();
   void buildRestoring(); void updateRestoreSuggestions(); bool acceptRestoreWord(const char *word);
@@ -63,6 +68,7 @@ class AuroraUI {
 #if defined(AURORA_BOARD_P4)
   void buildPortraitEntropy();
   void updatePortraitSensors();
+  bool displayRefreshPending_ = false;
   bool sensorStopPending_ = false;
   Screen afterSensorStop_ = Screen::Mode;
   uint32_t sensorStopStarted_ = 0;

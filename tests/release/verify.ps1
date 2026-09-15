@@ -11,12 +11,12 @@ $taskRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $webRoot = Join-Path $taskRoot 'webflasher'
 $firmwareRoot = Join-Path $webRoot 'firmware'
 $versionHeader = Get-Content -Raw -LiteralPath (Join-Path $taskRoot 'include\version.h')
-$versionMatch = [regex]::Match($versionHeader, 'AURORA_FIRMWARE_VERSION\s+"(\d+\.\d+\.\d+)"')
+$versionMatch = [regex]::Match($versionHeader, 'AURORA_CYD_FIRMWARE_VERSION\s+"(\d+\.\d+\.\d+)"')
 $manifest = Get-Content -Raw -LiteralPath (Join-Path $webRoot 'manifest.json') | ConvertFrom-Json
 if ($ReleasedArtifactsOnly) {
     $version = $manifest.version
 } else {
-    Assert-Release $versionMatch.Success 'A final firmware version is required. Use -ReleasedArtifactsOnly to verify preserved release binaries on a development branch.'
+    Assert-Release $versionMatch.Success 'A final CYD firmware version is required. Use -ReleasedArtifactsOnly to verify preserved release binaries on a development branch.'
     $version = $versionMatch.Groups[1].Value
 }
 $layout = Get-Content -Raw -LiteralPath (Join-Path $firmwareRoot 'flash-layout.json') | ConvertFrom-Json

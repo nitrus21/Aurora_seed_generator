@@ -1,12 +1,12 @@
 # AURORA — ESP32-P4
 
-Version finale : **1.9.2**, branche `codex/waveshare-p4-480x800`. La microSD requise à la sauvegarde, les protections PIN et la confirmation de passphrase sont décrites dans [SECURITY.md](../../SECURITY.md), sans modification des dérivations du portefeuille ou du fichier.
+Version P4 en développement : **2.0.0**, branche `codex/waveshare-p4-480x800`. Le CYD reste figé en **1.9.2**. La microSD requise à la sauvegarde, les protections PIN et la confirmation de passphrase sont décrites dans [SECURITY.md](../../SECURITY.md), sans modification des dérivations du portefeuille ou du fichier.
 Carte visée : **Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3**, sans suffixe `-C`.
 Ne pas confondre une compilation et un démarrage réussis avec une certification indépendante : les limites physiques et risques résiduels documentés restent applicables.
 
 Validation matérielle finale : AURORA 1.9.2 a été écrite sur un P4 révision
 1.3 de 32 Mo ; le démarrage série a confirmé l'application 1.9.2, la PSRAM
-32 Mo à 200 MHz, le GT911 et l'autotest E00 en 1 243 ms, sans panic ni
+32 Mo à 200 MHz, le GT911 et l'autotest E00 en 1 238 ms, sans panic ni
 redémarrage pendant 35 secondes.
 
 ## Un seul noyau, deux firmwares
@@ -26,12 +26,19 @@ Le dossier racine reste le seul dépôt de travail. Il n'y a pas de copie à syn
 Les écrans P4 sont rendus avec des widgets natifs dans une surface **480 × 800 portrait** et des polices agrandies, pas dans un framebuffer 320 × 240 étiré. L'écran d'entropie possède une disposition portrait dédiée. Les QR conservent leur forme carrée ; la caméra conserve son rapport d'aspect.
 
 Le menu **Choisissez une action** du P4 place le logo Bitcoin en haut au centre,
-au-dessus de quatre boutons centrés de **384 × 64 pixels** (80 % de la largeur),
+entièrement sous le séparateur d'en-tête, au-dessus de quatre boutons centrés de
+**384 × 64 pixels** (80 % de la largeur),
 et propose **RÉCUPÉRER UMBREL / LND**. Ce parcours déchiffre AEZEED avec
 les paramètres scrypt officiels dans une allocation PSRAM temporaire d'environ
 16 Mio, puis expose le `xprv` maître BIP32 derrière le PIN de session. Il ne
 restaure pas les canaux Lightning.
 Ce changement de disposition ne concerne pas le CYD.
+Tous les écrans P4 vérifient aussi que leurs informations et contrôles restent
+sous le séparateur sans le masquer ni le couper.
+Les quatre boutons actuels conservent leur position verticale afin de réserver
+une cinquième rangée de 64 pixels. Les boutons d'action standards du P4, dont
+**PRÉCÉDENT** et **SUIVANT**, utilisent eux aussi une hauteur uniforme de
+64 pixels.
 
 ## Capteurs et collecte
 

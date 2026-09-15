@@ -68,11 +68,31 @@ bool copyPreview(uint16_t *, size_t, uint32_t &) { return false; }
 #include "../../targets/waveshare_p4/main/ui_portrait.cpp"
 
 static std::array<uint16_t, 480 * 800> frame;
+static std::array<std::array<uint16_t,480*800>,3> panelFrames;
+static unsigned panelWriteIndex=0, completedFrames=0;
+static size_t flushedPixels=0;
 static void flush(lv_display_t *display, const lv_area_t *area, uint8_t *data) {
   auto *pixels = reinterpret_cast<uint16_t *>(data);
-  for (int y = area->y1; y <= area->y2; ++y) for (int x = area->x1; x <= area->x2; ++x)
-    frame[y * 480 + x] = *pixels++;
+  for (int y = area->y1; y <= area->y2; ++y) for (int x = area->x1; x <= area->x2; ++x) {
+    panelFrames[panelWriteIndex][y*480+x]=frame[y*480+x]=*pixels++;
+    ++flushedPixels;
+  }
+  if(lv_display_flush_is_last(display)) {
+    ++completedFrames; panelWriteIndex=(panelWriteIndex+1)%panelFrames.size();
+  }
   lv_display_flush_ready(display);
+}
+static void assertDisplayReplaced(AuroraUI &ui) {
+  assert(ui.displayRefreshPending_);
+  // Model old secret pixels retained in each of the three panel buffers.
+  for(auto &old:panelFrames) old.fill(0xFFFF);
+  const auto beforePixels=flushedPixels;
+  const auto beforeFrames=completedFrames;
+  ui.refreshDisplayAfterClear();
+  assert(!ui.displayRefreshPending_);
+  assert(completedFrames-beforeFrames==3 && flushedPixels-beforePixels==3*480*800);
+  for(const auto &rendered:panelFrames) assert(rendered==frame);
+  const auto after=flushedPixels; ui.refreshDisplayAfterClear(); assert(flushedPixels==after);
 }
 static void snapshot(AuroraUI &ui, const char *name) {
   lv_obj_update_layout(ui.root_); lv_refr_now(nullptr);
@@ -103,11 +123,67 @@ static void click(AuroraUI &ui, Action action) {
   }
   assert(false && "Expected button missing");
 }
+static lv_obj_t *actionButton(AuroraUI &ui, Action action) {
+  for(uint32_t i=0;i<lv_obj_get_child_cnt(ui.root_);++i) {
+    auto *child=lv_obj_get_child(ui.root_,i);
+    if(lv_obj_check_type(child,&lv_button_class) &&
+       reinterpret_cast<uintptr_t>(lv_obj_get_user_data(child))==action) return child;
+  }
+  return nullptr;
+}
+static void assertSessionWiped(const AuroraUI &ui) {
+  const auto zero=[](const void *data,size_t size) {
+    const auto *bytes=static_cast<const uint8_t *>(data);
+    for(size_t i=0;i<size;++i) assert(bytes[i]==0);
+  };
+  zero(&ui.wallet_,sizeof(ui.wallet_));
+  zero(ui.passphrase_,sizeof(ui.passphrase_));
+  zero(ui.filePassword_,sizeof(ui.filePassword_));
+  zero(ui.mixedEntropy_,sizeof(ui.mixedEntropy_));
+  zero(ui.restoreWords_,sizeof(ui.restoreWords_));
+  zero(ui.restoreMnemonic_,sizeof(ui.restoreMnemonic_));
+  zero(ui.restoreSuggestions_,sizeof(ui.restoreSuggestions_));
+  zero(ui.verifySuggestions_,sizeof(ui.verifySuggestions_));
+  zero(ui.umbrelRootXprv_,sizeof(ui.umbrelRootXprv_));
+  zero(&ui.exportPin_,sizeof(ui.exportPin_));
+  assert(!ui.protectedSession_ && !ui.pinGuard_.enabled());
+  assert(ui.access_==AuroraUI::Access::None && ui.requestedAccess_==AuroraUI::Access::None);
+  assert(ui.fileOperation_==AuroraUI::FileOperation::None && !ui.fileOperationDueMs_);
+  assert(!ui.generationDueMs_ && !ui.entropyCollected_ && !ui.pinArea_);
+}
 static void blocked(const AuroraUI &ui) {
   assert(ui.screen_==AuroraUI::Screen::SdRequired && !ui.keyboard_);
   assert(!ui.passArea_ && !ui.passConfirmArea_ && !ui.pinArea_ && !ui.pinConfirmArea_);
   assert(!ui.filePasswordArea_ && !ui.filePasswordConfirmArea_ && !ui.restoreWordArea_);
   for(auto *area:ui.verifyArea_) assert(!area);
+}
+static void assertHeaderSeparation(AuroraUI &ui) {
+  lv_obj_update_layout(ui.root_);
+  const int dividerTop=AuroraLayout::y(34);
+  const int dividerHeight=AuroraLayout::y(1);
+  const int dividerBottom=dividerTop+dividerHeight-1;
+  unsigned dividers=0;
+  for(uint32_t i=0;i<lv_obj_get_child_cnt(ui.root_);++i) {
+    auto *child=lv_obj_get_child(ui.root_,i);
+    if(lv_obj_get_x(child)==AuroraLayout::x(10) &&
+        lv_obj_get_y(child)==dividerTop && lv_obj_get_width(child)==AuroraLayout::x(300) &&
+        lv_obj_get_height(child)==dividerHeight) ++dividers;
+  }
+  // Processing-only screens intentionally have no header or divider.
+  if(!dividers) return;
+  assert(dividers==1);
+  for(uint32_t i=0;i<lv_obj_get_child_cnt(ui.root_);++i) {
+    auto *child=lv_obj_get_child(ui.root_,i);
+    const int top=lv_obj_get_y(child);
+    const int height=lv_obj_get_height(child);
+    const bool divider=lv_obj_get_x(child)==AuroraLayout::x(10) &&
+        top==dividerTop && lv_obj_get_width(child)==AuroraLayout::x(300) &&
+        height==dividerHeight;
+    if(divider) continue;
+    // Header objects stay above the divider. Screen information and controls
+    // keep a visible gap below it and may never cover or cut the line.
+    assert(top+height-1<dividerTop || top>=dividerBottom+6);
+  }
 }
 int main() {
   char *allocation=static_cast<char *>(auroraUiAlloc(20)); assert(allocation);
@@ -131,7 +207,35 @@ int main() {
   lv_indev_set_read_cb(input, [](lv_indev_t *, lv_indev_data_t *data) {
     data->point.x = 100; data->point.y = 200; data->state = LV_INDEV_STATE_PRESSED;
   });
-  fixture(ui); snapshot(ui, "splash.ppm");
+  fixture(ui);
+  lv_obj_update_layout(ui.root_);
+  unsigned splashImages=0, splashTitles=0, splashVersions=0;
+  auto *startButton=actionButton(ui,START);
+  assert(startButton && lv_obj_get_width(startButton)==320 && lv_obj_get_height(startButton)==64);
+  assert(lv_obj_get_x(startButton)==80 && lv_obj_get_y(startButton)==672);
+  for(uint32_t i=0;i<lv_obj_get_child_cnt(ui.root_);++i) {
+    auto *child=lv_obj_get_child(ui.root_,i);
+    if(lv_obj_check_type(child,&lv_image_class)) {
+      assert(lv_obj_get_x(child)==0 && lv_obj_get_y(child)==280);
+      assert(lv_obj_get_width(child)==320 && lv_obj_get_height(child)==240);
+      assert(lv_image_get_scale(child)==384); // 320 x 240 rendered as 480 x 360.
+      ++splashImages;
+    } else if(lv_obj_check_type(child,&lv_label_class)) {
+      const char *text=lv_label_get_text(child);
+      assert(!strstr(text,"Waveshare") && !strstr(text,"ESP32-P4"));
+      if(!strcmp(text,"A U R O R A")) {
+        assert(lv_obj_get_y(child)==130);
+        assert(lv_obj_get_style_text_font(child,LV_PART_MAIN)==&aurora_font_72); ++splashTitles;
+      } else if(!strcmp(text,"SEED GENERATOR")) {
+        assert(lv_obj_get_y(child)==204);
+        assert(lv_obj_get_style_text_font(child,LV_PART_MAIN)==&aurora_font_24); ++splashTitles;
+      } else if(!strcmp(text,"v2.0.0")) {
+        ++splashVersions;
+      }
+    }
+  }
+  assert(splashImages==1 && splashTitles==2 && splashVersions==1);
+  snapshot(ui, "splash.ppm");
   ui.show(Screen::Mode); snapshot(ui,"mode-portrait.ppm");
   unsigned modeButtons=0, modeLogos=0;
   for(uint32_t i=0;i<lv_obj_get_child_cnt(ui.root_);++i) {
@@ -141,12 +245,81 @@ int main() {
       assert(lv_obj_get_x(child)==48 && lv_obj_get_y(child)==316+88*modeButtons);
       ++modeButtons;
     } else if(lv_obj_check_type(child,&lv_image_class)) {
-      assert(lv_obj_get_x(child)==184 && lv_obj_get_y(child)==92);
+      assert(lv_obj_get_x(child)==184 && lv_obj_get_y(child)==136);
       assert(lv_obj_get_width(child)==112 && lv_obj_get_height(child)==160);
       ++modeLogos;
     }
   }
   assert(modeButtons==4 && modeLogos==1);
+  // A fifth 64-pixel row would still end at y=732, leaving a bottom margin.
+  assert(316+4*88+64<=732);
+  assertHeaderSeparation(ui);
+  fixture(ui); ui.mnemonicPage_=0; ui.show(Screen::Mnemonic);
+  lv_obj_update_layout(ui.root_);
+  assert(!actionButton(ui,MNEMONIC_PREVIOUS));
+  auto *next=actionButton(ui,MNEMONIC_NEXT);
+  assert(next && lv_obj_get_y(next)==720 && lv_obj_get_height(next)==64);
+  unsigned mnemonicEntries=0;
+  for(uint32_t i=0;i<lv_obj_get_child_cnt(ui.root_);++i) {
+    auto *child=lv_obj_get_child(ui.root_,i);
+    if(lv_obj_check_type(child,&lv_label_class) &&
+       !strcmp(lv_label_get_text(child),"Écrivez ces mots dans l'ordre. Ne les photographiez jamais.")) {
+      assert(lv_obj_get_style_text_font(child,LV_PART_MAIN)==&aurora_font_18);
+      assert(lv_obj_get_x(child)==15 && lv_obj_get_y(child)==134 &&
+             lv_obj_get_width(child)==450 && lv_obj_get_height(child)==48);
+    }
+    if(lv_obj_get_child_cnt(child)==24) {
+      assert(lv_obj_get_x(child)==15 && lv_obj_get_y(child)==195 &&
+             lv_obj_get_width(child)==450 && lv_obj_get_height(child)==495);
+      assert(lv_obj_get_style_text_font(lv_obj_get_child(child,0),LV_PART_MAIN)==&aurora_font_18);
+      assert(lv_obj_get_style_text_font(lv_obj_get_child(child,1),LV_PART_MAIN)==&aurora_font_30);
+      mnemonicEntries=lv_obj_get_child_cnt(child)/2;
+    }
+  }
+  assert(mnemonicEntries==12);
+  ui.mnemonicPage_=1; ui.show(Screen::Mnemonic); lv_obj_update_layout(ui.root_);
+  auto *previous=actionButton(ui,MNEMONIC_PREVIOUS);
+  assert(previous && lv_obj_get_y(previous)==720 && lv_obj_get_height(previous)==64 && !actionButton(ui,MNEMONIC_NEXT));
+  assert(actionButton(ui,NEXT_VERIFY) && lv_obj_get_y(actionButton(ui,NEXT_VERIFY))==720);
+  fixture(ui); ui.protectedSession_=false; ui.manualRestore_=false; ui.loadedWallet_=false;
+  ui.show(Screen::Info); lv_obj_update_layout(ui.root_);
+  const char expectedInfo[]=
+      "Adresse\n"
+      "bc1qfixtureonlyneverusethisaddress0000000000000000\n\n"
+      "Chemin : m/84'/0'/0'/0/0\n\n"
+      "Clé publique étendue du compte\n"
+      "zpub-fixture-only-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789";
+  unsigned infoPanels=0,infoButtons=0;
+  for(uint32_t i=0;i<lv_obj_get_child_cnt(ui.root_);++i) {
+    auto *child=lv_obj_get_child(ui.root_,i);
+    const uintptr_t action=reinterpret_cast<uintptr_t>(lv_obj_get_user_data(child));
+    if(action==TO_QR_ADDRESS || action==REVEAL_PRIVATE || action==TO_BACKUP) {
+      assert(lv_obj_get_y(child)==720 && lv_obj_get_height(child)==64);
+      ++infoButtons;
+    }
+    if(lv_obj_get_child_cnt(child)==1) {
+      auto *content=lv_obj_get_child(child,0);
+      if(lv_obj_check_type(content,&lv_label_class) && !strcmp(lv_label_get_text(content),expectedInfo)) {
+        assert(lv_obj_get_x(child)==15 && lv_obj_get_y(child)==140 &&
+               lv_obj_get_width(child)==450 && lv_obj_get_height(child)==550);
+        assert(lv_obj_get_style_text_font(content,LV_PART_MAIN)==&aurora_font_18);
+        ++infoPanels;
+      }
+    }
+  }
+  assert(infoPanels==1 && infoButtons==3);
+  sdReady=true; fixture(ui); ui.manualRestore_=false; ui.show(Screen::Backup); lv_obj_update_layout(ui.root_);
+  unsigned backupSubtitles=0;
+  for(uint32_t i=0;i<lv_obj_get_child_cnt(ui.root_);++i) {
+    auto *child=lv_obj_get_child(ui.root_,i);
+    if(lv_obj_check_type(child,&lv_label_class) &&
+       !strcmp(lv_label_get_text(child),"Choisissez un format (carte FAT32).")) {
+      assert(lv_obj_get_style_text_font(child,LV_PART_MAIN)==&aurora_font_18);
+      ++backupSubtitles;
+    }
+  }
+  assert(backupSubtitles==1);
+  ui.show(Screen::Mode);
   sdReady=false;
   const Action modeActions[]={NEW_WALLET,OPEN_WALLET,RESTORE_WALLET,RECOVER_UMBREL};
   const Screen modeDestinations[]={Screen::Setup,Screen::ImportName,Screen::RestoreSetup,Screen::UmbrelWarning};
@@ -154,15 +327,95 @@ int main() {
     ui.show(Screen::Mode); const unsigned before=sdChecks; click(ui,modeActions[i]);
     assert(ui.screen_==modeDestinations[i] && sdChecks==before);
   }
+  ui.show(Screen::ImportName); lv_obj_update_layout(ui.root_);
+  assert(ui.importFileDropdown_ && lv_obj_get_x(ui.importFileDropdown_)==48 &&
+         lv_obj_get_y(ui.importFileDropdown_)==196 &&
+         lv_obj_get_width(ui.importFileDropdown_)==384 && lv_obj_get_height(ui.importFileDropdown_)==64);
+  ui.show(Screen::RestoreSetup); lv_obj_update_layout(ui.root_);
+  unsigned restoreCounts=0,restoreSubtitles=0,restoreInfo=0;
+  for(uint32_t i=0;i<lv_obj_get_child_cnt(ui.root_);++i) {
+    auto *child=lv_obj_get_child(ui.root_,i);
+    if(lv_obj_check_type(child,&lv_label_class) &&
+       !strcmp(lv_label_get_text(child),"Choisissez le nombre de mots de la phrase BIP39.")) {
+      assert(lv_obj_get_style_text_font(child,LV_PART_MAIN)==&aurora_font_18);
+      ++restoreSubtitles;
+    }
+    if(lv_obj_check_type(child,&lv_label_class) &&
+       !strcmp(lv_label_get_text(child),
+               "Les mots sont vérifiés avec la liste anglaise officielle.\n"
+               "Le checksum BIP39 sera contrôlé avant toute dérivation.")) {
+      assert(lv_obj_get_style_text_font(child,LV_PART_MAIN)==&aurora_font_14);
+      ++restoreInfo;
+    }
+    const uintptr_t action=reinterpret_cast<uintptr_t>(lv_obj_get_user_data(child));
+    if(action>=WORD_12 && action<=WORD_24) {
+      const unsigned index=static_cast<unsigned>(action-WORD_12);
+      const int expectedX=index<3 ? 72+index*120 : 132+(index-3)*120;
+      const int expectedY=index<3 ? 210 : 330;
+      assert(lv_obj_get_x(child)==expectedX && lv_obj_get_y(child)==expectedY);
+      assert(lv_obj_get_width(child)==96 && lv_obj_get_height(child)==96);
+      assert(lv_obj_get_style_text_font(lv_obj_get_child(child,0),LV_PART_MAIN)==&aurora_font_30);
+      ++restoreCounts;
+    }
+  }
+  assert(restoreCounts==5 && restoreSubtitles==1 && restoreInfo==1);
+  ui.show(Screen::Setup); lv_obj_update_layout(ui.root_);
+  unsigned setupCounts=0,setupTypes=0;
+  unsigned setupSubtitles=0;
+  for(uint32_t i=0;i<lv_obj_get_child_cnt(ui.root_);++i) {
+    auto *child=lv_obj_get_child(ui.root_,i);
+    if(lv_obj_check_type(child,&lv_label_class) &&
+       (!strcmp(lv_label_get_text(child),"Nombre de mots") ||
+        !strcmp(lv_label_get_text(child),"Type d'adresse"))) {
+      assert(lv_obj_get_style_text_font(child,LV_PART_MAIN)==&aurora_font_18);
+      ++setupSubtitles;
+    }
+    const uintptr_t action=reinterpret_cast<uintptr_t>(lv_obj_get_user_data(child));
+    if(action>=WORD_12 && action<=WORD_24) {
+      assert(lv_obj_get_style_text_font(lv_obj_get_child(child,0),LV_PART_MAIN)==&aurora_font_30);
+      ++setupCounts;
+    } else if(action>=TYPE_LEGACY && action<=TYPE_TAPROOT) {
+      assert(lv_obj_get_style_text_font(lv_obj_get_child(child,0),LV_PART_MAIN)==&aurora_font_20);
+      ++setupTypes;
+    }
+  }
+  assert(setupCounts==5 && setupTypes==4 && setupSubtitles==2);
   ui.show(Screen::Mode); click(ui,RECOVER_UMBREL); click(ui,UMBREL_CONTINUE);
   assert(ui.umbrelRecovery_ && ui.words_==24 && ui.screen_==Screen::RestoreWords);
   strlcpy(ui.restoreMnemonic_,"24-word aezeed test fixture",sizeof(ui.restoreMnemonic_));
-  ui.show(Screen::UmbrelPassphrase); lv_obj_send_event(ui.keyboard_,LV_EVENT_READY,nullptr);
+  ui.show(Screen::UmbrelPassphrase);
+  assert(lv_color_eq(lv_obj_get_style_bg_color(ui.keyboard_,LV_PART_MAIN),lv_color_hex(0x0A0C10)));
+  assert(lv_color_eq(lv_obj_get_style_bg_color(ui.keyboard_,LV_PART_ITEMS),lv_color_hex(0x1A1D23)));
+  assert(lv_color_eq(lv_obj_get_style_bg_color(ui.passArea_,LV_PART_MAIN),lv_color_hex(0xFFFFFF)));
+  assert(lv_obj_get_style_text_font(ui.passArea_,LV_PART_MAIN)==&aurora_font_24);
+  lv_obj_update_layout(ui.passArea_); assert(lv_obj_get_height(ui.passArea_)>=60);
+  lv_obj_send_event(ui.keyboard_,LV_EVENT_READY,nullptr);
   mock.time+=101000; ui.tick(); assert(ui.screen_==Screen::PinSetup && ui.umbrelRootXprv_[0]);
   lv_textarea_set_text(ui.pinArea_,"2468"); lv_textarea_set_text(ui.pinConfirmArea_,"2468");
   ui.submitPinSetup(); assert(ui.screen_==Screen::UmbrelResult && ui.pinGuard_.enabled());
   click(ui,UMBREL_SHOW_XPRV); assert(ui.screen_==Screen::PinUnlock);
   lv_textarea_set_text(ui.pinArea_,"2468"); ui.submitPinUnlock(); assert(ui.screen_==Screen::UmbrelQr);
+  strlcpy(ui.umbrelRootXprv_,
+      "xprv9s21ZrQH143K3-fixture-only-0123456789-0123456789-0123456789-0123456789-0123456789-0123456789-012345",
+      sizeof(ui.umbrelRootXprv_));
+  ui.show(Screen::UmbrelQr);
+  lv_obj_update_layout(ui.root_);
+  unsigned umbrelQrCount=0,umbrelValueCount=0;
+  for(uint32_t i=0;i<lv_obj_get_child_cnt(ui.root_);++i) {
+    auto *child=lv_obj_get_child(ui.root_,i);
+    if(lv_obj_check_type(child,&lv_qrcode_class)) {
+      assert(lv_obj_get_x(child)==72 && lv_obj_get_y(child)==130 &&
+             lv_obj_get_width(child)==336 && lv_obj_get_height(child)==336);
+      ++umbrelQrCount;
+    } else if(lv_obj_check_type(child,&lv_label_class) &&
+              !strcmp(lv_label_get_text(child),ui.umbrelRootXprv_)) {
+      assert(lv_obj_get_y(child)==480 && lv_obj_get_width(child)==432);
+      assert(lv_obj_get_style_text_font(child,LV_PART_MAIN)==&aurora_font_30);
+      ++umbrelValueCount;
+    }
+  }
+  assert(umbrelQrCount==1 && umbrelValueCount==1);
+  snapshot(ui,"umbrel-qr.ppm");
   mock.time+=15001000; ui.tick(); assert(ui.screen_==Screen::UmbrelResult);
   click(ui,LOCK_SESSION); assert(ui.screen_==Screen::Mode && !ui.umbrelRootXprv_[0]);
   for(auto screen:{Screen::Setup,Screen::RestoreSetup,Screen::ImportName,
@@ -180,16 +433,62 @@ int main() {
   snapshot(ui,"sd-required.ppm"); click(ui,LOCK_SESSION);
   assert(ui.screen_==Screen::Mode && !ui.wallet_.valid && !ui.wallet_.mnemonic[0]);
   sdReady=true;
+  fixture(ui); ui.qrContent_=AuroraUI::QrContent::AccountXpub; ui.show(Screen::Qr);
+  lv_obj_update_layout(ui.root_);
+  unsigned walletQrCount=0,walletQrValueCount=0;
+  for(uint32_t i=0;i<lv_obj_get_child_cnt(ui.root_);++i) {
+    auto *child=lv_obj_get_child(ui.root_,i);
+    if(lv_obj_check_type(child,&lv_qrcode_class)) {
+      assert(lv_obj_get_x(child)==72 && lv_obj_get_y(child)==130 &&
+             lv_obj_get_width(child)==336 && lv_obj_get_height(child)==336);
+      ++walletQrCount;
+    } else if(lv_obj_check_type(child,&lv_label_class) &&
+              !strcmp(lv_label_get_text(child),ui.wallet_.accountXpub)) {
+      assert(lv_obj_get_y(child)==480 && lv_obj_get_width(child)==432);
+      assert(lv_obj_get_style_text_font(child,LV_PART_MAIN)==&aurora_font_30);
+      ++walletQrValueCount;
+    }
+  }
+  assert(walletQrCount==1 && walletQrValueCount==1);
+  snapshot(ui,"qr-xpub.ppm");
+  ui.qrContent_=AuroraUI::QrContent::PrivateKey; ui.show(Screen::Qr);
+  snapshot(ui,"qr-private.ppm");
   for (auto screen : {Screen::Mode, Screen::Setup, Screen::Passphrase, Screen::Mnemonic, Screen::Info,
       Screen::Qr, Screen::Verify, Screen::Backup, Screen::ImportName, Screen::ImportPassword,
       Screen::RestoreSetup, Screen::RestoreWords, Screen::RestorePassphrase,
       Screen::UmbrelWarning, Screen::UmbrelPassphrase, Screen::UmbrelProcessing, Screen::UmbrelResult,
-      Screen::ExportWarning, Screen::ExportName, Screen::ExportPassword}) {
+      Screen::UmbrelQr, Screen::Generating, Screen::FileProcessing, Screen::GenerationError,
+      Screen::SecurityError, Screen::ExportWarning, Screen::ExportName, Screen::ExportPassword,
+      Screen::Wipe, Screen::PinSetup, Screen::PinUnlock, Screen::SdRequired}) {
     ui.show(screen); fixture(ui); lv_obj_update_layout(ui.root_);
     assert(lv_obj_get_width(ui.root_) == 480 && lv_obj_get_height(ui.root_) == 800);
+    assertHeaderSeparation(ui);
+    const bool hasHeader=screen!=Screen::Splash && screen!=Screen::Restoring &&
+        screen!=Screen::UmbrelProcessing && screen!=Screen::Generating &&
+        screen!=Screen::FileProcessing;
+    unsigned headerLabels=0;
+    for(uint32_t i=0;i<lv_obj_get_child_cnt(ui.root_);++i) {
+      auto *child=lv_obj_get_child(ui.root_,i);
+      if(lv_obj_check_type(child,&lv_label_class) && lv_obj_get_y(child)==30) {
+        assert(lv_obj_get_style_text_font(child,LV_PART_MAIN)==&aurora_font_20);
+        ++headerLabels;
+      }
+    }
+    assert(!hasHeader || headerLabels>=1);
     char name[40]; snprintf(name, sizeof(name), "screen-%02u.ppm", static_cast<unsigned>(screen)); snapshot(ui, name);
   }
-  ui.show(Screen::Entropy); ui.onTouchSample(23, 200, 0); ui.onTouchSample(300, 341, 0);
+  ui.show(Screen::Entropy); assertHeaderSeparation(ui);
+  unsigned entropySubtitles=0;
+  for(uint32_t i=0;i<lv_obj_get_child_cnt(ui.root_);++i) {
+    auto *child=lv_obj_get_child(ui.root_,i);
+    if(lv_obj_check_type(child,&lv_label_class) &&
+       !strcmp(lv_label_get_text(child),"Aperçu cryptographique défilant")) {
+      assert(lv_obj_get_style_text_font(child,LV_PART_MAIN)==&aurora_font_18);
+      ++entropySubtitles;
+    }
+  }
+  assert(entropySubtitles==1);
+  ui.onTouchSample(23, 200, 0); ui.onTouchSample(300, 341, 0);
   assert(ui.entropy_.sampleCount() == 0);
   snapshot(ui, "entropy-red.ppm");
   for (unsigned i = 1; i <= 320; ++i) {
@@ -288,6 +587,61 @@ int main() {
   ui.pinGuard_.begin(pin); ui.protectedSession_=ui.loadedWallet_=true;
   lv_disp_trig_activity(nullptr);
   ui.show(Screen::Info); snapshot(ui,"protected-info.ppm");
+  const auto expectButton=[&](Action action,const char *text,lv_color_t color) {
+    auto *b=actionButton(ui,action); assert(b);
+    assert(!strcmp(lv_label_get_text(lv_obj_get_child(b,0)),text));
+    assert(lv_color_eq(lv_obj_get_style_bg_color(b,LV_PART_MAIN),color));
+  };
+  expectButton(TO_QR_ADDRESS,"CLÉ PUBLIQUE",SUCCESS);
+  expectButton(REVEAL_PRIVATE,"CLÉ PRIVÉE",DANGER);
+  expectButton(SHOW_WORDS,"MOTS",DANGER);
+  expectButton(SHOW_LOADED_PASSPHRASE,"PASSPHRASE",DANGER);
+  expectButton(TO_BACKUP,"EXPORTER",ORANGE);
+  click(ui,TO_QR_ADDRESS); assert(ui.screen_==Screen::Qr);
+  click(ui,TO_QR_PUBLIC); assert(ui.screen_==Screen::Qr);
+  click(ui,TO_INFO); assert(ui.screen_==Screen::Info);
+  secureZero(ui.passphrase_,sizeof(ui.passphrase_)); ui.show(Screen::Info);
+  assert(lv_obj_has_state(actionButton(ui,SHOW_LOADED_PASSPHRASE),LV_STATE_DISABLED));
+  assert(!lv_obj_has_flag(actionButton(ui,SHOW_LOADED_PASSPHRASE),LV_OBJ_FLAG_HIDDEN));
+  click(ui,SHOW_LOADED_PASSPHRASE); assert(ui.screen_==Screen::Info && !ui.pinArea_);
+  snapshot(ui,"protected-info-no-passphrase.ppm");
+  strlcpy(ui.passphrase_,"fixture-passphrase",sizeof(ui.passphrase_)); ui.show(Screen::Info);
+  assert(!lv_obj_has_state(actionButton(ui,SHOW_LOADED_PASSPHRASE),LV_STATE_DISABLED));
+  // Created and reopened wallets use the same review screen, never the wizard.
+  for(bool loaded:{false,true}) {
+    ui.loadedWallet_=loaded; click(ui,SHOW_WORDS); assert(ui.screen_==Screen::PinUnlock);
+    lv_textarea_set_text(ui.pinArea_,"01234567"); ui.submitPinUnlock();
+    assert(ui.screen_==Screen::Mnemonic && ui.mnemonicPage_==0);
+    assert(!actionButton(ui,BACK_MODE_WIPE) && !actionButton(ui,BACK_ENTROPY));
+    lv_obj_update_layout(ui.root_);
+    unsigned headerItems=0;
+    for(uint32_t i=0;i<lv_obj_get_child_cnt(ui.root_);++i) {
+      auto *child=lv_obj_get_child(ui.root_,i);
+      if(lv_obj_get_y(child)>=100) continue;
+      assert(lv_obj_check_type(child,&lv_label_class));
+      assert(!strcmp(lv_label_get_text(child),"Phrase de récupération"));
+      ++headerItems;
+    }
+    assert(headerItems==1);
+    expectButton(TO_INFO,"RETOUR",ORANGE);
+    snapshot(ui,"protected-words-page-1.ppm");
+    const auto grant=ui.accessGrantedMs_;
+    click(ui,MNEMONIC_NEXT); assert(ui.mnemonicPage_==1 && ui.accessGrantedMs_==grant);
+    assert(actionButton(ui,MNEMONIC_PREVIOUS) && !actionButton(ui,SHOW_LOADED_PASSPHRASE));
+    snapshot(ui,"protected-words-page-2.ppm");
+    click(ui,TO_INFO); assert(ui.screen_==Screen::Info && ui.access_==AuroraUI::Access::None);
+    click(ui,SHOW_WORDS); assert(ui.screen_==Screen::PinUnlock && ui.mnemonicPage_==0);
+    lv_obj_send_event(ui.keyboard_,LV_EVENT_CANCEL,nullptr);
+  }
+  ui.words_=12; click(ui,SHOW_WORDS);
+  lv_textarea_set_text(ui.pinArea_,"01234567"); ui.submitPinUnlock();
+  assert(!actionButton(ui,MNEMONIC_NEXT) && !actionButton(ui,MNEMONIC_PREVIOUS));
+  expectButton(TO_INFO,"RETOUR",ORANGE); click(ui,TO_INFO); ui.words_=24;
+  click(ui,LOCK_SESSION); assert(ui.screen_==Screen::Mode); assertSessionWiped(ui);
+  assertDisplayReplaced(ui);
+  fixture(ui); strlcpy(ui.passphrase_,"fixture-passphrase",sizeof(ui.passphrase_));
+  ui.pinGuard_.begin(pin); ui.protectedSession_=ui.loadedWallet_=true;
+  lv_disp_trig_activity(nullptr); ui.show(Screen::Info);
   for(auto screen:{Screen::Mnemonic,Screen::PassphraseReveal,Screen::Verify,
                    Screen::ExportWarning,Screen::ExportName,Screen::ExportPassword}) {
     ui.show(screen); assert(ui.screen_==Screen::PinUnlock);
@@ -309,10 +663,13 @@ int main() {
   lv_textarea_set_text(ui.pinArea_,"01234567"); ui.submitPinUnlock();
   assert(ui.screen_==Screen::PassphraseReveal);
   mock.time+=15001000; ui.tick(); assert(ui.screen_==Screen::Info && !ui.passArea_);
+  assert(ui.access_==AuroraUI::Access::None && ui.wallet_.valid);
+  assertDisplayReplaced(ui);
   ui.show(Screen::Mnemonic); lv_textarea_set_text(ui.pinArea_,"0000"); ui.submitPinUnlock();
   mock.time+=1000000; lv_textarea_set_text(ui.pinArea_,"0000"); ui.submitPinUnlock();
   assert(ui.screen_==Screen::Mode && !ui.wallet_.valid && !ui.protectedSession_ && !ui.pinGuard_.enabled());
   assert(!ui.passphrase_[0] && !ui.wallet_.mnemonic[0] && !ui.wallet_.privateWif[0]);
+  assertSessionWiped(ui); assertDisplayReplaced(ui);
   fixture(ui); ui.protectedSession_=true; ui.legacyImported_=true;
   ui.show(Screen::Mnemonic); assert(ui.screen_==Screen::PinSetup);
   snapshot(ui,"pin-setup.ppm");
@@ -322,6 +679,8 @@ int main() {
   ui.submitPinSetup(); assert(ui.screen_==Screen::Info && ui.pinGuard_.enabled());
   assert(!sdReady && sdChecks==offlineChecks); // Session PIN also works offline.
   mock.time+=120001000; ui.tick(); assert(ui.screen_==Screen::Mode && !ui.wallet_.valid);
+  assertSessionWiped(ui);
+  assertDisplayReplaced(ui);
   sdReady=true;
   fixture(ui); importedWallet=ui.wallet_;
   importedData.fileVersion=2; importedData.pin=pin; importedData.wordCount=24;

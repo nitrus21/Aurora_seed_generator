@@ -28,6 +28,12 @@ extern "C" void app_main() {
     return;
   }
   ui.begin();
+  // The adapter's framebuffer ISR wakes the LVGL worker, so render from its
+  // timer context. Holding the LVGL lock in app_main alone is not sufficient.
+  lv_timer_t *refreshTimer = lv_timer_create([](lv_timer_t *timer) {
+    static_cast<AuroraUI *>(lv_timer_get_user_data(timer))->refreshDisplayAfterClear();
+  }, 20, &ui);
+  ESP_ERROR_CHECK(refreshTimer ? ESP_OK : ESP_ERR_NO_MEM);
   bsp_display_unlock();
   bsp_display_backlight_on();
   printf("AURORA %s: interface P4 480x800 initialisee\n", AURORA_FIRMWARE_VERSION);

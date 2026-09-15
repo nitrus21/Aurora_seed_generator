@@ -2,11 +2,12 @@
 
 Firmware Bitcoin hors ligne, avec un noyau commun et deux cibles matérielles : **ESP32-2432S028(R)** (320 × 240) et portage **Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3** (480 × 800 portrait, version sans caméra fournie). Toute l’interface est en français ; seuls les mots de la phrase de récupération utilisent la liste anglaise officielle BIP39.
 
-> Le CYD et le P4 sont figés en version finale **1.9.2**. Le P4 ajoute son menu portrait et la récupération AEZEED. Le Web Flasher conserve le choix CYD **1.7.5**, propose le CYD **1.9.2** par défaut et contient des images P4 finales séparées pour les révisions silicium 1.x et 3.x. [Sécurité et compatibilité V1/V2](SECURITY.md) · [Architecture et validation P4](targets/waveshare_p4/README.md).
+> Le CYD est figé en version finale **1.9.2**. Le développement continue exclusivement sur le P4 sous la version **2.0.0**. Le Web Flasher conserve le choix CYD **1.7.5**, propose le CYD **1.9.2** par défaut et garde les images P4 1.9.2 jusqu'à la publication des deux profils P4 2.0.0. [Sécurité et compatibilité V1/V2](SECURITY.md) · [Architecture et validation P4](targets/waveshare_p4/README.md).
 
 ![Fond de l’écran de démarrage AURORA](assets/splash_320x240.png)
 
 Dernière version finale CYD et binaires inclus : **1.9.2**
+Version P4 en développement : **2.0.0**
 Versions Web Flasher : **CYD 1.9.2 / 1.7.5** et **P4 1.9.2 révisions 1.x / 3.x**
 Notes de version : [historique CYD et images P4](webflasher/CHANGELOG.md)
 Installation Web : [AURORA Web Flasher](https://nitrus21.github.io/Aurora_seed_generator/)
@@ -272,11 +273,11 @@ SHA-256 permet de vérifier que le fichier n’a pas changé entre sa création,
 ### Empreinte de la version finale CYD 1.9.2 compilée
 
 Fichier distribué : `webflasher/firmware/firmware.bin` (copie du build PlatformIO)
-Taille : **1 498 720 octets**
+Taille : **1 499 120 octets**
 SHA-256 :
 
 ```text
-1DE3A5151947EEA3E6428842705C015C9335E5AAF23C190595C0BB1DCD0E51FE
+222B4ADA067A3FCA2B3CAFC4EF83E20E9D2B7F1D6DD23D557F42DE7953F80515
 ```
 
 Cette empreinte concerne l’application seule, pas l’image fusionnée du Web Flasher. Les empreintes de tous les binaires sont dans [SHA256SUMS.txt](webflasher/firmware/SHA256SUMS.txt). Sous PowerShell, `./tests/release/verify.ps1` contrôle les versions, le manifeste, le contenu de l’image fusionnée et les empreintes, sans flasher l’appareil.
@@ -347,15 +348,20 @@ Si le code n’est pas `E00`, ne créez pas de portefeuille et notez le code exa
 
 ### Validation de la version CYD 1.9.2
 
-Le 15 septembre 2026, le binaire final 1.9.2 inclus dans ce dépôt a été programmé sur l'ESP32-2432S028R du projet. Esptool a identifié un ESP32-D0WD-V3 révision 3.1, vérifié les zones écrites et redémarré la carte. L'autotest série a renvoyé **E00 en 2 145 ms**.
+Le 15 septembre 2026, une compilation 1.9.2 a été programmée sur
+l'ESP32-2432S028R du projet. Esptool a identifié un ESP32-D0WD-V3 révision 3.1,
+vérifié les zones écrites et redémarré la carte. L'autotest série a renvoyé
+**E00 en 2 145 ms**. L'image finale actuelle, reconstruite avec le thème sombre
+des claviers, a passé les contrôles logiciels mais n'a pas été reflashée sur ce
+CYD, qui n'était plus connecté.
 
 Le même jour, l'application P4 1.x finale a été programmée sur l'ESP32-P4
 révision 1.3 du projet après comparaison exacte de sa table de partitions.
 Esptool a vérifié les données écrites ; le démarrage confirme la version
 **1.9.2**, la PSRAM 32 Mo à 200 MHz, l'écran 480 × 800, le tactile GT911 et
-**E00 en 1 243 ms**, sans panic ni redémarrage pendant 35 secondes.
+**E00 en 1 244 ms**, sans panic ni redémarrage pendant 35 secondes.
 
-L'image fusionnée du Web Flasher porte l'empreinte `E69A9F4D4FCB9E2D733ABC24310183560B6EC0CD47294D9E7F5AD0D0CAC1E95A`. L'installation depuis le navigateur reste à essayer séparément.
+L'image fusionnée du Web Flasher porte l'empreinte `8A1469BF006BF0185418FE8D067B53F685DDF705DAEB06ED271D80654AA73506`. L'installation depuis le navigateur reste à essayer séparément.
 
 ### Validation historique de la version 1.7.6
 

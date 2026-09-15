@@ -15,9 +15,15 @@ Le test compile les **vraies sources** de `src/ui.cpp`, du PIN, de l'allocateur 
 - Vérification qu'un événement LVGL tactile produit un seul échantillon, sans répéter un état mis en cache à chaque passage de la boucle.
 - Vérification qu'un arrêt non confirmé, même après le délai d'attente, ne permet pas d'afficher les secrets.
 - Confirmation exacte de passphrase et conservation du mélange jusqu'à la génération.
+- Palette sombre commune à tous les claviers et champs de saisie P4, sans grande surface blanche.
+- Champs de saisie P4 blancs de 60 px avec police 24 px, liste d'ouverture compacte, choix du nombre de mots en grille 3+2 et configuration agrandie.
+- Douze mots par page et QR P4 de 336 px centrés, avec la valeur en police 30 px sous le code, y compris les QR xpub, clé privée et xprv Umbrel.
+- Titres principaux P4 à 20 px et sous-titres de section à 18 px ; les tests empêchent l'agrandissement involontaire des consignes.
 - Sur les deux profils : création/restauration, passphrase, accès protégé aux secrets et PIN de session sans SD ; carte exigée seulement à la sauvegarde/export. RÉESSAYER sans carte et après réinsertion, FERMER avec effacement ; retrait avant validation du mot de passe/PIN d'export, compteur PIN conservé, aucune opération différée avec identifiants effacés. L'ouverture garde l'erreur du lecteur sans dialogue SD d'export.
-- P4 : logo centré et quatre boutons à 80 % de la largeur, dont la récupération Umbrel/LND, sans SD. CYD : coordonnées, tailles et trois choix du menu original conservés. Captures `mode-portrait.png`, `mode-cyd.png` et `sd-required.png` dans les répertoires respectifs.
+- P4 : logo centré sous le séparateur, quatre boutons à 80 % de la largeur avec une cinquième rangée réservée, et actions standards de 64 pixels de haut, notamment PRÉCÉDENT/SUIVANT ; chaque écran à en-tête est contrôlé pour empêcher les informations ou commandes de couper le séparateur. CYD : coordonnées, tailles et trois choix du menu original conservés. Captures `mode-portrait.png`, `mode-cyd.png` et `sd-required.png` dans les répertoires respectifs.
 - Autorisation PIN par catégorie, compteur persistant, trois échecs avec effacement, délais 15/120 secondes, import V1/V2 et garde au point d'entrée de l'export.
+- P4 : accès public vert, actions protégées rouges, passphrase absente désactivée mais visible ; consultation des mots sans en-tête d'étapes, avec RETOUR immédiat sur chaque page et nouveau PIN après retour.
+- P4 : vérification des tampons sensibles complets après verrouillage, expiration et trois PIN incorrects ; trois rafraîchissements complets remplacent les anciennes images dans les trois tampons d'affichage simulés. La synchronisation réelle avec l'écran reste à vérifier sur matériel.
 - Vérification des allocations LVGL écrasées **avant** libération/réallocation, avec contrôle du cas d'échec de réallocation.
 
 Ces tests n'attestent ni les pilotes physiques, ni le caractère imprévisible des capteurs, ni la compatibilité électrique d'une caméra. La recette sur les deux appareils reste obligatoire. Pour la génération d'entropie et le format binaire figé, voir également `tests/native/run.cmd`.

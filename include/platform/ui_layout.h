@@ -44,7 +44,8 @@ inline void align(lv_obj_t *object, lv_align_t anchor, int dx, int dy) {
 }
 inline void font(lv_obj_t *object, const lv_font_t *value, lv_style_selector_t selector) {
 #if defined(AURORA_BOARD_P4)
-  if (value == &aurora_font_10) value = &aurora_font_14;
+  if (lv_obj_check_type(object, &lv_textarea_class)) value = &aurora_font_24;
+  else if (value == &aurora_font_10) value = &aurora_font_14;
   else if (value == &aurora_font_12) value = &aurora_font_18;
   else if (value == &aurora_font_14) value = &aurora_font_20;
   else if (value == &aurora_font_16) value = &aurora_font_24;

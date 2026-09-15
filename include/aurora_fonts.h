@@ -13,6 +13,8 @@ LV_FONT_DECLARE(aurora_font_20);
 LV_FONT_DECLARE(aurora_font_18);
 LV_FONT_DECLARE(aurora_font_24);
 LV_FONT_DECLARE(aurora_font_30);
+LV_FONT_DECLARE(aurora_font_36);
+LV_FONT_DECLARE(aurora_font_72);
 #endif
 #ifdef __cplusplus
 }

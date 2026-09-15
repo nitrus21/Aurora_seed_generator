@@ -1,5 +1,11 @@
 # Notes de version AURORA
 
+## 2.0.0 — P4 uniquement, en développement
+
+- Fin du développement CYD, figé en version 1.9.2.
+- Nouvelle identité de version réservée aux profils Waveshare ESP32-P4.
+- Les binaires Web Flasher P4 restent en 1.9.2 jusqu'à la validation et la publication des deux révisions matérielles 2.0.0.
+
 ## 1.9.2 — CYD et P4 finaux, 15 septembre 2026
 
 - Conservation des trois actions historiques du CYD, sans le déchiffrement AEZEED réservé au P4.
@@ -7,9 +13,12 @@
 - Confirmation de passphrase, PIN de session, PIN par sauvegarde V2 et temporisation des écrans privés.
 - Image fusionnée CYD ajoutée au Web Flasher avec maintien du choix historique 1.7.5.
 - Ajout des images P4 1.9.2 finales, séparées pour les révisions silicium 1.x et 3.x.
+- Claviers et champs de saisie assombris sur CYD et P4 pour réduire l'éblouissement, avec contraste conservé sur les touches de fonction.
+- Champs blancs rehaussés avec texte agrandi, sélection de seed 3+2, douze mots par page et QR 70 % de largeur avec valeur agrandie sous le code.
+- Hiérarchie typographique P4 uniformisée : titres principaux à 20 px, sous-titres de section à 18 px et consignes inchangées.
 - Épinglage exact d'ESP Web Tools 10.4.0, CSP restrictive et GitHub Actions verrouillées par SHA.
 
-Validation CYD : compilation finale, écriture sur ESP32-D0WD-V3 révision 3.1, vérification des zones flashées et autotest **E00 en 2 145 ms**. Validation P4 1.x : écriture de l'application finale sur ESP32-P4 révision 1.3, vérification des données, version 1.9.2 et autotest **E00 en 1 243 ms**, sans panic ni redémarrage pendant 35 secondes. Les installations depuis le navigateur et le profil P4 3.x doivent encore être vérifiés sur le matériel correspondant.
+Validation CYD : compilation finale réussie ; la compilation matérielle précédente a été vérifiée sur ESP32-D0WD-V3 révision 3.1 avec autotest **E00 en 2 145 ms**, mais le CYD n'était plus connecté pour reflasher le thème sombre. Validation P4 1.x : écriture de l'application finale sur ESP32-P4 révision 1.3, vérification des données, version 1.9.2 et autotest **E00 en 1 244 ms**, sans panic ni redémarrage pendant 35 secondes. Les installations depuis le navigateur et le profil P4 3.x doivent encore être vérifiés sur le matériel correspondant.
 
 ## 1.7.6 — 14 septembre 2026
 

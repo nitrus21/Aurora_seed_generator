@@ -22,13 +22,27 @@ const char *stateName(AuroraSensors::State state) {
 }
 }
 
+void AuroraUI::refreshDisplayAfterClear() {
+  if (!displayRefreshPending_ || !root_) return;
+  displayRefreshPending_ = false;
+  // After screen replacement, run from a timer on the LVGL worker, outside
+  // input/render callbacks; the framebuffer ISR notifies this worker task.
+  // The pinned P4 BSP uses TRIPLE_PARTIAL with three FIFO framebuffers.
+  // Three independent full redraws replace old pixels via the normal DMA pipeline.
+  // Recheck this count if the BSP display mode or buffer count ever changes.
+  for (unsigned frame = 0; frame < 3; ++frame) {
+    lv_obj_invalidate(lv_obj_get_screen(root_));
+    lv_refr_now(lv_obj_get_display(root_));
+  }
+}
+
 void AuroraUI::buildPortraitEntropy() {
   header("Collecte d'entropie", "2 / 7");
   secureZero(mixedEntropy_, sizeof(mixedEntropy_));
   entropyReadyPending_ = entropyFailurePending_ = false;
   entropyCompleteDueMs_ = entropyPreviewUpdatedMs_ = sensorUiUpdated_ = 0;
   entropy_.begin();
-  text(root_, "Bougez votre doigt dans le cadre", 24, 122);
+  text(root_, "Bougez votre doigt dans le cadre", 24, 122, &aurora_font_18);
   lv_obj_t *pad = lv_obj_create(root_);
   lv_obj_set_pos(pad, 24, 152); lv_obj_set_size(pad, 432, 188);
   lv_obj_remove_flag(pad, LV_OBJ_FLAG_SCROLLABLE);
@@ -43,7 +57,7 @@ void AuroraUI::buildPortraitEntropy() {
     lv_indev_get_point(input, &point);
     static_cast<AuroraUI *>(lv_event_get_user_data(event))->onTouchSample(point.x, point.y, 0);
   }, LV_EVENT_PRESSING, this);
-  lv_obj_t *hint = text(pad, "Mouvement + temps + RNG matériel\nMicrophones / caméra si disponibles", 0, 0);
+  lv_obj_t *hint = text(pad, "Mouvement + temps + RNG matériel\nMicrophones / caméra si disponibles", 0, 0, &aurora_font_18);
   lv_obj_set_style_text_align(hint, LV_TEXT_ALIGN_CENTER, 0); lv_obj_center(hint);
 
   microphoneStatus_ = text(root_, "Microphones : détection...", 24, 364, &aurora_font_14);
@@ -68,7 +82,7 @@ void AuroraUI::buildPortraitEntropy() {
     cameraPreview_ = lv_image_create(root_); lv_image_set_src(cameraPreview_, &cameraImage_);
     lv_obj_set_pos(cameraPreview_, 306, 392);
   }
-  text(root_, "Aperçu cryptographique défilant", 24, 644, &aurora_font_14);
+  text(root_, "Aperçu cryptographique défilant", 24, 644, &aurora_font_18);
   strlcpy(entropyPreviewText_, "-------- -------- -------- --------", sizeof(entropyPreviewText_));
   entropyPreview_ = text(root_, "", 24, 670, &aurora_font_18);
   lv_label_set_text_static(entropyPreview_, entropyPreviewText_);

@@ -48,7 +48,7 @@ Après le déploiement, vérifiez les quatre choix, le changement de manifeste, 
 
 ## Validation de l’appareil
 
-Le 15 septembre 2026, les composants binaires finaux CYD 1.9.2 ont été flashés par port série sur l’ESP32-2432S028R du projet avec vérification des données écrites. Le redémarrage a produit **E00 en 2 145 ms**. L'application P4 1.x finale a aussi été écrite par port série sur un ESP32-P4 révision 1.3 de 32 Mo et vérifiée ; le démarrage a confirmé **AURORA 1.9.2**, le GT911, la PSRAM 32 Mo à 200 MHz et **E00 en 1 243 ms**, sans panic ni redémarrage pendant 35 secondes. Ces contrôles ne constituent pas encore un essai d’installation depuis le navigateur ; l'image P4 3.x reste à essayer sur un matériel 3.x réel.
+Le 15 septembre 2026, les composants binaires finaux CYD 1.9.2 ont été flashés par port série sur l’ESP32-2432S028R du projet avec vérification des données écrites. Le redémarrage a produit **E00 en 2 145 ms**. L'application P4 1.x finale a aussi été écrite par port série sur un ESP32-P4 révision 1.3 de 32 Mo et vérifiée ; le démarrage a confirmé **AURORA 1.9.2**, le GT911, la PSRAM 32 Mo à 200 MHz et **E00 en 1 238 ms**, sans panic ni redémarrage pendant 35 secondes. Ces contrôles ne constituent pas encore un essai d’installation depuis le navigateur ; l'image P4 3.x reste à essayer sur un matériel 3.x réel.
 
 ## Sécurité
 
