@@ -25,6 +25,25 @@ Le test compile les **vraies sources** de `src/ui.cpp`, du PIN, de l'allocateur 
 - P4 : accès public vert, actions protégées rouges, passphrase absente désactivée mais visible ; consultation des mots sans en-tête d'étapes, avec RETOUR immédiat sur chaque page et nouveau PIN après retour.
 - P4 : vérification des tampons sensibles complets après verrouillage, expiration et trois PIN incorrects ; trois rafraîchissements complets remplacent les anciennes images dans les trois tampons d'affichage simulés. La synchronisation réelle avec l'écran reste à vérifier sur matériel.
 - Vérification des allocations LVGL écrasées **avant** libération/réallocation, avec contrôle du cas d'échec de réallocation.
+- P4 : délai d'inactivité dès l'entrée dans chaque parcours, saisies et première
+  génération comprises ; fermeture prioritaire même si l'arrêt d'un capteur
+  reste en attente. Démarrage et erreur de sécurité effacent les données nommées.
+
+Les tests complémentaires sont séparés pour ne pas confondre leurs garanties :
+
+```powershell
+python tests/crypto/run_memory_hardening.py
+python tests/lvgl/test_patch.py
+powershell -ExecutionPolicy Bypass -File tests/lvgl/run.ps1
+powershell -ExecutionPolicy Bypass -File tests/memory/run.ps1 -Optimized
+python tests/storage/run.py
+```
+
+Ils contrôlent les temporaires crypto, les erreurs d'allocation, le balayage des
+blocs possédés au démarrage, les demandes de synchronisation cache et les tampons
+stdio. Aucun de ces bancs natifs ne garantit un effacement physique lors d'une
+coupure : les tâches SDK actives, caches et périphériques réels nécessitent des
+essais distincts sur carte avec des données publiques.
 
 Ces tests n'attestent ni les pilotes physiques, ni le caractère imprévisible des capteurs, ni la compatibilité électrique d'une caméra. La recette sur les deux appareils reste obligatoire. Pour la génération d'entropie et le format binaire figé, voir également `tests/native/run.cmd`.
 

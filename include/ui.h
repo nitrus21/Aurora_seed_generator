@@ -13,6 +13,9 @@ class AuroraUI {
   void onTouchSample(int16_t x, int16_t y, uint16_t pressure);
 #if defined(AURORA_BOARD_P4)
   void refreshDisplayAfterClear();
+  // Caller must quiesce tasks before terminal-failure use. No LVGL calls,
+  // allocation, sensor/peripheral access, or release of dynamic buffers.
+  void emergencyWipeSecrets() noexcept;
 #endif
 
  private:
@@ -68,6 +71,9 @@ class AuroraUI {
 #if defined(AURORA_BOARD_P4)
   void buildPortraitEntropy();
   void updatePortraitSensors();
+  // Sticky for the entire workflow, including pre-PIN inputs and error pages.
+  // Only wiping the session ends it; screen navigation never renews its timer.
+  bool sensitiveStateActive_ = false;
   bool displayRefreshPending_ = false;
   bool sensorStopPending_ = false;
   Screen afterSensorStop_ = Screen::Mode;

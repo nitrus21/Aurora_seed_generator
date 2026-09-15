@@ -14,6 +14,23 @@ if(EXISTS "$ENV{IDF_PATH}/components/__pio_env")
 endif()
 project(aurora_p4)
 
+# Managed sources are version-pinned and validated before patching. A changed
+# dependency fails configuration instead of silently omitting OOM cleanup.
+idf_build_get_property(AURORA_SECURITY_PYTHON PYTHON)
+execute_process(COMMAND "${AURORA_SECURITY_PYTHON}"
+    "${CMAKE_SOURCE_DIR}/../../tools/patch_lvgl.py"
+    --lvgl-root "${CMAKE_SOURCE_DIR}/managed_components/lvgl__lvgl"
+    RESULT_VARIABLE AURORA_LVGL_PATCH_RESULT)
+if(NOT AURORA_LVGL_PATCH_RESULT EQUAL 0)
+    message(FATAL_ERROR "AURORA LVGL hardening failed")
+endif()
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${CMAKE_SOURCE_DIR}/../../tools/patch_lvgl.py")
+
+# Check effective SDK settings, not only defaults. This is a non-provisioning
+# guard against unsafe configuration drift; it does not activate any eFuse.
+include("${CMAKE_CURRENT_LIST_DIR}/cmake/security_policy.cmake")
+
 # Reject stale configuration caches instead of producing an image for the
 # wrong, hardware-incompatible silicon family under a misleading filename.
 if(SDKCONFIG MATCHES "waveshare-p4-rev1$")

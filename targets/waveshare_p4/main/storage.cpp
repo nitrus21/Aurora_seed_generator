@@ -6,12 +6,15 @@
 #include <utility>
 #include "esp_vfs_fat.h"
 #include "sd_pwr_ctrl_by_on_chip_ldo.h"
+#include "secure_memory.h"
+#include "secure_lvgl_memory.h"
 
 #ifdef CONFIG_BSP_SD_FORMAT_ON_MOUNT_FAIL
 #error "AURORA must never automatically format the user's microSD card"
 #endif
 
 namespace {
+constexpr size_t IO_BUFFER_SIZE = 512;
 bool cardPath(const char *path, char (&out)[160]) {
   if (!path || path[0] != '/' || strstr(path, "..") || strchr(path, '\\')) return false;
   return snprintf(out, sizeof(out), "%s%s", BSP_SD_MOUNT_POINT, path) < static_cast<int>(sizeof(out));
@@ -22,10 +25,27 @@ AuroraFile &AuroraFile::operator=(AuroraFile &&other) noexcept {
   if (this != &other) {
     close();
     file_ = other.file_; directory_ = other.directory_;
+    ioBuffer_ = other.ioBuffer_;
     memcpy(name_, other.name_, sizeof(name_));
     other.file_ = nullptr; other.directory_ = nullptr;
+    other.ioBuffer_ = nullptr;
   }
   return *this;
+}
+bool AuroraFile::prepareBuffer() {
+  if (!file_) return false;
+  // Keep stdio's buffer under explicit ownership, including Electrum exports.
+  // A heap allocation stays at the same address when AuroraFile is moved.
+  // Share the registered secure allocator so terminal cleanup also covers
+  // this buffer if a fault interrupts stdio before the normal close path.
+  ioBuffer_ = static_cast<uint8_t *>(auroraUiAlloc(IO_BUFFER_SIZE));
+  if (ioBuffer_) secureZero(ioBuffer_, IO_BUFFER_SIZE);
+  if (!ioBuffer_ || setvbuf(file_, reinterpret_cast<char *>(ioBuffer_),
+                           _IOFBF, IO_BUFFER_SIZE) != 0) {
+    close();
+    return false;
+  }
+  return true;
 }
 size_t AuroraFile::read(uint8_t *data, size_t length) { return file_ ? fread(data, 1, length, file_) : 0; }
 size_t AuroraFile::write(const uint8_t *data, size_t length) { return file_ ? fwrite(data, 1, length, file_) : 0; }
@@ -38,6 +58,11 @@ bool AuroraFile::flush() {
 }
 void AuroraFile::close() {
   if (file_) fclose(file_);
+  if (ioBuffer_) {
+    secureZero(ioBuffer_, IO_BUFFER_SIZE);
+    auroraUiFree(ioBuffer_);
+    ioBuffer_ = nullptr;
+  }
   if (directory_) closedir(directory_);
   file_ = nullptr; directory_ = nullptr;
 }
@@ -52,7 +77,7 @@ AuroraFile AuroraFile::openNextFile() {
     struct stat info{};
     if (stat(full, &info) != 0 || !S_ISREG(info.st_mode)) continue;
     next.file_ = fopen(full, "rb");
-    if (!next.file_) continue;
+    if (!next.prepareBuffer()) continue;
     strlcpy(next.name_, entry->d_name, sizeof(next.name_));
     return next;
   }
@@ -99,7 +124,11 @@ AuroraFile AuroraStorage::open(const char *path, bool write) {
     if (fd >= 0) {
       result.file_ = fdopen(fd, "wb");
       if (!result.file_) { ::close(fd); unlink(full); }
+      else if (!result.prepareBuffer()) unlink(full);
     }
-  } else result.file_ = fopen(full, "rb");
+  } else {
+    result.file_ = fopen(full, "rb");
+    result.prepareBuffer();
+  }
   return result;
 }

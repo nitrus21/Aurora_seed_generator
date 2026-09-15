@@ -3,6 +3,7 @@
 #include "board_config.h"
 #include "ui.h"
 #include "version.h"
+#include "security_memory.h"
 
 namespace { AuroraUI ui; }
 
@@ -14,6 +15,16 @@ extern "C" void app_main() {
   ESP_ERROR_CHECK(gpio_hold_en(static_cast<gpio_num_t>(AURORA_RADIO_RESET_PIN)));
   ESP_ERROR_CHECK(gpio_set_level(BSP_POWER_AMP_IO, 0));
   ESP_ERROR_CHECK(gpio_set_direction(BSP_POWER_AMP_IO, GPIO_MODE_OUTPUT));
+
+  // Every boot: clean allocatable RAM before enabling input/display, then erase
+  // all named model buffers explicitly. Never mount or modify the user's SD.
+  auroraSecuritySetEmergencyWipe([] { ui.emergencyWipeSecrets(); });
+  size_t internalCleaned = 0, externalCleaned = 0;
+  if (!auroraStartupMemoryScrub(&internalCleaned, &externalCleaned))
+    auroraSecurityPanic();
+  ui.emergencyWipeSecrets();
+  printf("AURORA: startup scrub %u internal / %u external bytes\n",
+         (unsigned)internalCleaned, (unsigned)externalCleaned);
 
   lv_display_t *display = bsp_display_start();
   if (!display || lv_display_get_horizontal_resolution(display) != 480 ||

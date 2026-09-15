@@ -13,3 +13,36 @@ absence de carte ou racine illisible refusées, montage/démontage équilibrés,
 aucun fichier créé lors d'un export sans carte.
 
 Ce n'est pas un test des contrôleurs SD physiques ni des accélérateurs cryptographiques ESP32. Les fixtures sont fictives, sans fonds ; aucune carte réelle n'est ouverte. Les échanges entre les deux lecteurs et l'autotest E00 restent à vérifier sur les appareils.
+
+## Régressions d'effacement P4
+
+```powershell
+python tests/crypto/run_memory_hardening.py
+```
+
+Le test reconstruit dans `tmp/` le commit uBitcoin épinglé, applique V1 puis le
+complément P4 et vérifie leur idempotence. Un patch incomplet est rejeté sans
+modifier d'autres fichiers. Les sources SDK des overlays Mbed TLS sont également
+validées par empreintes intégrales ; le SDK partagé n'est jamais modifié.
+
+Les fonctions réelles de sérialisation privée sont testées sur succès, sortie
+tronquée et échec Base58 simulé. Les cinq erreurs possibles de fin HMAC et les
+contextes invalides doivent tous effacer leur tampon temporaire. Les algorithmes
+Mbed TLS complets, dont PBKDF2/AES-GCM, restent vérifiés par `run.py`, qui compile
+désormais les overlays P4 de `md.c` et `platform_util.c`.
+
+Avec les vraies sources SHA/HMAC uBitcoin et MSVC `/O2`, des fibres isolées
+permettent d'inspecter la pile **du seul processus de test** après retour :
+le témoin non corrigé doit contenir les calendriers SHA-256/SHA-512 connus ; les
+versions corrigées, déroulées ou non, ne doivent plus les contenir. Des vecteurs
+SHA et HMAC publics vérifient que les résultats cryptographiques restent inchangés.
+
+La dépendance P4 doit avoir été téléchargée par une configuration du projet.
+Au besoin, `AURORA_TEST_UBITCOIN_LIB` désigne un autre répertoire `src` avec le
+même commit disponible dans son dépôt Git ; il est utilisé **en lecture seule**.
+Tous les essais et modifications de dépendances se font dans des copies `tmp/`.
+
+Ces vérifications ne constituent pas une extraction physique de RAM P4, un test
+de rémanence après coupure, ni une preuve couvrant tous les spills du compilateur.
+Le binaire embarqué et les réinitialisations AES/SHA doivent aussi être validés
+sur une carte d'essai avec des données publiques.

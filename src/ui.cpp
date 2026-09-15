@@ -168,6 +168,13 @@ void AuroraUI::begin() {
 
 void AuroraUI::tick() {
 #if defined(AURORA_BOARD_P4)
+  // Check before the sensor-shutdown interlock: a failed sensor stop must not
+  // keep a partially entered/generated wallet or deferred operation alive.
+  if ((sensitiveStateActive_ || protectedSession_ || entropyCollected_) &&
+      lv_disp_get_inactive_time(nullptr) >= SESSION_IDLE_MS) {
+    closeSession();
+    return;
+  }
   if (sensorStopPending_) {
     if (AuroraSensors::stopped()) {
       sensorStopPending_ = false;
@@ -184,11 +191,13 @@ void AuroraUI::tick() {
     updatePortraitSensors();
   }
 #endif
+#if !defined(AURORA_BOARD_P4)
   if ((protectedSession_ || entropyCollected_) &&
       lv_disp_get_inactive_time(nullptr) >= SESSION_IDLE_MS) {
     closeSession();
     return;
   }
+#endif
   if (protectedSession_ && access_ != Access::None && !authorized(access_)) {
     revokeAccess();
     secureZero(filePassword_, sizeof(filePassword_));
@@ -232,7 +241,9 @@ void AuroraUI::tick() {
       secureZero(filePassword_, sizeof(filePassword_));
       Serial.printf("AURORA lecture SD : %lu ms\n", static_cast<unsigned long>(millis() - started));
       if (imported) {
+#if !defined(AURORA_BOARD_P4)
         lv_disp_trig_activity(nullptr);
+#endif
         pinForExport_ = false;
         show(pinGuard_.enabled() ? Screen::Info : Screen::PinSetup);
       } else show(Screen::ImportPassword);
@@ -267,7 +278,9 @@ void AuroraUI::tick() {
       qrContent_ = QrContent::Address;
       protectedSession_ = true;
       pinForExport_ = false;
+#if !defined(AURORA_BOARD_P4)
       lv_disp_trig_activity(nullptr);
+#endif
       show(Screen::PinSetup);
     } else {
       restoreWordIndex_ = words_ ? words_ - 1 : 0;
@@ -280,7 +293,9 @@ void AuroraUI::tick() {
     if (recoverUmbrel()) {
       protectedSession_ = true;
       pinForExport_ = false;
+#if !defined(AURORA_BOARD_P4)
       lv_disp_trig_activity(nullptr);
+#endif
       show(Screen::PinSetup);
     } else if (umbrelResult_ == AezeedResult::InvalidPassphrase ||
                umbrelResult_ == AezeedResult::MemoryFailed ||
@@ -301,6 +316,11 @@ void AuroraUI::clear() {
   root_ = lv_obj_create(lv_scr_act()); AuroraLayout::size(root_, 320, 240); AuroraLayout::pos(root_, 0, 0);
   lv_obj_clear_flag(root_, LV_OBJ_FLAG_SCROLLABLE); styleRoot(root_);
 #if defined(AURORA_BOARD_P4)
+  // Suggestions belong only to the previous input screen. Each input builder
+  // recomputes them, so retaining their word copies serves no navigation need.
+  secureZero(restoreSuggestions_, sizeof(restoreSuggestions_));
+  secureZero(verifySuggestions_, sizeof(verifySuggestions_));
+  restoreSuggestionCount_ = verifySuggestionCount_ = 0;
   lv_obj_set_style_pad_all(root_, 0, 0);
   lv_obj_set_style_radius(root_, 0, 0);
   // Service after the new screen is built, outside the current input event.
@@ -398,6 +418,19 @@ lv_obj_t *AuroraUI::header(const char *title, const char *step, bool showBrand) 
 
 void AuroraUI::show(Screen s) {
 #if defined(AURORA_BOARD_P4)
+  // A blocking crypto/SD call may consume the idle deadline while tick() is
+  // unable to run. Discard its result before constructing any next screen;
+  // completing work is not user activity. Keep fatal security errors blocked.
+  if (s != Screen::SecurityError && sensitiveStateActive_ &&
+      lv_disp_get_inactive_time(nullptr) >= SESSION_IDLE_MS) s = Screen::Mode;
+  const bool clearedScreen = s == Screen::Splash || s == Screen::Mode ||
+      s == Screen::Wipe || s == Screen::SecurityError;
+  if (clearedScreen) {
+    wipeSession();
+    // A close always supersedes a deferred destination containing secrets.
+    // Keep input blocked until the sensor worker really acknowledges stop.
+    if (sensorStopPending_) afterSensorStop_ = s;
+  }
   if (screen_ == Screen::Entropy && !AuroraSensors::stopped()) {
     if (!sensorStopPending_) {
       afterSensorStop_ = s; sensorStopPending_ = true; sensorStopStarted_ = millis();
@@ -408,7 +441,9 @@ void AuroraUI::show(Screen s) {
       }
       if (entropyStatus_) lv_label_set_text(entropyStatus_, "Arrêt des capteurs...");
     }
-    return;
+    // Erase the old text/pixels immediately on a close even if a sensor is
+    // stuck. Safe screens do not expose secrets; their input remains blocked.
+    if (!clearedScreen) return;
   }
 #endif
   if (screen_ == Screen::Entropy && s != Screen::Entropy) {
@@ -419,7 +454,9 @@ void AuroraUI::show(Screen s) {
       secureZero(mixedEntropy_, sizeof(mixedEntropy_)); entropyCollected_ = false;
     }
   }
+#if !defined(AURORA_BOARD_P4)
   if (s == Screen::Mode) wipeSession();
+#endif
   if (s == Screen::Entropy) entropyCollected_ = false;
   // Require media only in the save/export workflow, after sensor shutdown.
   const bool sdChecked=needsSd(s);
@@ -451,6 +488,14 @@ void AuroraUI::show(Screen s) {
   if(!sdChecked && (s==Screen::PinSetup || s==Screen::PinUnlock)) {
     if(!ensureSd(s)) return;
   }
+#if defined(AURORA_BOARD_P4)
+  if (!clearedScreen && !sensitiveStateActive_) {
+    // Conservative by design: every workflow is sensitive from entry, before
+    // its first character/sample. A future screen inherits expiry by default.
+    sensitiveStateActive_ = true;
+    lv_disp_trig_activity(nullptr);
+  }
+#endif
   screen_ = s; clear();
   switch (s) {
     case Screen::Splash: buildSplash(); break; case Screen::Mode: buildMode(); break;
@@ -837,6 +882,10 @@ bool AuroraUI::restoreEnteredWallet() {
   manualRestore_=true;
   secureZero(restoreWords_,sizeof(restoreWords_));
   secureZero(restoreMnemonic_,sizeof(restoreMnemonic_));
+#if defined(AURORA_BOARD_P4)
+  secureZero(restoreSuggestions_,sizeof(restoreSuggestions_));
+  restoreSuggestionCount_=0;
+#endif
   secureZero(restoreStatus_,sizeof(restoreStatus_));
   return true;
 }
@@ -1745,7 +1794,9 @@ void AuroraUI::performWalletExport() {
       if(exportFormat_==WalletExportFormat::AuroraWallet) {
         pinGuard_.begin(exportPin_); protectedSession_=loadedWallet_=true;
         legacyImported_=false; pinForExport_=false;
+#if !defined(AURORA_BOARD_P4)
         lv_disp_trig_activity(nullptr);
+#endif
       }
       snprintf(exportStatus_,sizeof(exportStatus_),"Créé : %s",writtenPath); break;
     case WalletExportResult::InvalidName:
@@ -1965,7 +2016,59 @@ void AuroraUI::submitPinUnlock() {
   }
 }
 
+#if defined(AURORA_BOARD_P4)
+void AuroraUI::emergencyWipeSecrets() noexcept {
+  // Fixed, owned storage only. In particular, cameraPixels_ may be caught
+  // between free() and pointer reset on another stopped task: do not chase it.
+  // LVGL allocations, task stacks, DMA and physical caches are separate duties
+  // of the platform fail-closed handler, not a guarantee supplied by this API.
+  secureZero(&wallet_,sizeof(wallet_));
+  secureZero(passphrase_,sizeof(passphrase_));
+  secureZero(filePassword_,sizeof(filePassword_));
+  secureZero(mixedEntropy_,sizeof(mixedEntropy_));
+  secureZero(restoreWords_,sizeof(restoreWords_));
+  secureZero(restoreSuggestions_,sizeof(restoreSuggestions_));
+  secureZero(restoreMnemonic_,sizeof(restoreMnemonic_));
+  secureZero(restoreStatus_,sizeof(restoreStatus_));
+  secureZero(umbrelRootXprv_,sizeof(umbrelRootXprv_));
+  secureZero(exportStatus_,sizeof(exportStatus_));
+  secureZero(importStatus_,sizeof(importStatus_));
+  secureZero(passwordStatus_,sizeof(passwordStatus_));
+  secureZero(exportBaseName_,sizeof(exportBaseName_));
+  secureZero(importBaseName_,sizeof(importBaseName_));
+  secureZero(verifyIndex_,sizeof(verifyIndex_));
+  secureZero(verifySuggestions_,sizeof(verifySuggestions_));
+  secureZero(auroraFileOptions_,sizeof(auroraFileOptions_));
+  secureZero(entropyPreviewText_,sizeof(entropyPreviewText_));
+  secureZero(&exportPin_,sizeof(exportPin_));
+  entropy_.wipeSecretsWithoutHardware();
+  pinGuard_.clear();
+  revokeAccess();
+  sensitiveStateActive_=protectedSession_=legacyImported_=pinForExport_=false;
+  entropyCollected_=exportSucceeded_=loadedWallet_=manualRestore_=umbrelRecovery_=false;
+  entropyReadyPending_=entropyFailurePending_=pinRetryPending_=false;
+  generationDueMs_=entropyCompleteDueMs_=fileOperationDueMs_=pinRetryMs_=0;
+  fileOperation_=FileOperation::None;
+  afterSensorStop_=afterSd_=Screen::Mode;
+  afterPin_=Screen::Info;
+  umbrelBirthdayDays_=0;
+  restoreWordIndex_=restoreSuggestionCount_=verifyActiveIndex_=verifySuggestionCount_=mnemonicPage_=0;
+  auroraFileCount_=0;
+}
+#endif
+
 void AuroraUI::wipeSession() {
+#if defined(AURORA_BOARD_P4)
+  // One inventory of owned secret buffers is shared by normal close, startup
+  // and terminal failure. Do not add a new secret only to one cleanup path.
+  emergencyWipeSecrets();
+  entropy_.cancel();
+  exportFormat_=WalletExportFormat::AuroraWallet;
+  umbrelResult_=AezeedResult::Ok;
+  qrContent_=QrContent::Address;
+  strlcpy(exportBaseName_,"aurora",sizeof(exportBaseName_));
+  strlcpy(importBaseName_,"aurora",sizeof(importBaseName_));
+#else
   engine_.wipe(wallet_); secureZero(passphrase_,sizeof(passphrase_));
   secureZero(filePassword_,sizeof(filePassword_)); secureZero(mixedEntropy_,sizeof(mixedEntropy_));
   exportFormat_=WalletExportFormat::AuroraWallet; fileOperation_=FileOperation::None;
@@ -1989,14 +2092,20 @@ void AuroraUI::wipeSession() {
   auroraFileCount_=0; verifyActiveIndex_=verifySuggestionCount_=mnemonicPage_=0;
   qrContent_=QrContent::Address; afterPin_=Screen::Info;
   afterSd_=Screen::Mode;
+#endif
 }
 
 void AuroraUI::closeSession() {
-  wipeSession(); show(Screen::Mode);
+#if !defined(AURORA_BOARD_P4)
+  wipeSession();
+#endif
+  show(Screen::Mode);
 }
 
 void AuroraUI::buildWipe() {
+#if !defined(AURORA_BOARD_P4)
   wipeSession();
+#endif
   header("Effacement terminé"); lv_obj_t *ok=label(root_,"OK",&aurora_font_20); lv_obj_set_style_text_color(ok,ORANGE,0); AuroraLayout::align(ok,LV_ALIGN_CENTER,0,-40);
   lv_obj_t *msg=explanation(root_,"Les tampons sensibles de la session\nont été écrasés en mémoire vive.",&aurora_font_12); lv_obj_set_style_text_align(msg,LV_TEXT_ALIGN_CENTER,0); AuroraLayout::align(msg,LV_ALIGN_CENTER,0,0);
   lv_obj_t *b=button(root_,"RETOUR À L'ACCUEIL",event,190); lv_obj_set_user_data(b,(void*)BACK_MODE); AuroraLayout::align(b,LV_ALIGN_BOTTOM_MID,0,-18);
@@ -2088,7 +2197,11 @@ void AuroraUI::event(lv_event_t *e) {
       g_ui->acceptVerifySuggestion(static_cast<uint8_t>(a-VERIFY_SUGGESTION_0)); break;
     case RESTORE_DERIVE: {
       if(!g_ui->confirmPassphrase()) break;
-      g_ui->show(Screen::Restoring); g_ui->generationDueMs_=millis()+100;
+      g_ui->show(Screen::Restoring);
+#if defined(AURORA_BOARD_P4)
+      if(g_ui->screen_==Screen::Restoring)
+#endif
+        g_ui->generationDueMs_=millis()+100;
       break;
     }
     case UMBREL_DECODE: {
@@ -2102,7 +2215,12 @@ void AuroraUI::event(lv_event_t *e) {
       }
       if(source) { strlcpy(g_ui->passphrase_,source,sizeof(g_ui->passphrase_)); secureZero(source,length); }
       secureZero(g_ui->restoreStatus_,sizeof(g_ui->restoreStatus_));
-      g_ui->show(Screen::UmbrelProcessing); g_ui->generationDueMs_=millis()+100; break;
+      g_ui->show(Screen::UmbrelProcessing);
+#if defined(AURORA_BOARD_P4)
+      if(g_ui->screen_==Screen::UmbrelProcessing)
+#endif
+        g_ui->generationDueMs_=millis()+100;
+      break;
     }
     case UMBREL_SHOW_XPRV: g_ui->show(Screen::UmbrelQr); break;
     case UMBREL_RESULT_BACK:
@@ -2136,7 +2254,11 @@ void AuroraUI::event(lv_event_t *e) {
     case TO_PASSPHRASE: g_ui->show(Screen::Entropy); break;
     case TO_ENTROPY: {
       if(!g_ui->entropyCollected_ || !g_ui->confirmPassphrase()) break;
-      g_ui->show(Screen::Generating); g_ui->generationDueMs_=millis()+100;
+      g_ui->show(Screen::Generating);
+#if defined(AURORA_BOARD_P4)
+      if(g_ui->screen_==Screen::Generating)
+#endif
+        g_ui->generationDueMs_=millis()+100;
       break;
     }
     case NEXT_VERIFY: g_ui->show(Screen::Verify); break;
@@ -2253,6 +2375,11 @@ void AuroraUI::event(lv_event_t *e) {
     case BACK_MODE_WIPE: g_ui->show(Screen::Wipe); break;
     case BACK_RESTORE_SETUP:
       g_ui->restoreWordIndex_=0; secureZero(g_ui->restoreStatus_,sizeof(g_ui->restoreStatus_));
+#if defined(AURORA_BOARD_P4)
+      // Editing the word count invalidates the old concatenation. The accepted
+      // per-word inputs remain available until the user changes that count.
+      secureZero(g_ui->restoreMnemonic_,sizeof(g_ui->restoreMnemonic_));
+#endif
       g_ui->show(Screen::RestoreSetup); break;
     case BACK_RESTORE_WORDS:
       g_ui->restoreWordIndex_=g_ui->words_?g_ui->words_-1:0;
@@ -2273,6 +2400,9 @@ void AuroraUI::event(lv_event_t *e) {
       if(g_ui->screen_==Screen::RestoreSetup) {
         g_ui->restoreWordIndex_=0;
         secureZero(g_ui->restoreWords_,sizeof(g_ui->restoreWords_));
+#if defined(AURORA_BOARD_P4)
+        secureZero(g_ui->restoreMnemonic_,sizeof(g_ui->restoreMnemonic_));
+#endif
         secureZero(g_ui->restoreStatus_,sizeof(g_ui->restoreStatus_));
         g_ui->show(Screen::RestoreSetup);
       } else g_ui->show(Screen::Setup);

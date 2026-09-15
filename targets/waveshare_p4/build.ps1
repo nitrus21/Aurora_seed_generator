@@ -17,10 +17,15 @@ try {
 } catch [System.IO.IOException] {
     throw 'Une compilation P4 est déjà en cours. Attendez sa fin avant de lancer un autre profil.'
 }
+$auroraVersionHints = [Environment]::GetEnvironmentVariable('IDF_COMPONENT_CHECK_NEW_VERSION', 'Process')
 try {
+    # Build locked dependencies, without network lookups for optional upgrade
+    # hints. Dependency downloads and source/hash validation remain enabled.
+    $env:IDF_COMPONENT_CHECK_NEW_VERSION = '0'
     & pio run --project-dir $auroraBuildPath --environment $Target
     $auroraBuildResult = $LASTEXITCODE
 } finally {
+    [Environment]::SetEnvironmentVariable('IDF_COMPONENT_CHECK_NEW_VERSION', $auroraVersionHints, 'Process')
     $auroraBuildLock.Dispose()
 }
 exit $auroraBuildResult

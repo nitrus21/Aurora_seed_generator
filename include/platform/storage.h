@@ -25,7 +25,9 @@ class AuroraFile {
   AuroraFile openNextFile();
  private:
   friend class AuroraStorage;
+  bool prepareBuffer();
   FILE *file_ = nullptr;
+  uint8_t *ioBuffer_ = nullptr;
   DIR *directory_ = nullptr;
   char name_[128]{};
 };

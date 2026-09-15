@@ -21,13 +21,15 @@ static WalletOutput importedWallet{};
 static AuroraWalletData importedData{};
 static bool importOk=false, exportOk=false;
 static unsigned exportCalls=0, xprvCalls=0, importCalls=0;
+static uint32_t lifecycleTick=0, operationDelayMs=0;
+static void consumeOperationDelay() { lifecycleTick+=operationDelayMs; operationDelayMs=0; }
 static bool sdReady=true;
 static unsigned sdChecks=0, sdFailOnCheck=0;
 bool auroraSdReady() { ++sdChecks; return sdReady && sdChecks!=sdFailOnCheck; }
 WalletEngine::WalletEngine() {}
 WalletSelfTest WalletEngine::selfTest() { return WalletSelfTest::Ok; }
-bool WalletEngine::create(uint8_t, AddressKind, const char *, const uint8_t *, WalletOutput &) { return true; }
-bool WalletEngine::restore(const char *, uint8_t, AddressKind, const char *, WalletOutput &out) { out=importedWallet; return true; }
+bool WalletEngine::create(uint8_t, AddressKind, const char *, const uint8_t *, WalletOutput &) { consumeOperationDelay(); return true; }
+bool WalletEngine::restore(const char *, uint8_t, AddressKind, const char *, WalletOutput &out) { consumeOperationDelay(); out=importedWallet; return true; }
 bool WalletEngine::accountXprv(const WalletOutput &, const char *, char *out, size_t size) {
   ++xprvCalls; strlcpy(out,"test-xprv",size); return true;
 }
@@ -35,6 +37,7 @@ bool WalletEngine::rootXprvFromSeed(const uint8_t *,size_t,char *out,size_t size
   strlcpy(out,"xprv9s21ZrQH143K3-test-only-not-a-real-master-private-key",size); return true;
 }
 AezeedResult AezeedEngine::decode(const char *,const char *,AezeedDecoded &out) {
+  consumeOperationDelay();
   out.birthdayDays=4242; memset(out.entropy,0x42,sizeof(out.entropy)); return AezeedResult::Ok;
 }
 void AezeedEngine::wipe(AezeedDecoded &out) { secureZero(&out,sizeof(out)); }
@@ -45,10 +48,12 @@ const char *walletExportSuffix(WalletExportFormat kind) { return kind == WalletE
 bool auroraWalletCryptoSelfTest() { return true; }
 void wipeAuroraWalletData(AuroraWalletData &data) { secureZero(&data, sizeof(data)); }
 WalletExportResult writeWalletExportFile(WalletExportFormat, const char *, const char *, const WalletExportData &data, char *path, size_t size) {
+  consumeOperationDelay();
   ++exportCalls; assert(data.pin && auroraPinRecordValid(*data.pin));
   strlcpy(path,"/fixture.aurora",size); return exportOk && sdReady?WalletExportResult::Ok:WalletExportResult::NoCard;
 }
 AuroraWalletReadResult readAuroraWalletFile(const char *, const char *, AuroraWalletData &out) {
+  consumeOperationDelay();
   ++importCalls;
   if(!importOk || !sdReady) return AuroraWalletReadResult::NoCard;
   out=importedData; return AuroraWalletReadResult::Ok;
@@ -146,7 +151,7 @@ static void assertSessionWiped(const AuroraUI &ui) {
   zero(ui.verifySuggestions_,sizeof(ui.verifySuggestions_));
   zero(ui.umbrelRootXprv_,sizeof(ui.umbrelRootXprv_));
   zero(&ui.exportPin_,sizeof(ui.exportPin_));
-  assert(!ui.protectedSession_ && !ui.pinGuard_.enabled());
+  assert(!ui.sensitiveStateActive_ && !ui.protectedSession_ && !ui.pinGuard_.enabled());
   assert(ui.access_==AuroraUI::Access::None && ui.requestedAccess_==AuroraUI::Access::None);
   assert(ui.fileOperation_==AuroraUI::FileOperation::None && !ui.fileOperationDueMs_);
   assert(!ui.generationDueMs_ && !ui.entropyCollected_ && !ui.pinArea_);
@@ -184,6 +189,222 @@ static void assertHeaderSeparation(AuroraUI &ui) {
     // keep a visible gap below it and may never cover or cut the line.
     assert(top+height-1<dividerTop || top>=dividerBottom+6);
   }
+}
+static void testTransientWordCopies(AuroraUI &ui) {
+  using Screen=AuroraUI::Screen;
+  const auto zero=[](const void *pointer,size_t size) {
+    const auto *bytes=static_cast<const uint8_t *>(pointer);
+    for(size_t i=0;i<size;++i) assert(bytes[i]==0);
+  };
+  ui.closeSession(); sdReady=true;
+  ui.show(Screen::RestoreWords);
+  memset(ui.restoreSuggestions_,0x52,sizeof(ui.restoreSuggestions_));
+  memset(ui.verifySuggestions_,0x56,sizeof(ui.verifySuggestions_));
+  ui.restoreSuggestionCount_=ui.verifySuggestionCount_=3;
+  ui.show(Screen::RestorePassphrase);
+  zero(ui.restoreSuggestions_,sizeof(ui.restoreSuggestions_));
+  zero(ui.verifySuggestions_,sizeof(ui.verifySuggestions_));
+  assert(!ui.restoreSuggestionCount_ && !ui.verifySuggestionCount_);
+
+  // A successful restore releases every old entry copy even before show()
+  // destroys the input widgets. Its returned wallet remains available.
+  fixture(ui); importedWallet=ui.wallet_;
+  strlcpy(ui.restoreMnemonic_,ui.wallet_.mnemonic,sizeof(ui.restoreMnemonic_));
+  strlcpy(ui.restoreWords_[0],"abandon",sizeof(ui.restoreWords_[0]));
+  memset(ui.restoreSuggestions_,0x53,sizeof(ui.restoreSuggestions_));
+  ui.restoreSuggestionCount_=3;
+  assert(ui.restoreEnteredWallet() && ui.wallet_.valid);
+  zero(ui.restoreWords_,sizeof(ui.restoreWords_));
+  zero(ui.restoreMnemonic_,sizeof(ui.restoreMnemonic_));
+  zero(ui.restoreSuggestions_,sizeof(ui.restoreSuggestions_));
+  assert(!ui.restoreSuggestionCount_ && ui.wallet_.mnemonic[0]);
+
+  // Back keeps per-word editing possible, but not an obsolete full phrase.
+  ui.closeSession(); ui.show(Screen::RestoreWords);
+  strlcpy(ui.restoreWords_[0],"abandon",sizeof(ui.restoreWords_[0]));
+  strlcpy(ui.restoreMnemonic_,"abandon ability",sizeof(ui.restoreMnemonic_));
+  click(ui,BACK_RESTORE_SETUP);
+  assert(ui.screen_==Screen::RestoreSetup);
+  zero(ui.restoreMnemonic_,sizeof(ui.restoreMnemonic_));
+  assert(!strcmp(ui.restoreWords_[0],"abandon"));
+  for(Action count:{WORD_12,WORD_15,WORD_18,WORD_21,WORD_24}) {
+    strlcpy(ui.restoreWords_[0],"ability",sizeof(ui.restoreWords_[0]));
+    strlcpy(ui.restoreMnemonic_,"abandon ability",sizeof(ui.restoreMnemonic_));
+    click(ui,count);
+    zero(ui.restoreWords_,sizeof(ui.restoreWords_));
+    zero(ui.restoreMnemonic_,sizeof(ui.restoreMnemonic_));
+    assert(ui.words_==12+3*(count-WORD_12));
+  }
+  // Clearing a stale concatenation must not break rebuilding the final input.
+  ui.words_=12; ui.restoreWordIndex_=11;
+  for(unsigned i=0;i<11;++i) strlcpy(ui.restoreWords_[i],"abandon",sizeof(ui.restoreWords_[i]));
+  ui.show(Screen::RestoreWords);
+  assert(ui.acceptRestoreWord("about"));
+  assert(ui.screen_==Screen::RestorePassphrase &&
+      !strcmp(ui.restoreMnemonic_,"abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"));
+  ui.closeSession(); assertSessionWiped(ui);
+  puts("PASS: P4 word suggestions erased at screen changes and restore success; stale full phrases erased on back/count changes and reconstructed only after final word");
+}
+
+static void testSensitiveLifecycle(AuroraUI &ui) {
+  using Screen=AuroraUI::Screen;
+  AuroraSensors::acknowledge=true;
+  sdReady=true;
+  ui.closeSession(); ui.tick();
+  // Independent LVGL tick also exercises wraparound without relying on the
+  // microsecond hardware stub's much shorter 32-bit range.
+  lv_tick_set_cb([]() -> uint32_t { return lifecycleTick; });
+  unsigned workflows=0;
+  for(unsigned i=0;i<=static_cast<unsigned>(Screen::SdRequired);++i) {
+    const auto screen=static_cast<Screen>(i);
+    if(screen==Screen::Splash || screen==Screen::Mode || screen==Screen::Wipe ||
+        screen==Screen::SecurityError) continue;
+    ui.closeSession(); ui.tick(); fixture(ui);
+    lifecycleTick+=1000;
+    ui.show(screen);
+    assert(ui.screen_==screen && ui.sensitiveStateActive_ && !ui.protectedSession_);
+    // The same rule covers partially typed secrets and errors, not only a
+    // successful wallet or password validation. These are public fixtures.
+    if(ui.restoreWordArea_) lv_textarea_set_text(ui.restoreWordArea_,"abandon");
+    if(ui.passArea_) lv_textarea_set_text(ui.passArea_,"fixture-passphrase");
+    if(ui.filePasswordArea_) lv_textarea_set_text(ui.filePasswordArea_,"fixture-password");
+    if(ui.pinArea_) lv_textarea_set_text(ui.pinArea_,"1234");
+    strlcpy(ui.restoreWords_[0],"ability",sizeof(ui.restoreWords_[0]));
+    strlcpy(ui.restoreMnemonic_,"abandon ability",sizeof(ui.restoreMnemonic_));
+    strlcpy(ui.umbrelRootXprv_,"test-only-xprv",sizeof(ui.umbrelRootXprv_));
+    lifecycleTick+=AuroraUI::SESSION_IDLE_MS-1;
+    ui.tick(); assert(ui.screen_==screen && ui.sensitiveStateActive_);
+    ++lifecycleTick; ui.tick();
+    assert(ui.screen_==Screen::Mode);
+    assertSessionWiped(ui);
+    ui.tick(); assert(!ui.sensorStopPending_);
+    ++workflows;
+  }
+  assert(workflows==static_cast<unsigned>(Screen::SdRequired)+1-4);
+
+  // Returning to a setup or error page is not a new session and may not renew
+  // the original deadline. Genuine LVGL user activity does renew inactivity.
+  ui.show(Screen::RestoreWords);
+  lv_textarea_set_text(ui.restoreWordArea_,"abandon");
+  assert(ui.acceptRestoreWord(lv_textarea_get_text(ui.restoreWordArea_)));
+  lifecycleTick+=90000; ui.show(Screen::RestoreSetup);
+  lifecycleTick+=30000; ui.tick(); assertSessionWiped(ui);
+  ui.show(Screen::ImportPassword);
+  lv_textarea_set_text(ui.filePasswordArea_,"fixture-password");
+  lifecycleTick+=119999; lv_disp_trig_activity(nullptr);
+  ++lifecycleTick; ui.tick(); assert(ui.screen_==Screen::ImportPassword);
+  lifecycleTick+=119999; ui.tick(); assertSessionWiped(ui);
+
+  lifecycleTick=UINT32_MAX-60000;
+  ui.show(Screen::UmbrelPassphrase);
+  lv_textarea_set_text(ui.passArea_,"fixture-passphrase");
+  lifecycleTick+=119999; ui.tick(); assert(ui.screen_==Screen::UmbrelPassphrase);
+  ++lifecycleTick; ui.tick(); assertSessionWiped(ui);
+
+  // Expiration wins over a pending import/export, even if its due time has
+  // elapsed. Neither storage nor derivation may run with expired credentials.
+  for(auto operation:{AuroraUI::FileOperation::Import,AuroraUI::FileOperation::Export}) {
+    ui.show(Screen::FileProcessing);
+    ui.fileOperation_=operation; ui.fileOperationDueMs_=millis();
+    const auto reads=importCalls, writes=exportCalls, derivations=xprvCalls;
+    lifecycleTick+=AuroraUI::SESSION_IDLE_MS;
+    ui.tick(); assertSessionWiped(ui);
+    assert(importCalls==reads && exportCalls==writes && xprvCalls==derivations);
+  }
+
+  // Screen transitions must check expiration themselves, before building
+  // another sensitive page, without waiting for the next periodic tick.
+  for(auto destination:{Screen::Mnemonic,Screen::PinSetup,Screen::Info,Screen::GenerationError,Screen::SdRequired}) {
+    ui.show(Screen::RestoreWords); fixture(ui);
+    lifecycleTick+=AuroraUI::SESSION_IDLE_MS;
+    ui.show(destination); assert(ui.screen_==Screen::Mode); assertSessionWiped(ui);
+  }
+  ui.show(Screen::RestoreWords); lifecycleTick+=AuroraUI::SESSION_IDLE_MS;
+  ui.show(Screen::SecurityError); assert(ui.screen_==Screen::SecurityError); assertSessionWiped(ui);
+  for(auto form:{Screen::Passphrase,Screen::RestorePassphrase,Screen::UmbrelPassphrase}) {
+    ui.show(form); ui.entropyCollected_=true;
+    lifecycleTick+=AuroraUI::SESSION_IDLE_MS;
+    lv_obj_send_event(ui.keyboard_,LV_EVENT_READY,nullptr);
+    assert(ui.screen_==Screen::Mode); assertSessionWiped(ui);
+  }
+
+  // Simulate a blocking operation consuming the remaining deadline. Its
+  // successful return must not count as activity or briefly display secrets.
+  for(auto processing:{Screen::Generating,Screen::Restoring,Screen::UmbrelProcessing}) {
+    ui.closeSession(); fixture(ui); importedWallet=ui.wallet_;
+    ui.umbrelRecovery_=processing==Screen::UmbrelProcessing;
+    ui.show(processing); ui.entropyCollected_=true; ui.generationDueMs_=millis();
+    operationDelayMs=AuroraUI::SESSION_IDLE_MS;
+    ui.tick(); assert(!operationDelayMs && ui.screen_==Screen::Mode); assertSessionWiped(ui);
+  }
+  fixture(ui); importedWallet=ui.wallet_;
+  importedData={}; importedData.fileVersion=2; importedData.wordCount=ui.words_;
+  importedData.addressKind=static_cast<uint8_t>(ui.wallet_.kind);
+  assert(auroraPinCreate("1234",importedData.pin));
+  strlcpy(importedData.addressType,addressKindName(ui.wallet_.kind),sizeof(importedData.addressType));
+  strlcpy(importedData.mnemonic,ui.wallet_.mnemonic,sizeof(importedData.mnemonic));
+  strlcpy(importedData.derivationPath,ui.wallet_.path,sizeof(importedData.derivationPath));
+  strlcpy(importedData.address,ui.wallet_.address,sizeof(importedData.address));
+  strlcpy(importedData.accountXpub,ui.wallet_.accountXpub,sizeof(importedData.accountXpub));
+  strlcpy(importedData.accountXprv,"test-xprv",sizeof(importedData.accountXprv));
+  strlcpy(importedData.privateWif,ui.wallet_.privateWif,sizeof(importedData.privateWif));
+  strlcpy(importedData.receiveDescriptor,ui.wallet_.watchDescriptor,sizeof(importedData.receiveDescriptor));
+  for(auto operation:{AuroraUI::FileOperation::Import,AuroraUI::FileOperation::Export}) {
+    for(bool succeeds:{false,true}) {
+      ui.closeSession(); fixture(ui);
+      importOk=exportOk=succeeds; ui.exportPin_=importedData.pin;
+      ui.fileOperation_=operation; ui.show(Screen::FileProcessing); ui.fileOperationDueMs_=millis();
+      const auto calls=operation==AuroraUI::FileOperation::Import?importCalls:exportCalls;
+      operationDelayMs=AuroraUI::SESSION_IDLE_MS;
+      ui.tick(); assert(!operationDelayMs && ui.screen_==Screen::Mode); assertSessionWiped(ui);
+      assert((operation==AuroraUI::FileOperation::Import?importCalls:exportCalls)==calls+1);
+    }
+  }
+
+  // A stalled sensor-stop worker cannot postpone cleanup or later resume the
+  // old destination. Both explicit lock and idle expiration wipe immediately.
+  for(bool explicitLock:{false,true}) {
+    ui.show(Screen::Entropy); ui.onTouchSample(100,200,0);
+    memset(ui.mixedEntropy_,0x42,sizeof(ui.mixedEntropy_)); ui.entropyCollected_=true;
+    AuroraSensors::acknowledge=false;
+    ui.show(Screen::Passphrase);
+    assert(ui.sensorStopPending_ && ui.afterSensorStop_==Screen::Passphrase);
+    if(explicitLock) ui.closeSession();
+    else { lifecycleTick+=AuroraUI::SESSION_IDLE_MS; ui.tick(); }
+    assertSessionWiped(ui);
+    assert(ui.screen_==Screen::Mode && ui.sensorStopPending_);
+    assert(ui.afterSensorStop_==Screen::Mode && !ui.cameraPixels_ && !mock.rngEnabled);
+    assertDisplayReplaced(ui);
+    click(ui,NEW_WALLET); assert(ui.screen_==Screen::Mode); // Input stays blocked.
+    AuroraSensors::acknowledge=true; ui.tick();
+    assert(ui.screen_==Screen::Mode && !ui.sensorStopPending_);
+  }
+
+  // A security error wipes immediately and must never expire into an enabled
+  // menu. Reinitializing the UI likewise explicitly destroys the old session.
+  fixture(ui); ui.show(Screen::SecurityError); assertSessionWiped(ui);
+  lifecycleTick+=180000; ui.tick(); assert(ui.screen_==Screen::SecurityError);
+  ui.show(Screen::RestoreWords); lv_textarea_set_text(ui.restoreWordArea_,"abandon");
+  fixture(ui); ui.begin(); ui.selfTestPending_=false;
+  assert(ui.screen_==Screen::Splash); assertSessionWiped(ui);
+  assertDisplayReplaced(ui);
+
+  // Emergency cleanup is memory-only and leaves the object reusable at boot.
+  fixture(ui); ui.show(Screen::Info); ui.entropy_.begin();
+  ui.entropy_.add(100,200,0);
+  strlcpy(ui.passphrase_,"fixture-passphrase",sizeof(ui.passphrase_));
+  const auto releases=wipedAllocations;
+  ui.emergencyWipeSecrets();
+  assertSessionWiped(ui);
+  assert(wipedAllocations==releases && mock.rngEnabled);
+  assert(ui.entropy_.sampleCount()==0 && ui.entropy_.previewToken()==0);
+  ui.closeSession(); assert(!mock.rngEnabled);
+  lv_tick_set_cb([]() -> uint32_t { return millis(); });
+  lv_disp_trig_activity(nullptr);
+  puts("PASS: all P4 workflows expire from entry at 120 s, including pre-PIN words/passwords, errors, back routes, deadline and tick wraparound");
+  puts("PASS: explicit/idle lock wipes immediately during stalled sensor shutdown; deferred secret screen and operations cannot resume");
+  puts("PASS: security-error/startup cleanup and memory-only emergency wipe of fixed owned buffers");
+  puts("PASS: elapsed deadline inside blocking generation/restore/AEZEED/import/export discards returned secrets before the next screen");
 }
 int main() {
   char *allocation=static_cast<char *>(auroraUiAlloc(20)); assert(allocation);
@@ -728,6 +949,8 @@ int main() {
   mock.time+=120001000; ui.tick();
   assert(ui.screen_==Screen::Mode && !ui.wallet_.valid && !ui.pinGuard_.enabled());
   sdReady=true;
+  testTransientWordCopies(ui);
+  testSensitiveLifecycle(ui);
   puts("PASS: V2 import opens public info, V1 requires PIN setup, actual export entry point enforces grant and promotes new file PIN only on success");
   puts("PASS: centered P4 logo and 4-button menu including Umbrel recovery, offline creation/restoration/session PIN, SD required only for save/export");
   puts("PASS: passphrase confirmation, per-action PIN, persistent failure count, 3 errors close/wipe, secret/session timeouts, mandatory legacy PIN");

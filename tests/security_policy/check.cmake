@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.16)
+if(AURORA_SDKCONFIG_FILE)
+    include("${AURORA_SDKCONFIG_FILE}")
+endif()
+include("${CMAKE_CURRENT_LIST_DIR}/../../targets/waveshare_p4/cmake/security_policy.cmake")

@@ -49,6 +49,9 @@ crypto_objects = [root / "tmp/crypto-native" / (name + ".obj") for name in
 assert all(p.exists() for p in crypto_objects), "Run tests/crypto/run.py first"
 common = ["/nologo", "/utf-8", "/DLV_CONF_INCLUDE_SIMPLE", "/DLV_KCONFIG_IGNORE",
           "/DAURORA_MEMORY_TEST", "/D_CRT_SECURE_NO_WARNINGS"] + [f'/I"{path}"' for path in includes]
+if not cyd:
+    # The C allocator must exercise the same P4 ownership registry as firmware.
+    common += ["/DAURORA_BOARD_P4", "/DAURORA_NATIVE_TEST"]
 # Both VG-Lite ports contain a vg_lite_matrix.c, but this software renderer uses
 # neither. Exclude the disabled accelerator sources to keep object names unique.
 sources = [p for p in lvgl.glob("src/**/*.c") if p.name != "vg_lite_matrix.c"]
@@ -59,7 +62,10 @@ assert len({p.stem for p in sources}) == len(sources), "Duplicate C object names
 c_rsp = output / "compile-c.rsp"
 config_time=max((root / "tests/ui/lv_conf.h").stat().st_mtime,
                 (root / "include/lv_conf.h").stat().st_mtime,
-                (root / "tests/ui/cyd/lv_conf.h").stat().st_mtime)
+                (root / "tests/ui/cyd/lv_conf.h").stat().st_mtime,
+                Path(__file__).stat().st_mtime,
+                (root / "include/secure_memory.h").stat().st_mtime,
+                (root / "include/secure_lvgl_memory.h").stat().st_mtime)
 changed = [p for p in sources if not (objects / (p.stem + ".obj")).exists() or
            max(p.stat().st_mtime, config_time) >
            (objects / (p.stem + ".obj")).stat().st_mtime]

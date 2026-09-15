@@ -3,6 +3,7 @@ from pathlib import Path
 import os
 import shutil
 import subprocess
+import sys
 
 root = Path(__file__).resolve().parents[2]
 output = root / "tmp/crypto-native"
@@ -17,12 +18,17 @@ for line in subprocess.check_output(f'cmd /d /s /c ""{vcvars}" >nul && set"', en
         key, value = line.split("=", 1); env[key.upper()] = value
 compiler = shutil.which("cl", path=env["PATH"])
 mbed = Path.home() / ".platformio/packages/framework-espidf/components/mbedtls/mbedtls"
+crypto_overlay = output / "p4-overlay"
+subprocess.run([sys.executable, str(root / "tools/prepare_p4_crypto_overlay.py"),
+    "--components", str(mbed.parents[1]), "--output", str(crypto_overlay)], check=True)
 includes = [root / "tests/crypto", root / "tests/crypto/stubs", root / "tests/ui/stubs",
             root / "tests/native/stubs", root / "include", mbed / "include", mbed / "library"]
 flags = ["/nologo", "/utf-8", "/D_CRT_SECURE_NO_WARNINGS", f'/FI"{root / "tests/crypto/config_select.h"}"']
 flags += [f'/I"{path}"' for path in includes]
 names = ["aes", "gcm", "md", "pkcs5", "sha256", "sha512", "platform_util", "constant_time", "cipher", "cipher_wrap", "block_cipher"]
 sources = [mbed / "library" / (name + ".c") for name in names]
+sources = [crypto_overlay / source.name if source.name in ("md.c", "platform_util.c") else source
+           for source in sources]
 c_rsp = output / "compile.rsp"
 c_rsp.write_text("\n".join(flags + ["/c", "/std:c11", "/O2", "/w"] + [f'"{p}"' for p in sources]), encoding="utf-8")
 cpp_rsp = output / "link.rsp"

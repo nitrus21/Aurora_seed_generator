@@ -591,8 +591,14 @@ bool populateWallet(const HDPrivateKey &master, AddressKind kind, WalletOutput &
   }
   if (!wrapDescriptor(kind, publicKeyExpression, out.multipathDescriptor,
                       sizeof(out.multipathDescriptor))) goto cleanup;
+#if defined(AURORA_BOARD_P4)
+  // No P4 display or export consumes this redundant WIF descriptor. Preserve
+  // WalletOutput's public layout, but never create a second private-key copy.
+  secureZero(out.privateDescriptor, sizeof(out.privateDescriptor));
+#else
   if (!wrapDescriptor(kind, out.privateWif, out.privateDescriptor,
                       sizeof(out.privateDescriptor))) goto cleanup;
+#endif
 
   if (strlcpy(out.path, purposePath(kind), sizeof(out.path)) >= sizeof(out.path)) goto cleanup;
   if (kind == AddressKind::Legacy) {
