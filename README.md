@@ -349,6 +349,12 @@ Si le code n’est pas `E00`, ne créez pas de portefeuille et notez le code exa
 
 Le 15 septembre 2026, le binaire final 1.9.2 inclus dans ce dépôt a été programmé sur l'ESP32-2432S028R du projet. Esptool a identifié un ESP32-D0WD-V3 révision 3.1, vérifié les zones écrites et redémarré la carte. L'autotest série a renvoyé **E00 en 2 145 ms**.
 
+Le même jour, l'application P4 1.x finale a été programmée sur l'ESP32-P4
+révision 1.3 du projet après comparaison exacte de sa table de partitions.
+Esptool a vérifié les données écrites ; le démarrage confirme la version
+**1.9.2**, la PSRAM 32 Mo à 200 MHz, l'écran 480 × 800, le tactile GT911 et
+**E00 en 1 243 ms**, sans panic ni redémarrage pendant 35 secondes.
+
 L'image fusionnée du Web Flasher porte l'empreinte `E69A9F4D4FCB9E2D733ABC24310183560B6EC0CD47294D9E7F5AD0D0CAC1E95A`. L'installation depuis le navigateur reste à essayer séparément.
 
 ### Validation historique de la version 1.7.6

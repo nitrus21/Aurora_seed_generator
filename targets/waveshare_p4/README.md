@@ -4,6 +4,11 @@ Version finale : **1.9.2**, branche `codex/waveshare-p4-480x800`. La microSD req
 Carte visée : **Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3**, sans suffixe `-C`.
 Ne pas confondre une compilation et un démarrage réussis avec une certification indépendante : les limites physiques et risques résiduels documentés restent applicables.
 
+Validation matérielle finale : AURORA 1.9.2 a été écrite sur un P4 révision
+1.3 de 32 Mo ; le démarrage série a confirmé l'application 1.9.2, la PSRAM
+32 Mo à 200 MHz, le GT911 et l'autotest E00 en 1 243 ms, sans panic ni
+redémarrage pendant 35 secondes.
+
 ## Un seul noyau, deux firmwares
 
 Le dossier racine reste le seul dépôt de travail. Il n'y a pas de copie à synchroniser : ce projet P4 compile directement les fichiers communs du dossier `src/` et les en-têtes de `include/`.
