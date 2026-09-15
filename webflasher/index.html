@@ -112,7 +112,6 @@
             <select id="firmware-selection" aria-describedby="selection-help">
               <optgroup label="ESP32-2432S028R (CYD)">
                 <option value="cyd-1.9.4" selected>ESP32-2432S028R — 1.9.4 (dernière version)</option>
-                <option value="cyd-1.9.3">ESP32-2432S028R — 1.9.3 (conservée)</option>
                 <option value="cyd-1.7.5">ESP32-2432S028R — 1.7.5 (conservée)</option>
               </optgroup>
               <optgroup label="Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3">
@@ -140,15 +139,6 @@
             <div class="unsupported" slot="not-allowed">
               L’accès au port série est bloqué. Ouvrez cette page en HTTPS.
             </div>
-          </esp-web-install-button>
-
-          <esp-web-install-button data-release="cyd-1.9.3" manifest="./manifests/cyd-1.9.3.json" hidden>
-            <button class="flash-button" slot="activate" type="button">
-              <span>Installer AURORA ESP32-2432S028R v1.9.3</span>
-              <span class="button-arrow" aria-hidden="true">→</span>
-            </button>
-            <div class="unsupported" slot="unsupported">Utilisez Chrome ou Microsoft Edge sur ordinateur avec une connexion HTTPS.</div>
-            <div class="unsupported" slot="not-allowed">L’accès au port série est bloqué. Ouvrez cette page en HTTPS.</div>
           </esp-web-install-button>
 
           <esp-web-install-button data-release="cyd-1.7.5" manifest="./manifests/cyd-1.7.5.json" hidden>
@@ -315,7 +305,7 @@
           <p id="release-description">ESP32-2432S028R · Image fusionnée 4 Mo · DIO 40 MHz</p>
           <p id="changes-title">Nouveautés depuis la version officielle 1.9.2</p>
           <ul id="release-changes">
-            <li>Tailles de police de la 1.7.5, fonctionnalités de la 1.9.3.</li>
+            <li>Tailles de police de la 1.7.5.</li>
             <li>Mot de passe à chaque consultation privée.</li>
             <li>Nettoyage mémoire et fermeture sur inactivité renforcés.</li>
             <li>Sauvegardes de crash désactivées ; écritures microSD contrôlées.</li>

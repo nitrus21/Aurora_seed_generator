@@ -75,7 +75,6 @@ Assert-Release (Test-Path -LiteralPath (Join-Path $webRoot 'CHANGELOG.md')) 'Mis
 
 $variants = @(
     @{ Id = 'cyd-1.9.4'; Manifest = 'manifest.json'; Chip = 'ESP32'; Image = 'aurora-1.9.4-esp32-2432s028r.factory.bin' },
-    @{ Id = 'cyd-1.9.3'; Manifest = 'manifests\cyd-1.9.3.json'; Chip = 'ESP32'; Image = 'aurora-1.9.3-esp32-2432s028r.factory.bin' },
     @{ Id = 'cyd-1.7.5'; Manifest = 'manifests\cyd-1.7.5.json'; Chip = 'ESP32'; Image = 'aurora-1.7.5-esp32-2432s028r.factory.bin' },
     @{ Id = 'p4-rev1-2.0.0'; Manifest = 'manifests\p4-rev1-2.0.0.json'; Chip = 'ESP32-P4'; Image = 'aurora-2.0.0-esp32-p4-rev1.factory.bin' },
     @{ Id = 'p4-rev3-2.0.0'; Manifest = 'manifests\p4-rev3-2.0.0.json'; Chip = 'ESP32-P4'; Image = 'aurora-2.0.0-esp32-p4-rev3.factory.bin' }
@@ -94,4 +93,4 @@ foreach ($variant in $variants) {
 Assert-Release ($LASTEXITCODE -eq 0) 'Embedded image/revision verification failed.'
 & node (Join-Path $PSScriptRoot 'test_webflasher.cjs')
 Assert-Release ($LASTEXITCODE -eq 0) 'Web Flasher selection tests failed.'
-Write-Output "PASS: CYD 1.9.4/1.9.3/1.7.5 and P4 2.0.0 (1.x/3.x): manifests, images, offsets, hashes and selection"
+Write-Output "PASS: CYD 1.9.4/1.7.5 and P4 2.0.0 (1.x/3.x): manifests, images, offsets, hashes and selection"

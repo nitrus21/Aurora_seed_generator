@@ -2,7 +2,7 @@
 
 | Appareil | Versions proposées |
 | --- | --- |
-| **ESP32-2432S028R — Cheap Yellow Display (CYD)** | **1.9.4**, **1.9.3** et **1.7.5** |
+| **ESP32-2432S028R — Cheap Yellow Display (CYD)** | **1.9.4** et **1.7.5** |
 | **Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3** | **2.0.0**, image distincte pour silicium **1.x** ou **3.x** |
 
 Le développement du CYD est terminé en 1.9.4.
@@ -28,7 +28,7 @@ Toutes les images `.factory.bin` s’installent à **0x0000**.
 | `boot_app0` | `0xE000` | — |
 | Application | `0x10000` | `0x10000` |
 
-CYD 1.9.3 : installer aussi la nouvelle table de partitions, incluse dans l’image fusionnée.
+CYD 1.9.4 : installer aussi la nouvelle table de partitions, incluse dans l’image fusionnée.
 P4 : les en-têtes limitent les images aux révisions silicium 1.x ou 3.x prévues.
 
 - [Empreintes SHA-256](firmware/SHA256SUMS.txt)

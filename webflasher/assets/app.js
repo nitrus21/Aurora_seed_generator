@@ -14,21 +14,8 @@ const releases = {
     flash: "4 Mo",
     hash: "C5A23EC593452AAB11713B2AC2ED1795FEA84E43133E89FDDD41DFC6466DAE03",
     notes: "./releases/1.9.4.md",
-    changes: ["Tailles de police de la 1.7.5, fonctionnalités de la 1.9.3.", "Mot de passe à chaque consultation privée.", "Nettoyage mémoire et fermeture sur inactivité renforcés.", "Sauvegardes de crash désactivées ; écritures microSD contrôlées."],
+    changes: ["Tailles de police de la 1.7.5.", "Mot de passe à chaque consultation privée.", "Nettoyage mémoire et fermeture sur inactivité renforcés.", "Sauvegardes de crash désactivées ; écritures microSD contrôlées."],
     help: "Dernière version pour l’ESP32-2432S028R.",
-    description: "Image ESP32-2432S028R fusionnée : flash 4 Mo, mode DIO, fréquence 40 MHz.",
-    releaseDescription: "ESP32-2432S028R · Image fusionnée 4 Mo · DIO 40 MHz",
-    warning: "Cette image est réservée à l’ESP32-2432S028R. Une nouvelle installation peut effacer le contenu existant de la mémoire flash."
-  },
-  "cyd-1.9.3": {
-    target: "ESP32-2432S028R (CYD)",
-    version: "1.9.3",
-    state: "VERSION CONSERVÉE",
-    flash: "4 Mo",
-    hash: "710463DE10EF9589BC8E204BEFB207ACBAAC6FEBCEF7C7DBBBF72B53B2C45DA9",
-    notes: "./releases/1.9.3.md",
-    changes: ["Mot de passe à chaque consultation privée.", "Nettoyage mémoire et fermeture sur inactivité renforcés.", "Sauvegardes de crash désactivées ; écritures microSD contrôlées."],
-    help: "Version conservée ; choisissez la 1.9.4 pour les tailles de police de la 1.7.5.",
     description: "Image ESP32-2432S028R fusionnée : flash 4 Mo, mode DIO, fréquence 40 MHz.",
     releaseDescription: "ESP32-2432S028R · Image fusionnée 4 Mo · DIO 40 MHz",
     warning: "Cette image est réservée à l’ESP32-2432S028R. Une nouvelle installation peut effacer le contenu existant de la mémoire flash."

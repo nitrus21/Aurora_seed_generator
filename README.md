@@ -6,14 +6,14 @@ AURORA est un générateur et lecteur de portefeuilles Bitcoin hors ligne. L'int
 
 | Appareil | Écran | Version du logiciel | Versions disponibles dans le Web Flasher |
 | --- | --- | --- | --- |
-| **ESP32-2432S028R — Cheap Yellow Display (CYD)** | 2,8 pouces, 320 × 240, tactile résistif XPT2046 | **1.9.4**, dernière version | **1.9.4**, **1.9.3** et **1.7.5** |
+| **ESP32-2432S028R — Cheap Yellow Display (CYD)** | 2,8 pouces, 320 × 240, tactile résistif XPT2046 | **1.9.4**, dernière version | **1.9.4** et **1.7.5** |
 | **Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 (P4)** | 4,3 pouces, 480 × 800 portrait, tactile capacitif GT911 | **2.0.0** | **2.0.0**, images distinctes pour silicium **1.x** et **3.x** |
 
 Les abréviations **CYD** et **P4** désignent ces deux modèles dans la suite du guide.
 Le CYD **1.9.4** reprend les tailles de police de la **1.7.5** et conserve les
 fonctionnalités/protections de la **1.9.3** décrites ci-dessous. Voir le
 [détail de l’affichage CYD](targets/cyd/README.md).
-La 1.9.4 est la dernière version CYD ; les 1.9.3 et 1.7.5 restent disponibles.
+La 1.9.4 est la dernière version CYD ; la 1.7.5 reste disponible.
 À partir de la v2.0.0, AURORA évolue sur le P4 pour davantage de fonctionnalités.
 Les [notes de version](webflasher/CHANGELOG.md) présentent uniquement les nouveautés retenues depuis la précédente version officielle.
 
@@ -148,7 +148,7 @@ Selon la révision de la carte, Windows peut demander le pilote du convertisseur
 
 ## Installation depuis le Web Flasher
 
-Ouvrez [AURORA Web Flasher](https://nitrus21.github.io/Aurora_seed_generator/) dans Chrome ou Microsoft Edge sur ordinateur. Choisissez **CYD 1.9.4**, **CYD 1.9.3**, **CYD 1.7.5**, **P4 2.0.0 silicium 1.x** ou **P4 2.0.0 silicium 3.x**, puis branchez uniquement la carte correspondante et sélectionnez son port série.
+Ouvrez [AURORA Web Flasher](https://nitrus21.github.io/Aurora_seed_generator/) dans Chrome ou Microsoft Edge sur ordinateur. Choisissez **CYD 1.9.4**, **CYD 1.7.5**, **P4 2.0.0 silicium 1.x** ou **P4 2.0.0 silicium 3.x**, puis branchez uniquement la carte correspondante et sélectionnez son port série.
 
 L’installeur utilise une image complète avec son bootloader et ses partitions. Une nouvelle installation peut effacer les données présentes en flash. Les deux images P4 correspondent à des révisions de silicium différentes et ne doivent jamais être interverties. Attendez la confirmation de fin, vérifiez la version au démarrage et l’autotest **E00**, puis débranchez les données USB avant toute génération de secrets.
 
