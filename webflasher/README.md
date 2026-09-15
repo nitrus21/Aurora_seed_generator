@@ -2,10 +2,10 @@
 
 | Appareil | Versions proposées |
 | --- | --- |
-| **ESP32-2432S028R — Cheap Yellow Display (CYD)** | **1.9.3** et **1.7.5** |
+| **ESP32-2432S028R — Cheap Yellow Display (CYD)** | **1.9.4**, **1.9.3** et **1.7.5** |
 | **Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3** | **2.0.0**, image distincte pour silicium **1.x** ou **3.x** |
 
-Le développement du CYD est terminé en 1.9.3.
+Le développement du CYD est terminé en 1.9.4.
 À partir de la v2.0.0, AURORA évolue sur le P4 pour davantage de fonctionnalités.
 
 ## Installation
@@ -34,13 +34,13 @@ P4 : les en-têtes limitent les images aux révisions silicium 1.x ou 3.x prévu
 - [Empreintes SHA-256](firmware/SHA256SUMS.txt)
 - [Notes courtes des versions](CHANGELOG.md)
 - Contrôles locaux : `./tests/release/verify.ps1`.
-- Paquets locaux après compilation : `python tools/prepare_releases.py` avec le Python PlatformIO ; sortie dans `tmp/release-candidates/`.
+- Paquets locaux après compilation : `python tools/prepare_releases.py` après vérification des images Web Flasher ; sortie dans `tmp/release-candidates/`.
 
 ## Publication
 
 Le [workflow GitHub Pages](../.github/workflows/deploy-webflasher-pages.yml) publie uniquement
 `webflasher/`, après validation des images, lors d’un push sur `main` ou d’un lancement manuel.
-Les paquets GitHub sont séparés : `v1.9.3` pour le CYD et `v2.0.0` pour le P4.
+Les paquets GitHub sont séparés : `v1.9.4` pour le CYD et `v2.0.0` pour le P4.
 La préparation locale ne publie rien.
 
 ## Précautions
@@ -49,5 +49,5 @@ La préparation locale ne publie rien.
 - Le site ne demande aucune seed, clé privée ou mot de passe de portefeuille.
 - L’installation peut effacer la flash ; elle ne doit pas servir à sauvegarder un portefeuille.
 - Utilisez ensuite une alimentation autonome sans données USB.
-- La 1.7.5 ne contient pas les corrections récentes : préférez la 1.9.3 sur CYD.
+- La 1.7.5 ne contient pas les corrections récentes : préférez la 1.9.4 sur CYD.
 - ESP Web Tools est épinglé en `10.4.0`, les actions GitHub par SHA ; le composant chargé depuis `unpkg.com` reste une dépendance de confiance.

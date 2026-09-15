@@ -36,7 +36,7 @@
       <div class="header-meta">
         <span class="status-dot" aria-hidden="true"></span>
         <span id="header-target">ESP32-2432S028R (CYD)</span>
-        <span class="version" id="header-version">v1.9.3</span>
+        <span class="version" id="header-version">v1.9.4</span>
       </div>
     </header>
 
@@ -77,7 +77,7 @@
             ESP32-2432S028R : 320 × 240 · Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 : 480 × 800 · Bitcoin Mainnet
           </p>
           <p class="lifecycle-note">
-            Le développement de l’ESP32-2432S028R se termine en <strong>1.9.3</strong> ; la 1.7.5 reste disponible.
+            Le développement de l’ESP32-2432S028R se termine en <strong>1.9.4</strong> ; la 1.7.5 reste disponible.
             À partir de la <strong>v2.0.0</strong>, AURORA évolue sur le Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 pour davantage de fonctionnalités.
           </p>
         </div>
@@ -111,7 +111,8 @@
             <label for="firmware-selection">Carte et firmware</label>
             <select id="firmware-selection" aria-describedby="selection-help">
               <optgroup label="ESP32-2432S028R (CYD)">
-                <option value="cyd-1.9.3" selected>ESP32-2432S028R — 1.9.3 (dernière version)</option>
+                <option value="cyd-1.9.4" selected>ESP32-2432S028R — 1.9.4 (dernière version)</option>
+                <option value="cyd-1.9.3">ESP32-2432S028R — 1.9.3 (conservée)</option>
                 <option value="cyd-1.7.5">ESP32-2432S028R — 1.7.5 (conservée)</option>
               </optgroup>
               <optgroup label="Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3">
@@ -128,9 +129,9 @@
             <span id="compatibility-text">Vérification du navigateur…</span>
           </div>
 
-          <esp-web-install-button id="install-button" data-release="cyd-1.9.3" manifest="./manifest.json">
+          <esp-web-install-button id="install-button" data-release="cyd-1.9.4" manifest="./manifest.json">
             <button class="flash-button" slot="activate" type="button">
-              <span>Installer AURORA ESP32-2432S028R v1.9.3</span>
+              <span>Installer AURORA ESP32-2432S028R v1.9.4</span>
               <span class="button-arrow" aria-hidden="true">→</span>
             </button>
             <div class="unsupported" slot="unsupported">
@@ -139,6 +140,15 @@
             <div class="unsupported" slot="not-allowed">
               L’accès au port série est bloqué. Ouvrez cette page en HTTPS.
             </div>
+          </esp-web-install-button>
+
+          <esp-web-install-button data-release="cyd-1.9.3" manifest="./manifests/cyd-1.9.3.json" hidden>
+            <button class="flash-button" slot="activate" type="button">
+              <span>Installer AURORA ESP32-2432S028R v1.9.3</span>
+              <span class="button-arrow" aria-hidden="true">→</span>
+            </button>
+            <div class="unsupported" slot="unsupported">Utilisez Chrome ou Microsoft Edge sur ordinateur avec une connexion HTTPS.</div>
+            <div class="unsupported" slot="not-allowed">L’accès au port série est bloqué. Ouvrez cette page en HTTPS.</div>
           </esp-web-install-button>
 
           <esp-web-install-button data-release="cyd-1.7.5" manifest="./manifests/cyd-1.7.5.json" hidden>
@@ -206,7 +216,7 @@
         </div>
         <dl>
           <div><dt>Carte</dt><dd id="detail-target">ESP32-2432S028R (CYD)</dd></div>
-          <div><dt>Version</dt><dd id="detail-version">1.9.3</dd></div>
+          <div><dt>Version</dt><dd id="detail-version">1.9.4</dd></div>
           <div><dt>Flash</dt><dd id="detail-flash">4 Mo</dd></div>
           <div><dt>Image Web</dt><dd>offset 0x0000</dd></div>
         </dl>
@@ -298,22 +308,23 @@
 
         <article class="current-release">
           <div class="release-topline">
-            <span class="release-version" id="release-version">v1.9.3</span>
+            <span class="release-version" id="release-version">v1.9.4</span>
             <span class="release-state" id="release-state">DERNIÈRE VERSION</span>
           </div>
           <strong>AURORA Seed Generator</strong>
           <p id="release-description">ESP32-2432S028R · Image fusionnée 4 Mo · DIO 40 MHz</p>
           <p id="changes-title">Nouveautés depuis la version officielle 1.9.2</p>
           <ul id="release-changes">
+            <li>Tailles de police de la 1.7.5, fonctionnalités de la 1.9.3.</li>
             <li>Mot de passe à chaque consultation privée.</li>
             <li>Nettoyage mémoire et fermeture sur inactivité renforcés.</li>
             <li>Sauvegardes de crash désactivées ; écritures microSD contrôlées.</li>
           </ul>
           <span class="release-hash-label">SHA-256</span>
-          <code id="release-hash">710463DE10EF9589BC8E204BEFB207ACBAAC6FEBCEF7C7DBBBF72B53B2C45DA9</code>
+          <code id="release-hash">C5A23EC593452AAB11713B2AC2ED1795FEA84E43133E89FDDD41DFC6466DAE03</code>
           <a
             id="release-notes"
-            href="./releases/1.9.3.md"
+            href="./releases/1.9.4.md"
             target="_blank"
             rel="noreferrer"
           >

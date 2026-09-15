@@ -7,7 +7,8 @@ const web = path.resolve(__dirname, '../../webflasher');
 const html = fs.readFileSync(path.join(web, 'index.html'), 'utf8');
 const code = fs.readFileSync(path.join(web, 'assets/app.js'), 'utf8');
 const variants = [
-  ['cyd-1.9.3', '1.9.3', 'manifest.json'],
+  ['cyd-1.9.4', '1.9.4', 'manifest.json'],
+  ['cyd-1.9.3', '1.9.3', 'manifests/cyd-1.9.3.json'],
   ['cyd-1.7.5', '1.7.5', 'manifests/cyd-1.7.5.json'],
   ['p4-rev1-2.0.0', '2.0.0', 'manifests/p4-rev1-2.0.0.json'],
   ['p4-rev3-2.0.0', '2.0.0', 'manifests/p4-rev3-2.0.0.json'],
@@ -39,7 +40,7 @@ async function test(secure, serial) {
     for (const selector of ['#header-target', '#detail-target', '#selected-board', '#release-description', '#target-warning']) {
       assert.ok(elements[selector].textContent.includes(board), `${selector} must show the complete board reference`);
     }
-    assert.ok(html.includes(`value="${id}"${id === 'cyd-1.9.3' ? ' selected' : ''}>${board}`));
+    assert.ok(html.includes(`value="${id}"${id === 'cyd-1.9.4' ? ' selected' : ''}>${board}`));
     const config = JSON.parse(fs.readFileSync(path.join(web, manifest), 'utf8'));
     const binary = path.resolve(web, path.dirname(manifest), config.builds[0].parts[0].path);
     const digest = require('node:crypto').createHash('sha256').update(fs.readFileSync(binary)).digest('hex').toUpperCase();
@@ -55,5 +56,5 @@ async function test(secure, serial) {
 }
 (async () => {
   for (const [secure, serial] of [[true, true], [true, false], [false, true]]) await test(secure, serial);
-  console.log('PASS: four selections, single installer, versions, warnings, hashes, notes, copy and browser compatibility');
+  console.log('PASS: five selections, single installer, versions, warnings, hashes, notes, copy and browser compatibility');
 })().catch(error => {console.error(error); process.exitCode = 1;});

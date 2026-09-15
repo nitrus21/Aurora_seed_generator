@@ -2,7 +2,7 @@
 
 Version du logiciel : **2.0.0**.
 Carte : **Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3**, modèle sans suffixe `-C`.
-Le modèle **ESP32-2432S028R — Cheap Yellow Display (CYD)** termine son développement en **1.9.3** ; la **1.7.5** reste disponible.
+Le modèle **ESP32-2432S028R — Cheap Yellow Display (CYD)** termine son développement en **1.9.4** ; la **1.7.5** reste disponible.
 À partir de la v2.0.0, le développement continue sur le P4 pour davantage de fonctionnalités.
 
 L'ouverture des fichiers et chaque consultation privée utilisent le mot de passe

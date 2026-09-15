@@ -6,14 +6,14 @@ AURORA est un générateur et lecteur de portefeuilles Bitcoin hors ligne. L'int
 
 | Appareil | Écran | Version du logiciel | Versions disponibles dans le Web Flasher |
 | --- | --- | --- | --- |
-| **ESP32-2432S028R — Cheap Yellow Display (CYD)** | 2,8 pouces, 320 × 240, tactile résistif XPT2046 | **1.9.4**, correction d’affichage locale | **1.9.3** et **1.7.5** |
+| **ESP32-2432S028R — Cheap Yellow Display (CYD)** | 2,8 pouces, 320 × 240, tactile résistif XPT2046 | **1.9.4**, dernière version | **1.9.4**, **1.9.3** et **1.7.5** |
 | **Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 (P4)** | 4,3 pouces, 480 × 800 portrait, tactile capacitif GT911 | **2.0.0** | **2.0.0**, images distinctes pour silicium **1.x** et **3.x** |
 
 Les abréviations **CYD** et **P4** désignent ces deux modèles dans la suite du guide.
 Le CYD **1.9.4** reprend les tailles de police de la **1.7.5** et conserve les
 fonctionnalités/protections de la **1.9.3** décrites ci-dessous. Voir le
 [détail de l’affichage CYD](targets/cyd/README.md).
-Les images Web Flasher restent en 1.9.3 et 1.7.5 tant que la 1.9.4 n’est pas validée pour publication.
+La 1.9.4 est la dernière version CYD ; les 1.9.3 et 1.7.5 restent disponibles.
 À partir de la v2.0.0, AURORA évolue sur le P4 pour davantage de fonctionnalités.
 Les [notes de version](webflasher/CHANGELOG.md) présentent uniquement les nouveautés retenues depuis la précédente version officielle.
 
@@ -148,7 +148,7 @@ Selon la révision de la carte, Windows peut demander le pilote du convertisseur
 
 ## Installation depuis le Web Flasher
 
-Ouvrez [AURORA Web Flasher](https://nitrus21.github.io/Aurora_seed_generator/) dans Chrome ou Microsoft Edge sur ordinateur. Choisissez **CYD 1.9.3**, **CYD 1.7.5**, **P4 2.0.0 silicium 1.x** ou **P4 2.0.0 silicium 3.x**, puis branchez uniquement la carte correspondante et sélectionnez son port série.
+Ouvrez [AURORA Web Flasher](https://nitrus21.github.io/Aurora_seed_generator/) dans Chrome ou Microsoft Edge sur ordinateur. Choisissez **CYD 1.9.4**, **CYD 1.9.3**, **CYD 1.7.5**, **P4 2.0.0 silicium 1.x** ou **P4 2.0.0 silicium 3.x**, puis branchez uniquement la carte correspondante et sélectionnez son port série.
 
 L’installeur utilise une image complète avec son bootloader et ses partitions. Une nouvelle installation peut effacer les données présentes en flash. Les deux images P4 correspondent à des révisions de silicium différentes et ne doivent jamais être interverties. Attendez la confirmation de fin, vérifiez la version au démarrage et l’autotest **E00**, puis débranchez les données USB avant toute génération de secrets.
 
@@ -234,7 +234,7 @@ profil correspondant à la carte :
 Ces commandes ne flashent rien. Les profils doivent être compilés séparément ;
 voir les [prérequis et contrôles P4](targets/waveshare_p4/README.md#compilation).
 Les commandes ci-dessous concernent l'**ESP32-2432S028R**.
-La compilation produit 1.9.3 : sa table de partitions doit être installée
+La compilation produit 1.9.4 : sa table de partitions doit être installée
 avec le programme. Un chargement du seul `firmware.bin` sur une ancienne table
 est refusé au démarrage. Aucun fichier microSD n’est effacé par ce contrôle.
 
@@ -295,14 +295,14 @@ Sur une carte déjà initialisée avec exactement le même environnement AURORA,
 
 SHA-256 permet de vérifier que le fichier n’a pas changé entre sa création, son téléchargement et son flashage. Il ne prouve l’authenticité que si la valeur de référence a été obtenue par un canal de confiance.
 
-### Empreinte de l’application CYD 1.9.3
+### Empreinte de l’application CYD 1.9.4
 
 Fichier distribué : `webflasher/firmware/firmware.bin` (copie du build PlatformIO)
-Taille : **1 489 344 octets**
+Taille : **1 489 312 octets**
 SHA-256 :
 
 ```text
-45F552833A0D45A660AAC8B1405B8D81E89AE7425E9A0F4E77C55CA46CC75DEC
+F913E57ED689AD445552A774EE300B086D1C969359001F238ED1F16BF8803074
 ```
 
 Cette empreinte concerne l’application seule, pas l’image fusionnée du Web Flasher. Les empreintes de tous les binaires sont dans [SHA256SUMS.txt](webflasher/firmware/SHA256SUMS.txt). Sous PowerShell, `./tests/release/verify.ps1 -ReleasedArtifactsOnly` contrôle les versions, le manifeste, le contenu de l’image fusionnée et les empreintes, sans flasher l’appareil.
@@ -786,7 +786,7 @@ targets/waveshare_p4/
   main/                       Initialisation P4, pilotes et nettoyage mémoire
 webflasher/
   index.html                  Installeur français publié sur GitHub Pages
-  manifest.json               Image CYD 1.9.3 installée par défaut
+  manifest.json               Image CYD 1.9.4 installée par défaut
   manifests/                  Choix CYD 1.7.5 et P4 par révision
   firmware/                   Images CYD/P4, archives et SHA256SUMS.txt
   CHANGELOG.md                Versions proposées et nouveautés retenues
