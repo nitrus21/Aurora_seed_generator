@@ -1,8 +1,8 @@
-# AURORA — développement ESP32-P4
+# AURORA — ESP32-P4
 
-Version de développement : **1.9.1-dev**, branche `codex/waveshare-p4-480x800`. La microSD obligatoire, les protections PIN et la confirmation de passphrase sont décrites dans [SECURITY.md](../../SECURITY.md), sans modification des dérivations du portefeuille ou du fichier.
+Version finale : **1.9.2**, branche `codex/waveshare-p4-480x800`. La microSD requise à la sauvegarde, les protections PIN et la confirmation de passphrase sont décrites dans [SECURITY.md](../../SECURITY.md), sans modification des dérivations du portefeuille ou du fichier.
 Carte visée : **Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3**, sans suffixe `-C`.
-Ne pas confondre une compilation réussie avec une validation matérielle : ce portage n'est pas encore une version finale à utiliser avec des fonds.
+Ne pas confondre une compilation et un démarrage réussis avec une certification indépendante : les limites physiques et risques résiduels documentés restent applicables.
 
 ## Un seul noyau, deux firmwares
 
@@ -19,6 +19,14 @@ Le dossier racine reste le seul dépôt de travail. Il n'y a pas de copie à syn
 | P4 | ESP-IDF, BSP Waveshare, LVGL 9, GT911, ES7210, OV5647 facultative, microSD SDMMC |
 
 Les écrans P4 sont rendus avec des widgets natifs dans une surface **480 × 800 portrait** et des polices agrandies, pas dans un framebuffer 320 × 240 étiré. L'écran d'entropie possède une disposition portrait dédiée. Les QR conservent leur forme carrée ; la caméra conserve son rapport d'aspect.
+
+Le menu **Choisissez une action** du P4 place le logo Bitcoin en haut au centre,
+au-dessus de quatre boutons centrés de **384 × 64 pixels** (80 % de la largeur),
+et propose **RÉCUPÉRER UMBREL / LND**. Ce parcours déchiffre AEZEED avec
+les paramètres scrypt officiels dans une allocation PSRAM temporaire d'environ
+16 Mio, puis expose le `xprv` maître BIP32 derrière le PIN de session. Il ne
+restaure pas les canaux Lightning.
+Ce changement de disposition ne concerne pas le CYD.
 
 ## Capteurs et collecte
 
@@ -38,13 +46,13 @@ Le coprocesseur radio ESP32-C6 est maintenu en reset actif bas sur GPIO54 selon 
 
 ## Compatibilité microSD
 
-La microSD FAT32 doit être détectée et sa racine lisible avant toute création,
-restauration ou ouverture, puis avant les formulaires de phrase/mot de passe/PIN
-et leur validation. Sinon l'écran **microSD requise** bloque la saisie, avec
-**RÉESSAYER** et **FERMER** seulement. Une carte vide lisible est acceptée,
-sans formatage ni fichier de test. Sur P4, le contrôle après collecte attend
-d'abord l'arrêt confirmé des capteurs. Les retraits entre affichage et validation
-sont détectés à la validation ; pas de surveillance continue de chaque frappe.
+Sur **CYD et P4**, la création/restauration et le PIN de session fonctionnent
+sans carte. La microSD FAT32 doit être détectée et sa racine lisible à l'entrée
+de la sauvegarde/export, puis durant sa préparation et avant l'écriture. Sinon
+l'écran **microSD requise** bloque l'export, avec **RÉESSAYER** et **FERMER**
+seulement. Une carte vide lisible est acceptée, sans formatage ni fichier de
+test. L'ouverture d'un fichier conserve les erreurs de carte dans le lecteur.
+Pas de surveillance continue de chaque frappe ni de changement des règles PIN.
 
 FAT32, mêmes noms et suffixes sur les deux appareils. Lecture V1 conservée ; nouvelles écritures V2 avec PIN par fichier. En-tête de 46 octets, PBKDF2-HMAC-SHA-256 (120 000 itérations à l'écriture), AES-256-GCM et tag de 16 octets restent inchangés. V2 ajoute 80 octets chiffrés pour le vérificateur PIN : fichier total de 1 200 octets contre 1 120 en V1. Aucun champ spécifique au matériel. Les anciens firmwares ne lisent pas V2 ; mettre les deux cartes à jour. [Migration V1/V2](../../SECURITY.md#format-binaire-v2-et-migration).
 
@@ -100,8 +108,9 @@ Résultats et limites de la vérification logicielle : [VALIDATION.md](VALIDATIO
 4. Vérifier microphones, puis refaire la collecte avec OV5647 : image, compteur réel, variations sonores, absence de données après sortie.
 5. Tester annulation, redémarrage de collecte, source muette/bloquée et erreurs I2C/CSI ; aucun accès aux secrets si l'arrêt échoue.
 6. Échanger un portefeuille **de test sans fonds** dans les deux sens entre CYD et P4 ; comparer adresse, dérivation et exports.
-7. Sans SD, vérifier le blocage avant création/restauration/ouverture et l'absence de champs phrase/PIN. Réessayer sans carte doit rester bloqué ; une carte FAT32 vide doit permettre la création. Retirer la carte après affichage d'un formulaire puis valider : saisie effacée, aucune opération ni tentative PIN consommée. Réinsérer et réessayer, puis vérifier FERMER et la conservation du compteur d'erreurs PIN. Tester aussi carte pleine, fichier existant, mauvais mot de passe et fichier altéré ; aucun formatage ni perte d'un fichier préexistant. Ne pas retirer pendant une écriture.
+7. Sur les deux cartes, créer/restaurer sans SD jusqu'au portefeuille, y compris passphrase et PIN de session ; le dialogue SD ne doit apparaître qu'à la sauvegarde/export. À l'ouverture d'un fichier sans carte, vérifier l'erreur du lecteur. Réessayer un export sans carte doit rester bloqué ; une carte FAT32 vide doit permettre de poursuivre. Retirer la carte pendant la préparation de l'export puis valider : saisie effacée, aucune écriture ni tentative PIN consommée. Réinsérer et réessayer, puis vérifier FERMER et la conservation du compteur d'erreurs PIN. Tester aussi carte pleine, fichier existant, mauvais mot de passe et fichier altéré ; aucun formatage ni perte d'un fichier préexistant. Ne pas retirer pendant une écriture.
 8. Tester double passphrase, PIN avec zéros initiaux, trois erreurs séparées par annulation, expiration à 15 s et inactivité à 120 s. Mesurer la latence PIN et la stabilité mémoire sur plusieurs cycles ; confirmer que l'adresse reste identique à celle d'un logiciel de référence.
+9. Avec une seed AEZEED de test sans fonds, ouvrir **RÉCUPÉRER UMBREL / LND**, vérifier le résultat avec et sans passphrase, puis importer le XPRV dans Sparrow. Comparer les premières adresses des comptes BIP49, BIP84 et BIP86. Confirmer aussi qu'une mauvaise passphrase est rejetée, que le QR privé expire après 15 s et qu'aucun canal Lightning n'est présenté comme récupéré.
 
 ## Références matérielles et pilotes
 

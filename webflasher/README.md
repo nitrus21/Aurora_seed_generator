@@ -1,14 +1,25 @@
 # AURORA Web Flasher
 
-Installeur Web en français pour **AURORA Seed Generator 1.7.6**, destiné exclusivement à l’ESP32-2432S028R. Les [notes de version](CHANGELOG.md) décrivent la collecte à 320 échantillons, la luminosité et l’aperçu défilant.
+Installeur Web en français pour les deux familles AURORA : **ESP32-2432S028R / CYD** et **Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3**. Le CYD propose la version finale **1.9.2** ainsi que l'ancienne **1.7.5**. Le P4 propose séparément les images finales pour les révisions silicium 1.x et 3.x.
 
 ## Utilisation
 
-Ouvrez le [Web Flasher AURORA sur GitHub Pages](https://nitrus21.github.io/Aurora_seed_generator/) avec Chrome ou Microsoft Edge sur ordinateur, branchez l’ESP32 avec un câble USB de données et utilisez le bouton **Installer AURORA v1.7.6**. Une copie auto-hébergée doit également être servie en HTTPS.
+Ouvrez le [Web Flasher AURORA sur GitHub Pages](https://nitrus21.github.io/Aurora_seed_generator/) avec Chrome ou Microsoft Edge sur ordinateur. Sélectionnez d'abord la carte et la version exacte, branchez-la avec un câble USB de données, puis utilisez le bouton **Installer AURORA**. Une copie auto-hébergée doit également être servie en HTTPS.
 
 Une ouverture directe de `index.html` depuis l’Explorateur Windows ne permet pas d’utiliser Web Serial.
 
-## Disposition réelle de la flash
+## Images proposées
+
+| Choix | État | Image |
+|---|---|---|
+| CYD 1.9.2 | finale, recommandée | `aurora-1.9.2-esp32-2432s028r.factory.bin` |
+| CYD 1.7.5 | historique | `aurora-1.7.5-esp32-2432s028r.factory.bin` |
+| P4 révision 1.x | 1.9.2 finale | `aurora-1.9.2-esp32-p4-rev1.factory.bin` |
+| P4 révision 3.x | 1.9.2 finale | `aurora-1.9.2-esp32-p4-rev3.factory.bin` |
+
+La version CYD 1.7.6 reste archivée dans `firmware/`, mais les choix demandés dans l'interface sont 1.9.2 et 1.7.5. Les images P4 1.x et 3.x ne sont pas interchangeables ; leurs en-têtes limitent aussi les révisions de silicium acceptées.
+
+## Disposition réelle de la flash CYD
 
 | Élément | Offset |
 |---|---:|
@@ -17,9 +28,9 @@ Une ouverture directe de `index.html` depuis l’Explorateur Windows ne permet p
 | `boot_app0.bin` | `0xE000` |
 | `firmware.bin` | `0x10000` |
 
-ESP Web Tools utilise l’image fusionnée `firmware/aurora-1.7.6-esp32-2432s028r.factory.bin` à l’offset `0x0000`. Elle est préparée en mode DIO, à 40 MHz, pour une flash de 4 Mo.
+ESP Web Tools utilise l’image fusionnée choisie à l’offset `0x0000`. Les images CYD sont préparées en mode DIO, à 40 MHz, pour une flash de 4 Mo.
 
-L’image fusionnée 1.7.5 est conservée comme archive ; le manifeste installe uniquement la version 1.7.6.
+Pour le P4, le bootloader est à `0x2000`, les partitions à `0x8000` et l'application à `0x10000` dans une image fusionnée prévue pour une flash de 32 Mo.
 
 Les empreintes SHA-256 sont disponibles dans [firmware/SHA256SUMS.txt](firmware/SHA256SUMS.txt). Depuis la racine du dépôt, `./tests/release/verify.ps1` vérifie le manifeste, les versions, les octets aux offsets prévus et les empreintes affichées.
 
@@ -27,17 +38,24 @@ Les empreintes SHA-256 sont disponibles dans [firmware/SHA256SUMS.txt](firmware/
 
 Le workflow [Deploy AURORA Web Flasher to GitHub Pages](../.github/workflows/deploy-webflasher-pages.yml) publie le dossier `webflasher/` après un push sur `main` qui modifie ce dossier ou le workflow. Il peut aussi être lancé manuellement depuis GitHub Actions. Un commit local seul ne déclenche aucun déploiement.
 
-Après le déploiement, vérifiez que le site affiche **1.7.6**, que `manifest.json` référence l’image 1.7.6 et que l’empreinte de l’image téléchargée correspond à `SHA256SUMS.txt`. Les notes de version sont incluses localement ; elles ne dépendent pas de la création d’une GitHub Release.
+Le composant ESP Web Tools est verrouillé sur la version exacte `10.4.0` et la
+page applique une politique CSP restrictive. Les GitHub Actions sont épinglées
+par SHA de commit. Le chargement du composant depuis `unpkg.com` reste une
+dépendance réseau de confiance ; une distribution à menace renforcée doit
+l'auto-héberger et vérifier son contenu.
+
+Après le déploiement, vérifiez les quatre choix, le changement de manifeste, de cible, de version, d'avertissement et d'empreinte. Chaque image téléchargée doit correspondre à `SHA256SUMS.txt`. Les notes de version sont incluses localement ; elles ne dépendent pas de la création d’une GitHub Release.
 
 ## Validation de l’appareil
 
-Le 14 septembre 2026, les composants binaires finaux 1.7.6 ont été flashés par port série sur l’ESP32-2432S028R du projet avec vérification des données écrites. Le redémarrage a produit **E00 en 2 120 ms**. Cette vérification ne constitue pas un essai de l’installation depuis le navigateur ni une validation physique des gestes et de la luminosité ; ces contrôles restent manuels.
+Le 15 septembre 2026, les composants binaires finaux CYD 1.9.2 ont été flashés par port série sur l’ESP32-2432S028R du projet avec vérification des données écrites. Le redémarrage a produit **E00 en 2 145 ms**. Cette vérification ne constitue pas encore un essai de l’installation depuis le navigateur. Les images P4 proposées ont été compilées et contrôlées, mais leur installation Web reste également à essayer sur chaque révision réelle.
 
 ## Sécurité
 
 - Le flashage se déroule localement entre le navigateur et le port USB.
 - Le site ne demande et ne reçoit aucune seed ni clé privée.
 - Vérifiez l’empreinte SHA-256 avant publication ou distribution.
+- Vérifiez la famille de carte et, pour le P4, la révision silicium exacte.
 - Ne débranchez jamais l’appareil pendant l’écriture.
 - Une nouvelle installation peut effacer les données déjà présentes sur la flash.
 - Après installation et vérification du démarrage, déconnectez les données USB et utilisez une alimentation autonome avant de générer des secrets.

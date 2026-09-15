@@ -11,7 +11,8 @@
 extern "C" uint32_t native_millis(void) { return millis(); }
 static unsigned wipes=0;
 static bool sdReady=true;
-bool auroraSdReady() { return sdReady; }
+static unsigned sdChecks=0;
+bool auroraSdReady() { ++sdChecks; return sdReady; }
 extern "C" void auroraUiWipeAudit(const void *pointer,size_t size) {
   for(size_t i=0;i<size;++i) assert(static_cast<const uint8_t *>(pointer)[i]==0);
   ++wipes;
@@ -21,6 +22,9 @@ WalletSelfTest WalletEngine::selfTest() { return WalletSelfTest::Ok; }
 bool WalletEngine::create(uint8_t,AddressKind,const char *,const uint8_t *,WalletOutput &) { return true; }
 bool WalletEngine::restore(const char *,uint8_t,AddressKind,const char *,WalletOutput &) { return true; }
 bool WalletEngine::accountXprv(const WalletOutput &,const char *,char *,size_t) { return false; }
+bool WalletEngine::rootXprvFromSeed(const uint8_t *,size_t,char *,size_t) { return false; }
+AezeedResult AezeedEngine::decode(const char *,const char *,AezeedDecoded &) { return AezeedResult::MemoryFailed; }
+void AezeedEngine::wipe(AezeedDecoded &out) { secureZero(&out,sizeof(out)); }
 void WalletEngine::wipe(WalletOutput &wallet) { secureZero(&wallet,sizeof(wallet)); }
 bool WalletEngine::bip39Word(const char *) { return true; }
 uint8_t WalletEngine::bip39Suggestions(const char *,char *,size_t,uint8_t) { return 0; }
@@ -56,6 +60,16 @@ static void snapshot(AuroraUI &ui,const char *name) {
   }
   fclose(file);
 }
+static void click(AuroraUI &ui,Action action) {
+  for(uint32_t i=0;i<lv_obj_get_child_cnt(ui.root_);++i) {
+    auto *child=lv_obj_get_child(ui.root_,i);
+    if(lv_obj_check_type(child,&lv_btn_class) &&
+       reinterpret_cast<uintptr_t>(lv_obj_get_user_data(child))==action) {
+      lv_event_send(child,LV_EVENT_CLICKED,nullptr); return;
+    }
+  }
+  assert(false && "Expected button missing");
+}
 int main() {
   lv_init(); static lv_color_t buffer[320*40]; static lv_disp_draw_buf_t draw;
   lv_disp_draw_buf_init(&draw,buffer,nullptr,320*40);
@@ -64,14 +78,37 @@ int main() {
   lv_disp_drv_register(&display);
   static AuroraUI ui; ui.begin(); ui.selfTestPending_=false;
   using Screen=AuroraUI::Screen;
+  ui.show(Screen::Mode); snapshot(ui,"mode-cyd.ppm");
+  unsigned modeButtons=0, modeLogos=0;
+  for(uint32_t i=0;i<lv_obj_get_child_cnt(ui.root_);++i) {
+    auto *child=lv_obj_get_child(ui.root_,i);
+    if(lv_obj_check_type(child,&lv_btn_class)) {
+      assert(lv_obj_get_width(child)==178 && lv_obj_get_height(child)==44);
+      assert(lv_obj_get_x(child)==12 && lv_obj_get_y(child)==48+60*modeButtons);
+      ++modeButtons;
+    } else if(lv_obj_check_type(child,&lv_img_class)) {
+      assert(lv_obj_get_x(child)==200 && lv_obj_get_y(child)==43); ++modeLogos;
+    }
+  }
+  assert(modeButtons==3 && modeLogos==1); // Original CYD arrangement untouched.
   sdReady=false;
-  for(auto screen:{Screen::Setup,Screen::Passphrase,Screen::RestoreWords,Screen::PinSetup}) {
+  const Action actions[]={NEW_WALLET,OPEN_WALLET,RESTORE_WALLET};
+  const Screen destinations[]={Screen::Setup,Screen::ImportName,Screen::RestoreSetup};
+  for(unsigned i=0;i<3;++i) {
+    ui.show(Screen::Mode); click(ui,actions[i]); assert(ui.screen_==destinations[i]);
+  }
+  for(auto screen:{Screen::Setup,Screen::Passphrase,Screen::RestoreWords,Screen::RestorePassphrase,Screen::PinSetup}) {
+    ui.show(screen); assert(ui.screen_==screen && sdChecks==0);
+  }
+  for(auto screen:{Screen::Backup,Screen::ExportName,Screen::ExportPassword}) {
     ui.show(screen);
     assert(ui.screen_==Screen::SdRequired && ui.afterSd_==screen);
     assert(!ui.keyboard_ && !ui.passArea_ && !ui.pinArea_ && !ui.restoreWordArea_);
   }
-  snapshot(ui,"sd-required.ppm"); sdReady=true;
+  snapshot(ui,"sd-required.ppm"); click(ui,RETRY_SD); assert(ui.screen_==Screen::SdRequired);
+  sdReady=true; click(ui,RETRY_SD); assert(ui.screen_==Screen::ExportPassword);
   ui.show(Screen::Mode);
+  sdReady=false; const unsigned offlineChecks=sdChecks;
   ui.show(Screen::Passphrase); snapshot(ui,"passphrase.ppm");
   assert(ui.passArea_ && ui.passConfirmArea_);
   lv_textarea_set_text(ui.passArea_,"same"); lv_textarea_set_text(ui.passConfirmArea_,"same");
@@ -84,8 +121,13 @@ int main() {
   ui.qrContent_=AuroraUI::QrContent::PrivateKey; ui.show(Screen::Qr);
   assert(ui.screen_==Screen::PinUnlock); snapshot(ui,"pin-unlock.ppm");
   lv_textarea_set_text(ui.pinArea_,"1234"); sdReady=false; ui.submitPinUnlock();
+  assert(ui.screen_==Screen::Qr && ui.pinGuard_.failures()==0 && sdChecks==offlineChecks);
+  ui.show(Screen::Backup); assert(ui.screen_==Screen::SdRequired);
+  sdReady=true; click(ui,RETRY_SD); assert(ui.screen_==Screen::Backup);
+  ui.show(Screen::ExportName); assert(ui.screen_==Screen::PinUnlock);
+  lv_textarea_set_text(ui.pinArea_,"1234"); sdReady=false; ui.submitPinUnlock();
   assert(ui.screen_==Screen::SdRequired && !ui.pinArea_ && ui.pinGuard_.failures()==0);
-  sdReady=true; ui.show(ui.afterSd_);
+  sdReady=true; click(ui,RETRY_SD);
   assert(ui.screen_==Screen::PinUnlock && !lv_textarea_get_text(ui.pinArea_)[0]);
   for(unsigned i=0;i<3;++i) {
     mock.time+=1000000; lv_textarea_set_text(ui.pinArea_,"0000");
@@ -94,5 +136,5 @@ int main() {
   assert(ui.screen_==Screen::Mode && !ui.pinGuard_.enabled() && !ui.passphrase_[0]);
   ui.show(Screen::Entropy); snapshot(ui,"entropy.ppm"); ui.show(Screen::Mode);
   assert(wipes>100);
-  puts("PASS: real LVGL 8 CYD 320x240, mandatory SD credential gate/removal, dual passphrase, numeric PIN setup/unlock, 3 failures wipe, secure allocator");
+  puts("PASS: real LVGL 8 CYD 320x240 menu unchanged, offline actions/passphrase/session PIN, SD save-only gate/retry/removal, 3 failures wipe, secure allocator");
 }

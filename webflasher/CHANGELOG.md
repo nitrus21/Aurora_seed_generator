@@ -1,5 +1,16 @@
 # Notes de version AURORA
 
+## 1.9.2 — CYD et P4 finaux, 15 septembre 2026
+
+- Conservation des trois actions historiques du CYD, sans le déchiffrement AEZEED réservé au P4.
+- Création et restauration possibles sans microSD ; la carte est exigée uniquement à l'ouverture ou à la sauvegarde d'un fichier.
+- Confirmation de passphrase, PIN de session, PIN par sauvegarde V2 et temporisation des écrans privés.
+- Image fusionnée CYD ajoutée au Web Flasher avec maintien du choix historique 1.7.5.
+- Ajout des images P4 1.9.2 finales, séparées pour les révisions silicium 1.x et 3.x.
+- Épinglage exact d'ESP Web Tools 10.4.0, CSP restrictive et GitHub Actions verrouillées par SHA.
+
+Validation CYD : compilation finale, écriture sur ESP32-D0WD-V3 révision 3.1, vérification des zones flashées et autotest **E00 en 2 145 ms**. Les installations depuis le navigateur et les images P4 doivent encore être vérifiées sur le matériel correspondant.
+
 ## 1.7.6 — 14 septembre 2026
 
 - Ajout de la luminosité mesurée sur GPIO34 au mélange aléatoire, en conservant les coordonnées, la pression, les timings et le RNG matériel.

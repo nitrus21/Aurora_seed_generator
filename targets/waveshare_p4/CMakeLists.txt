@@ -1,4 +1,12 @@
 cmake_minimum_required(VERSION 3.16)
+file(STRINGS "${CMAKE_CURRENT_LIST_DIR}/../../include/version.h" AURORA_VERSION_LINE
+     REGEX "^#define AURORA_FIRMWARE_VERSION \"[0-9]+\\.[0-9]+\\.[0-9]+\"$")
+string(REGEX REPLACE
+       "^#define AURORA_FIRMWARE_VERSION \"([0-9]+\\.[0-9]+\\.[0-9]+)\"$"
+       "\\1" PROJECT_VER "${AURORA_VERSION_LINE}")
+if(NOT PROJECT_VER MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+$")
+    message(FATAL_ERROR "Cannot derive the P4 application version from include/version.h")
+endif()
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 set(COMPONENTS main)
 if(EXISTS "$ENV{IDF_PATH}/components/__pio_env")

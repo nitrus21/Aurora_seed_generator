@@ -4,15 +4,20 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#07090c" />
+    <meta name="referrer" content="no-referrer" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"
+    />
     <meta
       name="description"
-      content="Installeur Web officiel du firmware AURORA Seed Generator pour ESP32-2432S028R."
+      content="Installeur Web AURORA Seed Generator pour CYD ESP32-2432S028R et Waveshare ESP32-P4."
     />
     <title>AURORA — Web Flasher</title>
     <link rel="stylesheet" href="./assets/styles.css" />
     <script
       type="module"
-      src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"
+      src="https://unpkg.com/esp-web-tools@10.4.0/dist/web/install-button.js?module"
     ></script>
     <script type="module" src="./assets/app.js"></script>
   </head>
@@ -30,8 +35,8 @@
       </a>
       <div class="header-meta">
         <span class="status-dot" aria-hidden="true"></span>
-        <span>ESP32-2432S028R</span>
-        <span class="version">v1.7.6</span>
+        <span id="header-target">CYD ESP32-2432S028R</span>
+        <span class="version" id="header-version">v1.9.2</span>
       </div>
     </header>
 
@@ -41,16 +46,16 @@
           <p class="eyebrow">QU’EST-CE QU’AURORA ?</p>
           <h1 id="about-title">Un générateur de seed Bitcoin conçu pour rester hors ligne.</h1>
           <p class="lead">
-            AURORA transforme l’ESP32-2432S028R en appareil autonome pour créer,
-            vérifier et sauvegarder une phrase de récupération BIP39, sans Wi-Fi,
-            sans Bluetooth et sans service distant.
+            AURORA transforme le CYD ou le Waveshare ESP32-P4 en appareil autonome
+            pour créer, vérifier et sauvegarder une phrase de récupération BIP39,
+            sans Wi-Fi, sans Bluetooth et sans service distant.
           </p>
           <div class="feature-list" aria-label="Fonctions principales d’AURORA">
             <article>
               <span class="feature-icon" aria-hidden="true">01</span>
               <div>
-                <strong>Entropie matérielle, tactile et lumineuse</strong>
-                <p>320 échantillons mêlent le RNG de l’ESP32, vos gestes et la luminosité, avec un aperçu défilant.</p>
+                <strong>Entropie matérielle et capteurs locaux</strong>
+                <p>Le RNG matériel est mêlé aux gestes et aux capteurs disponibles sur la carte choisie.</p>
               </div>
             </article>
             <article>
@@ -69,7 +74,7 @@
             </article>
           </div>
           <p class="scope-note">
-            Interface en français · Mots BIP39 en anglais · Bitcoin Mainnet
+            CYD 320 × 240 · P4 480 × 800 · Bitcoin Mainnet
           </p>
         </div>
 
@@ -90,7 +95,7 @@
       <section class="installer" aria-labelledby="hero-title">
         <div class="installer-copy">
           <p class="eyebrow">INSTALLATION SÉCURISÉE PAR USB</p>
-          <h2 id="hero-title">Installez AURORA directement depuis votre navigateur.</h2>
+          <h2 id="hero-title">Choisissez votre carte et sa version.</h2>
           <p>
             Le firmware est envoyé localement à votre ESP32. Aucun mot, aucune
             seed et aucune clé privée ne transitent par ce site.
@@ -98,14 +103,29 @@
         </div>
 
         <div class="installer-action">
+          <div class="firmware-picker">
+            <label for="firmware-selection">Carte et firmware</label>
+            <select id="firmware-selection" aria-describedby="selection-help">
+              <optgroup label="ESP32-2432S028R / CYD">
+                <option value="cyd-1.9.2" selected>CYD — 1.9.2 finale (dernière)</option>
+                <option value="cyd-1.7.5">CYD — 1.7.5 historique</option>
+              </optgroup>
+              <optgroup label="Waveshare ESP32-P4 4,3 pouces">
+                <option value="p4-rev1-1.9.2">P4 silicium 1.x — 1.9.2 finale</option>
+                <option value="p4-rev3-1.9.2">P4 silicium 3.x — 1.9.2 finale</option>
+              </optgroup>
+            </select>
+            <p id="selection-help">Version finale recommandée pour le Cheap Yellow Display.</p>
+          </div>
+
           <div class="compatibility" id="compatibility" role="status" aria-live="polite">
             <span class="compatibility-icon" aria-hidden="true">●</span>
             <span id="compatibility-text">Vérification du navigateur…</span>
           </div>
 
-          <esp-web-install-button id="install-button" manifest="./manifest.json">
+          <esp-web-install-button id="install-button" data-release="cyd-1.9.2" manifest="./manifest.json">
             <button class="flash-button" slot="activate" type="button">
-              <span>Installer AURORA v1.7.6</span>
+              <span>Installer AURORA CYD v1.9.2</span>
               <span class="button-arrow" aria-hidden="true">→</span>
             </button>
             <div class="unsupported" slot="unsupported">
@@ -114,6 +134,33 @@
             <div class="unsupported" slot="not-allowed">
               L’accès au port série est bloqué. Ouvrez cette page en HTTPS.
             </div>
+          </esp-web-install-button>
+
+          <esp-web-install-button data-release="cyd-1.7.5" manifest="./manifests/cyd-1.7.5.json" hidden>
+            <button class="flash-button" slot="activate" type="button">
+              <span>Installer AURORA CYD v1.7.5</span>
+              <span class="button-arrow" aria-hidden="true">→</span>
+            </button>
+            <div class="unsupported" slot="unsupported">Utilisez Chrome ou Microsoft Edge sur ordinateur avec une connexion HTTPS.</div>
+            <div class="unsupported" slot="not-allowed">L’accès au port série est bloqué. Ouvrez cette page en HTTPS.</div>
+          </esp-web-install-button>
+
+          <esp-web-install-button data-release="p4-rev1-1.9.2" manifest="./manifests/p4-rev1-1.9.2.json" hidden>
+            <button class="flash-button" slot="activate" type="button">
+              <span>Installer AURORA P4 1.x v1.9.2</span>
+              <span class="button-arrow" aria-hidden="true">→</span>
+            </button>
+            <div class="unsupported" slot="unsupported">Utilisez Chrome ou Microsoft Edge sur ordinateur avec une connexion HTTPS.</div>
+            <div class="unsupported" slot="not-allowed">L’accès au port série est bloqué. Ouvrez cette page en HTTPS.</div>
+          </esp-web-install-button>
+
+          <esp-web-install-button data-release="p4-rev3-1.9.2" manifest="./manifests/p4-rev3-1.9.2.json" hidden>
+            <button class="flash-button" slot="activate" type="button">
+              <span>Installer AURORA P4 3.x v1.9.2</span>
+              <span class="button-arrow" aria-hidden="true">→</span>
+            </button>
+            <div class="unsupported" slot="unsupported">Utilisez Chrome ou Microsoft Edge sur ordinateur avec une connexion HTTPS.</div>
+            <div class="unsupported" slot="not-allowed">L’accès au port série est bloqué. Ouvrez cette page en HTTPS.</div>
           </esp-web-install-button>
 
           <p class="microcopy">
@@ -149,17 +196,14 @@
       <section class="details" aria-labelledby="details-title">
         <div>
           <p class="eyebrow">BUILD VÉRIFIÉ</p>
-          <h2 id="details-title">Firmware compilé pour votre écran</h2>
-          <p>
-            Image fusionnée à partir du build PlatformIO existant : flash 4 Mo,
-            mode DIO, fréquence 40 MHz. Cible exclusive ESP32-2432S028R.
-          </p>
+          <h2 id="details-title">Image vérifiée pour la cible choisie</h2>
+          <p id="build-description">Image CYD fusionnée : flash 4 Mo, mode DIO, fréquence 40 MHz.</p>
         </div>
         <dl>
-          <div><dt>Bootloader</dt><dd>0x1000</dd></div>
-          <div><dt>Partitions</dt><dd>0x8000</dd></div>
-          <div><dt>Boot application</dt><dd>0xE000</dd></div>
-          <div><dt>Application</dt><dd>0x10000</dd></div>
+          <div><dt>Carte</dt><dd id="detail-target">CYD</dd></div>
+          <div><dt>Version</dt><dd id="detail-version">1.9.2</dd></div>
+          <div><dt>Flash</dt><dd id="detail-flash">4 Mo</dd></div>
+          <div><dt>Image Web</dt><dd>offset 0x0000</dd></div>
         </dl>
         <div class="hash-card">
           <span>SHA-256 de l’image fusionnée</span>
@@ -171,11 +215,8 @@
       <aside class="warning" aria-label="Avertissement important">
         <span class="warning-mark" aria-hidden="true">!</span>
         <div>
-          <strong>Vérifiez toujours la cible avant de lancer l’installation.</strong>
-          <p>
-            Ce firmware est réservé à l’ESP32-2432S028R. Une nouvelle installation
-            peut effacer le contenu existant de la mémoire flash.
-          </p>
+          <strong id="warning-title">Vérifiez toujours la cible avant de lancer l’installation.</strong>
+          <p id="target-warning">Cette image est réservée au CYD ESP32-2432S028R. Une nouvelle installation peut effacer le contenu existant de la mémoire flash.</p>
         </div>
       </aside>
 
@@ -253,19 +294,19 @@
 
         <article class="current-release">
           <div class="release-topline">
-            <span class="release-version">v1.7.6</span>
-            <span class="release-state">VERSION INCLUSE</span>
+            <span class="release-version" id="release-version">v1.9.2</span>
+            <span class="release-state" id="release-state">CYD FINAL</span>
           </div>
           <strong>AURORA Seed Generator</strong>
-          <p>ESP32-2432S028R · Image fusionnée 4 Mo · DIO 40 MHz</p>
+          <p id="release-description">ESP32-2432S028R · Image fusionnée 4 Mo · DIO 40 MHz</p>
           <span class="release-hash-label">SHA-256</span>
-          <code>574245700CC55BD52D7151D3C463A3383D788D51775A8C6A2038671021A8B9E0</code>
+          <code id="release-hash">E69A9F4D4FCB9E2D733ABC24310183560B6EC0CD47294D9E7F5AD0D0CAC1E95A</code>
           <a
             href="./CHANGELOG.md"
             target="_blank"
             rel="noreferrer"
           >
-            Notes de la version 1.7.6
+            Notes des versions incluses
           </a>
         </article>
       </section>

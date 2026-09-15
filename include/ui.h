@@ -4,6 +4,7 @@
 #include "entropy.h"
 #include "aurora_fonts.h"
 #include "sd_export.h"
+#include "aezeed.h"
 
 class AuroraUI {
  public:
@@ -15,6 +16,7 @@ class AuroraUI {
   enum class Screen : uint8_t {
     Splash, Mode, ImportName, ImportPassword,
     RestoreSetup, RestoreWords, RestorePassphrase, Restoring,
+    UmbrelWarning, UmbrelPassphrase, UmbrelProcessing, UmbrelResult, UmbrelQr,
     Setup, Passphrase, Entropy, Generating, FileProcessing, GenerationError,
     SecurityError, Mnemonic, PassphraseReveal, Verify, Info, Qr, Backup, ExportWarning,
     ExportName, ExportPassword, Wipe, PinSetup, PinUnlock, SdRequired
@@ -30,6 +32,8 @@ class AuroraUI {
   void buildRestoreSetup(); void buildRestoreWords(); void buildRestorePassphrase();
   void buildRestoring(); void updateRestoreSuggestions(); bool acceptRestoreWord(const char *word);
   bool restoreEnteredWallet(); bool rederiveManualWallet(AddressKind kind);
+  void buildUmbrelWarning(); void buildUmbrelPassphrase(); void buildUmbrelProcessing();
+  void buildUmbrelResult(); void buildUmbrelQr(); bool recoverUmbrel();
   void buildSetup(); void buildPassphrase(); void buildEntropy();
   void updateEntropyPreview(uint32_t token);
   void buildGenerating(); void buildFileProcessing();
@@ -134,6 +138,7 @@ class AuroraUI {
   FileOperation fileOperation_ = FileOperation::None;
   bool loadedWallet_ = false;
   bool manualRestore_ = false;
+  bool umbrelRecovery_ = false;
   uint8_t restoreWordIndex_ = 0;
   uint8_t restoreSuggestionCount_ = 0;
   uint8_t verifyActiveIndex_ = 0;
@@ -143,6 +148,9 @@ class AuroraUI {
   char verifySuggestions_[3][WalletEngine::BIP39_WORD_CAPACITY]{};
   char restoreMnemonic_[256]{};
   char restoreStatus_[96]{};
+  char umbrelRootXprv_[128]{};
+  uint16_t umbrelBirthdayDays_ = 0;
+  AezeedResult umbrelResult_ = AezeedResult::Ok;
   char exportBaseName_[25] = "aurora";
   char importBaseName_[25] = "aurora";
   char auroraFileOptions_[2048]{};

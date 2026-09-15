@@ -1,10 +1,41 @@
 #include "Arduino.h"
 #include <array>
 #include <cassert>
+#include "../../.pio/libdeps/esp32-2432S028R/uBitcoin/src/utility/trezor/bip39_english.h"
+extern "C" const char *const *mnemonic_wordlist(void) { return wordlist; }
+#include "../../src/aezeed.cpp"
 #include "../../src/sd_export.cpp"
 #include "../../src/pin_security.cpp"
 
 int main() {
+  {
+    uint8_t scryptKey[32]{};
+    constexpr uint8_t expectedKey[32]={0x40,0x4b,0x5a,0xb5,0x54,0x04,0xc3,0xc3,0x4d,0x3b,0x13,0x0b,0x07,0x26,0x2d,0xe7,0xbe,0xd1,0x84,0x1f,0x22,0x19,0x3b,0xd7,0xfc,0x0c,0x38,0x3f,0x07,0x26,0x76,0xfb};
+    assert(scryptAezeed(reinterpret_cast<const uint8_t *>("aezeed"),6,reinterpret_cast<const uint8_t *>("salt1"),scryptKey)==ScryptResult::Ok);
+    assert(!memcmp(scryptKey,expectedKey,sizeof(expectedKey)));
+    uint8_t extracted[48]{};
+    constexpr uint8_t expectedExtracted[48]={0xe7,0xa3,0x7c,0x73,0xe0,0x5b,0x7e,0x44,0xc1,0xb7,0x6c,0x25,0x08,0xd9,0x0e,0x2a,0x96,0xca,0xad,0x37,0x9b,0x2a,0x38,0xa3,0x1e,0x1d,0x9f,0xa7,0xcf,0x71,0x25,0x4b,0x5f,0xfe,0xa9,0x85,0x83,0xb7,0x13,0xa4,0x97,0x00,0x94,0x89,0xcf,0xba,0xf9,0x0f};
+    blake2b48(scryptKey,sizeof(scryptKey),extracted);
+    assert(!memcmp(extracted,expectedExtracted,sizeof(expectedExtracted)));
+    uint8_t zeroBlock[16]{},roundBlock[16]{};uint32_t q[8]{},zeroKey[8]{};
+    loadBlock(q,zeroBlock);aesRound(q,zeroKey);storeBlock(roundBlock,q);
+    for(uint8_t byte:roundBlock)assert(byte==0x63);
+    // Production-parameter vector (N=32768), generated independently with
+    // libscrypt plus the public-domain AEZ v5 reference implementation.
+    constexpr const char *words =
+        "above judge emerge veteran reform crunch system all snap please shoulder vault "
+        "hurt city quarter cover enlist swear success suggest drink wagon enrich body";
+    constexpr uint8_t expectedEntropy[16] = {
+        0x81,0xb6,0x37,0xd8,0x63,0x59,0xe6,0x96,
+        0x0d,0xe7,0x95,0xe4,0x1e,0x0b,0x4c,0xfd};
+    AezeedDecoded decoded{};
+    assert(AezeedEngine::decode(words,"",decoded)==AezeedResult::Ok);
+    assert(decoded.internalVersion==0 && decoded.birthdayDays==0);
+    assert(!memcmp(decoded.entropy,expectedEntropy,sizeof(expectedEntropy)));
+    assert(AezeedEngine::decode(words,"wrong",decoded)==AezeedResult::InvalidPassphrase);
+    const AezeedDecoded empty{};
+    assert(!memcmp(&decoded,&empty,sizeof(decoded)));
+  }
   assert(testCard.empty() && auroraSdReady() && testCard.empty());
   testCardReady=false; assert(!auroraSdReady());
   testCardReady=true; testRootReadable=false; assert(!auroraSdReady());

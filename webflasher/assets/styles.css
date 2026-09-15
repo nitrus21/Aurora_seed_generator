@@ -523,6 +523,44 @@ h1 {
   text-underline-offset: 4px;
 }
 
+.firmware-picker {
+  margin-bottom: 18px;
+}
+
+.firmware-picker label {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--text);
+  font-size: 0.76rem;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.firmware-picker select {
+  width: 100%;
+  min-height: 48px;
+  padding: 0 42px 0 14px;
+  border: 1px solid rgba(255, 138, 0, 0.35);
+  border-radius: 12px;
+  background: var(--surface-strong);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.firmware-picker select:focus-visible {
+  outline: 3px solid rgba(255, 177, 59, 0.4);
+  outline-offset: 2px;
+}
+
+.firmware-picker p {
+  min-height: 1.4em;
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+
 .compatibility {
   display: flex;
   align-items: center;
@@ -543,6 +581,10 @@ esp-web-install-button {
   --esp-tools-button-color: var(--orange);
   --esp-tools-button-text-color: #160b00;
   --esp-tools-button-border-radius: 14px;
+}
+
+esp-web-install-button[hidden] {
+  display: none;
 }
 
 .flash-button {

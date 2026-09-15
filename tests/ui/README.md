@@ -15,7 +15,8 @@ Le test compile les **vraies sources** de `src/ui.cpp`, du PIN, de l'allocateur 
 - Vérification qu'un événement LVGL tactile produit un seul échantillon, sans répéter un état mis en cache à chaque passage de la boucle.
 - Vérification qu'un arrêt non confirmé, même après le délai d'attente, ne permet pas d'afficher les secrets.
 - Confirmation exacte de passphrase et conservation du mélange jusqu'à la génération.
-- SD obligatoire avant les formulaires, écran sans clavier/champs, RÉESSAYER sans carte et après réinsertion, FERMER avec effacement ; retrait avant validation de phrase, mot de passe et PIN. Conservation de l'entropie collectée et des erreurs PIN, abandon des saisies et absence de contrôle SD pendant l'arrêt des capteurs.
+- Sur les deux profils : création/restauration, passphrase, accès protégé aux secrets et PIN de session sans SD ; carte exigée seulement à la sauvegarde/export. RÉESSAYER sans carte et après réinsertion, FERMER avec effacement ; retrait avant validation du mot de passe/PIN d'export, compteur PIN conservé, aucune opération différée avec identifiants effacés. L'ouverture garde l'erreur du lecteur sans dialogue SD d'export.
+- P4 : logo centré et quatre boutons à 80 % de la largeur, dont la récupération Umbrel/LND, sans SD. CYD : coordonnées, tailles et trois choix du menu original conservés. Captures `mode-portrait.png`, `mode-cyd.png` et `sd-required.png` dans les répertoires respectifs.
 - Autorisation PIN par catégorie, compteur persistant, trois échecs avec effacement, délais 15/120 secondes, import V1/V2 et garde au point d'entrée de l'export.
 - Vérification des allocations LVGL écrasées **avant** libération/réallocation, avec contrôle du cas d'échec de réallocation.
 

@@ -69,8 +69,24 @@ $appJs = Get-Content -Raw -LiteralPath (Join-Path $webRoot 'assets\app.js')
 $index = Get-Content -Raw -LiteralPath (Join-Path $webRoot 'index.html')
 $readme = Get-Content -Raw -LiteralPath (Join-Path $taskRoot 'README.md')
 Assert-Release ($appJs.Contains($factoryHash) -and $index.Contains($factoryHash)) 'Website factory hash mismatch.'
-Assert-Release ($index.Contains("Installer AURORA v$version")) 'Website version mismatch.'
+Assert-Release ($index.Contains("Installer AURORA CYD v$version")) 'Website version mismatch.'
 Assert-Release ($readme.Contains($checksums['firmware.bin'])) 'README application hash mismatch.'
 Assert-Release (Test-Path -LiteralPath (Join-Path $webRoot 'CHANGELOG.md')) 'Missing release notes.'
 
-Write-Output "PASS: AURORA $version versions, manifest, merged image offsets/bytes and all SHA-256 checksums"
+$variants = @(
+    @{ Id = 'cyd-1.9.2'; Manifest = 'manifest.json'; Chip = 'ESP32'; Image = 'aurora-1.9.2-esp32-2432s028r.factory.bin' },
+    @{ Id = 'cyd-1.7.5'; Manifest = 'manifests\cyd-1.7.5.json'; Chip = 'ESP32'; Image = 'aurora-1.7.5-esp32-2432s028r.factory.bin' },
+    @{ Id = 'p4-rev1-1.9.2'; Manifest = 'manifests\p4-rev1-1.9.2.json'; Chip = 'ESP32-P4'; Image = 'aurora-1.9.2-esp32-p4-rev1.factory.bin' },
+    @{ Id = 'p4-rev3-1.9.2'; Manifest = 'manifests\p4-rev3-1.9.2.json'; Chip = 'ESP32-P4'; Image = 'aurora-1.9.2-esp32-p4-rev3.factory.bin' }
+)
+foreach ($variant in $variants) {
+    $variantManifest = Get-Content -Raw -LiteralPath (Join-Path $webRoot $variant.Manifest) | ConvertFrom-Json
+    Assert-Release ($variantManifest.builds.Count -eq 1) "Unexpected build count: $($variant.Id)"
+    $variantBuild = $variantManifest.builds[0]
+    Assert-Release ($variantBuild.chipFamily -eq $variant.Chip -and $variantBuild.parts.Count -eq 1) "Incorrect chip family: $($variant.Id)"
+    Assert-Release ($variantBuild.parts[0].offset -eq 0 -and $variantBuild.parts[0].path.EndsWith("firmware/$($variant.Image)")) "Incorrect image path: $($variant.Id)"
+    Assert-Release ($checksums.ContainsKey($variant.Image)) "Missing variant checksum: $($variant.Id)"
+    Assert-Release ($appJs.Contains($checksums[$variant.Image]) -and $index.Contains($variant.Id)) "Website variant missing: $($variant.Id)"
+}
+
+Write-Output "PASS: AURORA CYD 1.9.2/1.7.5 and P4 1.x/3.x manifests, merged images, offsets and all SHA-256 checksums"

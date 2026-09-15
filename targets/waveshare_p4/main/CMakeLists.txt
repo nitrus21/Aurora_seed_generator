@@ -19,7 +19,7 @@ file(GLOB AURORA_ASSETS "${AURORA_ROOT}/src/assets/*.c")
 file(GLOB PORTRAIT_ASSETS "${CMAKE_CURRENT_LIST_DIR}/assets/*.c")
 idf_component_register(SRCS "main.cpp" "sensors.cpp" "storage.cpp" "ui_portrait.cpp"
     "${AURORA_ROOT}/src/wallet.cpp" "${AURORA_ROOT}/src/sd_export.cpp"
-    "${AURORA_ROOT}/src/pin_security.cpp"
+    "${AURORA_ROOT}/src/pin_security.cpp" "${AURORA_ROOT}/src/aezeed.cpp"
     "${AURORA_ROOT}/src/secure_lvgl_memory.c"
     "${AURORA_ROOT}/src/ui.cpp" ${AURORA_ASSETS} ${PORTRAIT_ASSETS} ${BITCOIN_SOURCES}
     INCLUDE_DIRS "." "${AURORA_ROOT}/include" "${ubitcoin_SOURCE_DIR}/src"

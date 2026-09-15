@@ -1,6 +1,6 @@
 {
-  "name": "AURORA Seed Generator",
-  "version": "1.9.2",
+  "name": "AURORA Seed Generator — CYD",
+  "version": "1.7.5",
   "new_install_prompt_erase": true,
   "new_install_improv_wait_time": 0,
   "builds": [
@@ -9,7 +9,7 @@
       "improv": false,
       "parts": [
         {
-          "path": "firmware/aurora-1.9.2-esp32-2432s028r.factory.bin",
+          "path": "../firmware/aurora-1.7.5-esp32-2432s028r.factory.bin",
           "offset": 0
         }
       ]

@@ -452,6 +452,32 @@ bool WalletEngine::accountXprv(const WalletOutput &wallet,
   return true;
 }
 
+bool WalletEngine::rootXprvFromSeed(const uint8_t *seed, size_t seedLength,
+                                    char *out, size_t outLen) {
+  if (out && outLen) out[0] = '\0';
+  if (!seed || seedLength < 16 || seedLength > 64 || !out || outLen < 112) {
+    return false;
+  }
+  uint8_t masterMaterial[64]{};
+  bool ok = false;
+  const mbedtls_md_info_t *sha512 = mbedtls_md_info_from_type(MBEDTLS_MD_SHA512);
+  if (!sha512 || mbedtls_md_hmac(
+          sha512, reinterpret_cast<const unsigned char *>("Bitcoin seed"), 12,
+          seed, seedLength, masterMaterial) != 0 ||
+      !isStrictPrivateScalar(masterMaterial)) goto cleanup;
+  {
+    HDPrivateKey master(masterMaterial, masterMaterial + 32, 0, nullptr, 0,
+                        &Mainnet, UNKNOWN_TYPE);
+    if (!master || master.xprv(out, outLen) == 0) goto cleanup;
+  }
+  ok = true;
+
+cleanup:
+  secureZero(masterMaterial, sizeof(masterMaterial));
+  if (!ok) secureZero(out, outLen);
+  return ok;
+}
+
 bool WalletEngine::taprootAddress(const PublicKey &internalKey, char *out, size_t outLength) {
   uint8_t x[32] = {};
   uint8_t tweak[32] = {};
@@ -596,6 +622,12 @@ WalletSelfTest WalletEngine::selfTest() {
       0x03, 0x62, 0xad, 0xa3, 0x8e, 0xad, 0x3e, 0x3e, 0x9e, 0xfa, 0x37, 0x08, 0xe5, 0x34, 0x95, 0x53,
       0x1f, 0x09, 0xa6, 0x98, 0x75, 0x99, 0xd1, 0x82, 0x64, 0xc1, 0xe1, 0xc9, 0x2f, 0x2c, 0xf1, 0x41,
       0x63, 0x0c, 0x7a, 0x3c, 0x4a, 0xb7, 0xc8, 0x1b, 0x2f, 0x00, 0x16, 0x98, 0xe7, 0x46, 0x3b, 0x04};
+  static constexpr uint8_t AEZEED_ENTROPY[16] = {
+      0x81,0xb6,0x37,0xd8,0x63,0x59,0xe6,0x96,
+      0x0d,0xe7,0x95,0xe4,0x1e,0x0b,0x4c,0xfd};
+  static constexpr char AEZEED_ROOT_XPRV[] =
+      "xprv9s21ZrQH143K32s72NGwMHKpvriWu4nK2n9rFmzqKe3sLuFBpG4pMkhDG3QU"
+      "VzLj5QdS8oJpAscZ9YYsuDKwDZPyuSDdaycVTjEoLi6d6zm";
   struct Vector {
     AddressKind kind;
     const char *address;
@@ -647,6 +679,13 @@ WalletSelfTest WalletEngine::selfTest() {
     result = WalletSelfTest::Bip39Seed;
     goto cleanup;
   }
+  if (!rootXprvFromSeed(AEZEED_ENTROPY,sizeof(AEZEED_ENTROPY),
+                        accountXprv,sizeof(accountXprv)) ||
+      strcmp(accountXprv,AEZEED_ROOT_XPRV)!=0) {
+    result=WalletSelfTest::AezeedRootKey;
+    goto cleanup;
+  }
+  secureZero(accountXprv,sizeof(accountXprv));
   if (!bip39Word("abandon") || bip39Word("aband") ||
       bip39Suggestions("aban", reinterpret_cast<char *>(suggestions),
                        BIP39_WORD_CAPACITY, 3) != 1 ||

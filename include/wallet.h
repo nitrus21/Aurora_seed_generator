@@ -36,7 +36,8 @@ enum class WalletSelfTest : uint8_t {
   Mnemonic18 = 53,
   Mnemonic21 = 54,
   Mnemonic24 = 55,
-  AuroraWalletCrypto = 60
+  AuroraWalletCrypto = 60,
+  AezeedRootKey = 61
 };
 
 struct WalletOutput {
@@ -67,6 +68,8 @@ class WalletEngine {
                const char *passphrase, WalletOutput &out);
   bool accountXprv(const WalletOutput &wallet, const char *passphrase,
                    char *out, size_t outLen);
+  bool rootXprvFromSeed(const uint8_t *seed, size_t seedLength,
+                        char *out, size_t outLen);
   WalletSelfTest selfTest();
   void wipe(WalletOutput &out);
   static bool bip39Word(const char *word);
