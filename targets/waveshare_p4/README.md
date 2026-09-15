@@ -1,8 +1,9 @@
 # AURORA — Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3
 
-Version du logiciel : **2.0.0**, en développement.
+Version du logiciel : **2.0.0**.
 Carte : **Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3**, modèle sans suffixe `-C`.
-Le modèle **ESP32-2432S028R — Cheap Yellow Display (CYD)** dispose du correctif local **1.9.3** ; son image publiée reste en **1.9.2**.
+Le modèle **ESP32-2432S028R — Cheap Yellow Display (CYD)** termine son développement en **1.9.3** ; la **1.7.5** reste disponible.
+À partir de la v2.0.0, le développement continue sur le P4 pour davantage de fonctionnalités.
 
 L'ouverture des fichiers et chaque consultation privée utilisent le mot de passe
 du fichier. Les exports Aurora Wallet sont au format V1 et les fichiers V1/V2

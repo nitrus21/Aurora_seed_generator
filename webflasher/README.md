@@ -1,65 +1,53 @@
 # AURORA Web Flasher
 
-Installeur Web en français pour deux modèles :
+| Appareil | Versions proposées |
+| --- | --- |
+| **ESP32-2432S028R — Cheap Yellow Display (CYD)** | **1.9.3** et **1.7.5** |
+| **Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3** | **2.0.0**, image distincte pour silicium **1.x** ou **3.x** |
 
-- **ESP32-2432S028R — Cheap Yellow Display (CYD)** : versions **1.9.2** et **1.7.5**.
-- **Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3** : version **1.9.2**, avec une image par famille de silicium **1.x** ou **3.x**.
+Le développement du CYD est terminé en 1.9.3.
+À partir de la v2.0.0, AURORA évolue sur le P4 pour davantage de fonctionnalités.
 
-Le code Waveshare ESP32-P4 **2.0.0** en développement est documenté dans le
-[guide d'utilisation](../README.md#p4-200--mot-de-passe-uniquement).
-Les images **1.9.2** utilisent le mot de passe à l'ouverture, puis le PIN pour
-les consultations privées.
+## Installation
 
-## Utilisation
+1. Ouvrez le [Web Flasher](https://nitrus21.github.io/Aurora_seed_generator/) dans Chrome ou Edge sur ordinateur.
+2. Choisissez l’appareil, la version et, sur P4, la bonne révision silicium.
+3. Branchez un câble USB de données, cliquez sur **Installer**, puis choisissez le port.
+4. Attendez la fin de l’écriture. Vérifiez le démarrage, puis déconnectez les données USB.
 
-Ouvrez le [Web Flasher AURORA sur GitHub Pages](https://nitrus21.github.io/Aurora_seed_generator/) avec Chrome ou Microsoft Edge sur ordinateur. Sélectionnez d'abord la carte et la version exacte, branchez-la avec un câble USB de données, puis utilisez le bouton **Installer AURORA**. Une copie auto-hébergée doit également être servie en HTTPS.
+HTTPS requis (ou `localhost` pour les essais locaux). Une ouverture directe du fichier HTML ne convient pas.
 
-Une ouverture directe de `index.html` depuis l’Explorateur Windows ne permet pas d’utiliser Web Serial.
+## Images et contrôles
 
-## Images proposées
+Toutes les images `.factory.bin` s’installent à **0x0000**.
 
-| Choix | État | Image |
-|---|---|---|
-| ESP32-2432S028R 1.9.2 | image publiée ; correctif 1.9.3 local non publié | `aurora-1.9.2-esp32-2432s028r.factory.bin` |
-| ESP32-2432S028R 1.7.5 | disponible | `aurora-1.7.5-esp32-2432s028r.factory.bin` |
-| Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 — silicium 1.x | 1.9.2 finale | `aurora-1.9.2-esp32-p4-rev1.factory.bin` |
-| Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 — silicium 3.x | 1.9.2 finale | `aurora-1.9.2-esp32-p4-rev3.factory.bin` |
+| Élément | CYD : DIO 40 MHz, 4 Mo | P4 : DIO 80 MHz, 32 Mo |
+| --- | --- | --- |
+| Bootloader | `0x1000` | `0x2000` |
+| Partitions | `0x8000` | `0x8000` |
+| `boot_app0` | `0xE000` | — |
+| Application | `0x10000` | `0x10000` |
 
-Les images Waveshare ESP32-P4 1.x et 3.x correspondent à des révisions de silicium distinctes ; leurs en-têtes contrôlent les révisions acceptées.
+CYD 1.9.3 : installer aussi la nouvelle table de partitions, incluse dans l’image fusionnée.
+P4 : les en-têtes limitent les images aux révisions silicium 1.x ou 3.x prévues.
 
-## Disposition réelle de la flash CYD
+- [Empreintes SHA-256](firmware/SHA256SUMS.txt)
+- [Notes courtes des versions](CHANGELOG.md)
+- Contrôles locaux : `./tests/release/verify.ps1`.
+- Paquets locaux après compilation : `python tools/prepare_releases.py` avec le Python PlatformIO ; sortie dans `tmp/release-candidates/`.
 
-| Élément | Offset |
-|---|---:|
-| `bootloader.bin` | `0x1000` |
-| `partitions.bin` | `0x8000` |
-| `boot_app0.bin` | `0xE000` |
-| `firmware.bin` | `0x10000` |
+## Publication
 
-ESP Web Tools utilise l’image fusionnée choisie à l’offset `0x0000`. Les images CYD sont préparées en mode DIO, à 40 MHz, pour une flash de 4 Mo.
+Le [workflow GitHub Pages](../.github/workflows/deploy-webflasher-pages.yml) publie uniquement
+`webflasher/`, après validation des images, lors d’un push sur `main` ou d’un lancement manuel.
+Les paquets GitHub sont séparés : `v1.9.3` pour le CYD et `v2.0.0` pour le P4.
+La préparation locale ne publie rien.
 
-Pour le P4, le bootloader est à `0x2000`, les partitions à `0x8000` et l'application à `0x10000` dans une image fusionnée prévue pour une flash de 32 Mo.
+## Précautions
 
-Les empreintes SHA-256 sont disponibles dans [firmware/SHA256SUMS.txt](firmware/SHA256SUMS.txt). Depuis la racine du dépôt, `./tests/release/verify.ps1 -ReleasedArtifactsOnly` vérifie le manifeste publié, les versions, les octets aux offsets prévus et les empreintes affichées, indépendamment du code P4 2.0.0 en développement.
-
-## Publication GitHub Pages
-
-Le workflow [Deploy AURORA Web Flasher to GitHub Pages](../.github/workflows/deploy-webflasher-pages.yml) publie le dossier `webflasher/` après un push sur `main` qui modifie ce dossier ou le workflow. Il peut aussi être lancé manuellement depuis GitHub Actions. Un commit local seul ne déclenche aucun déploiement.
-
-Le composant ESP Web Tools est verrouillé sur la version exacte `10.4.0` et la
-page applique une politique CSP restrictive. Les GitHub Actions sont épinglées
-par SHA de commit. Le chargement du composant depuis `unpkg.com` reste une
-dépendance réseau de confiance ; une distribution à menace renforcée doit
-l'auto-héberger et vérifier son contenu.
-
-Après le déploiement, vérifiez les quatre choix, le changement de manifeste, de cible, de version, d'avertissement et d'empreinte. Chaque image téléchargée doit correspondre à `SHA256SUMS.txt`. Les notes de version sont incluses localement ; elles ne dépendent pas de la création d’une GitHub Release.
-
-## Sécurité
-
-- Le flashage se déroule localement entre le navigateur et le port USB.
-- Le site ne demande et ne reçoit aucune seed ni clé privée.
-- Vérifiez l’empreinte SHA-256 avant publication ou distribution.
-- Vérifiez la famille de carte et, pour le P4, la révision silicium exacte.
-- Ne débranchez jamais l’appareil pendant l’écriture.
-- Une nouvelle installation peut effacer les données déjà présentes sur la flash.
-- Après installation et vérification du démarrage, déconnectez les données USB et utilisez une alimentation autonome avant de générer des secrets.
+- Vérifiez la cible et les empreintes avant installation.
+- Le site ne demande aucune seed, clé privée ou mot de passe de portefeuille.
+- L’installation peut effacer la flash ; elle ne doit pas servir à sauvegarder un portefeuille.
+- Utilisez ensuite une alimentation autonome sans données USB.
+- La 1.7.5 ne contient pas les corrections récentes : préférez la 1.9.3 sur CYD.
+- ESP Web Tools est épinglé en `10.4.0`, les actions GitHub par SHA ; le composant chargé depuis `unpkg.com` reste une dépendance de confiance.

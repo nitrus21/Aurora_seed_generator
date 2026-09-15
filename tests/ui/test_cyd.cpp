@@ -91,6 +91,75 @@ static void click(AuroraUI &ui,Action action) {
   }
   assert(false && "Expected button missing");
 }
+static lv_obj_t *findLabel(lv_obj_t *root,const char *text) {
+  if(lv_obj_check_type(root,&lv_label_class) && !strcmp(lv_label_get_text(root),text)) return root;
+  for(uint32_t i=0;i<lv_obj_get_child_cnt(root);++i)
+    if(auto *found=findLabel(lv_obj_get_child(root,i),text)) return found;
+  return nullptr;
+}
+static void expectFont(AuroraUI &ui,const char *text,const lv_font_t *font) {
+  auto *object=findLabel(ui.root_,text);
+  if(!object) fprintf(stderr,"Missing typography label: %s\n",text);
+  assert(object && lv_obj_get_style_text_font(object,LV_PART_MAIN)==font);
+}
+static void typography175(AuroraUI &ui) {
+  // Font sizes from src/ui.cpp at the official 1.7.5 commit ecb63fe.
+  // Only presentation is matched: retain all current session/security logic.
+  using Screen=AuroraUI::Screen;
+  expectFont(ui,"A U R O R A",&aurora_font_20);
+  expectFont(ui,"SEED GENERATOR",&aurora_font_10);
+  ui.show(Screen::Setup);
+  expectFont(ui,"Configuration du portefeuille",&aurora_font_14);
+  expectFont(ui,"Nombre de mots",&aurora_font_10);
+  expectFont(ui,"Type d'adresse",&aurora_font_10);
+  for(const char *count:{"12","15","18","21","24"}) expectFont(ui,count,&aurora_font_10);
+  for(const char *kind:{"Legacy\nm/44'/0'/0'/0/0","Nested SegWit\nm/49'/0'/0'/0/0",
+      "Native SegWit\nm/84'/0'/0'/0/0","Taproot\nm/86'/0'/0'/0/0"}) expectFont(ui,kind,&aurora_font_10);
+  expectFont(ui,"CONTINUER",&aurora_font_12); snapshot(ui,"setup-1.9.4.ppm");
+  ui.show(Screen::ImportName);
+  assert(lv_obj_get_style_text_font(ui.importFileDropdown_,0)==&aurora_font_12);
+  ui.show(Screen::ImportPassword);
+  expectFont(ui,"Mot de passe Aurora Wallet",&aurora_font_12);
+  assert(lv_obj_get_style_text_font(ui.filePasswordArea_,0)==&aurora_font_12);
+  snapshot(ui,"password-1.9.4.ppm");
+  ui.show(Screen::RestoreSetup);
+  expectFont(ui,"Choisissez le nombre de mots de la phrase BIP39.",&aurora_font_10);
+  for(const char *count:{"12","15","18","21","24"}) expectFont(ui,count,&aurora_font_12);
+  snapshot(ui,"restore-setup-1.9.4.ppm");
+  ui.show(Screen::RestoreWords);
+  assert(lv_obj_get_style_text_font(ui.restoreWordArea_,0)==&aurora_font_14);
+  for(auto screen:{Screen::Passphrase,Screen::RestorePassphrase}) {
+    ui.show(screen);
+    assert(ui.passArea_ && ui.passConfirmArea_); // Keep the 1.9.3 confirmation.
+    assert(lv_obj_get_style_text_font(ui.passArea_,0)==&aurora_font_12);
+    assert(lv_obj_get_style_text_font(ui.passConfirmArea_,0)==&aurora_font_12);
+    assert(lv_obj_get_style_text_font(ui.keyboard_,LV_PART_ITEMS)==&lv_font_montserrat_14);
+  }
+  snapshot(ui,"passphrase-1.9.4.ppm");
+  ui.show(Screen::Entropy);
+  expectFont(ui,"Bougez votre doigt dans le cadre",&aurora_font_14);
+  assert(lv_obj_get_style_text_font(ui.entropyStatus_,0)==&aurora_font_10);
+  assert(TouchEntropy::REQUIRED_SAMPLES==320); // No return to the old entropy workflow.
+  snapshot(ui,"entropy-1.9.4.ppm");
+  ui.show(Screen::Mode);
+  ui.words_=12;
+  strlcpy(ui.wallet_.mnemonic,"abandon ability able about above absent absorb abstract absurd abuse access accident",sizeof(ui.wallet_.mnemonic));
+  ui.show(Screen::Mnemonic);
+  expectFont(ui,"abandon",&aurora_font_16); expectFont(ui,"01",&aurora_font_12);
+  snapshot(ui,"words-1.9.4.ppm");
+  ui.show(Screen::Info);
+  expectFont(ui,"CODES QR",&aurora_font_12);
+  snapshot(ui,"info-initial-1.9.4.ppm"); // All actions must fit the CYD, not y=720.
+  ui.show(Screen::Backup);
+  expectFont(ui,"Choisissez un format (carte FAT32).",&aurora_font_10);
+  ui.show(Screen::ExportName);
+  assert(lv_obj_get_style_text_font(ui.exportNameArea_,0)==&aurora_font_12);
+  ui.show(Screen::ExportPassword);
+  assert(lv_obj_get_style_text_font(ui.filePasswordArea_,0)==&aurora_font_10);
+  assert(lv_obj_get_style_text_font(ui.filePasswordConfirmArea_,0)==&aurora_font_10);
+  ui.closeSession(); sdChecks=0;
+  puts("PASS: CYD 1.9.4 matches 1.7.5 typography, retaining current fields/actions/entropy");
+}
 int main() {
   lv_init(); static lv_color_t buffer[320*40]; static lv_disp_draw_buf_t draw;
   lv_disp_draw_buf_init(&draw,buffer,nullptr,320*40);
@@ -98,6 +167,7 @@ int main() {
   display.hor_res=320; display.ver_res=240; display.flush_cb=flush; display.draw_buf=&draw;
   lv_disp_drv_register(&display);
   static AuroraUI ui; ui.begin(); ui.selfTestPending_=false;
+  typography175(ui);
   using Screen=AuroraUI::Screen;
   ui.show(Screen::Mode); snapshot(ui,"mode-cyd.ppm");
   unsigned modeButtons=0, modeLogos=0;

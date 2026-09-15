@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - "webflasher/**"
+      - "tests/release/**"
       - ".github/workflows/deploy-webflasher-pages.yml"
   workflow_dispatch:
 
@@ -30,6 +31,10 @@ jobs:
 
       - name: Configurer GitHub Pages
         uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
+
+      - name: Vérifier les images et les choix du Web Flasher
+        shell: pwsh
+        run: ./tests/release/verify.ps1 -ReleasedArtifactsOnly
 
       - name: Préparer le Web Flasher
         uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4

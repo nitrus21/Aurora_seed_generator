@@ -12,6 +12,11 @@ Le test compile les **vraies sources** de `src/ui.cpp`, du code PIN de l'ESP32-2
 
 `run.py` est le lanceur des deux profils : P4 par défaut, ESP32-2432S028R avec `--cyd`.
 
+CYD 1.9.4 : assertions sur les tailles de police de la 1.7.5 (configuration,
+titres, saisies, mots, boutons, collecte), captures 320 × 240 et contrôle des
+boutons d’information après génération comme après ouverture de fichier.
+Ces contrôles s’ajoutent aux tests de sécurité 1.9.3, sans les remplacer.
+
 Les mocks microSD fournissent des fixtures publiques et une empreinte SHA-256,
 jamais une clé de session. Le banc UI vérifie la saisie du mot de passe à chaque
 consultation et les durées de vie ; le banc crypto séparé teste le vrai codec

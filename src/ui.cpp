@@ -309,13 +309,15 @@ void AuroraUI::clear() {
   }
   root_ = lv_obj_create(lv_scr_act()); AuroraLayout::size(root_, 320, 240); AuroraLayout::pos(root_, 0, 0);
   lv_obj_clear_flag(root_, LV_OBJ_FLAG_SCROLLABLE); styleRoot(root_);
+  // Coordinates already include the screen margins; LVGL theme padding would
+  // shift the CYD's rightmost controls beyond the physical 320-pixel display.
+  lv_obj_set_style_pad_all(root_, 0, 0);
   // Suggestions belong only to the previous input screen. Each input builder
   // recomputes them, so retaining their word copies serves no navigation need.
   secureZero(restoreSuggestions_, sizeof(restoreSuggestions_));
   secureZero(verifySuggestions_, sizeof(verifySuggestions_));
   restoreSuggestionCount_ = verifySuggestionCount_ = 0;
 #if defined(AURORA_BOARD_P4)
-  lv_obj_set_style_pad_all(root_, 0, 0);
   lv_obj_set_style_radius(root_, 0, 0);
   // Service after the new screen is built, outside the current input event.
   // All replacements qualify, including password/PIN forms and secret QRs.
@@ -683,6 +685,10 @@ void AuroraUI::buildImportPassword() {
   lv_obj_set_style_pad_all(root_,0,0);
 #endif
   lv_obj_t *title=header("Mot de passe Aurora Wallet");
+#if !defined(AURORA_BOARD_P4)
+  // CYD 1.7.5 used a compact title here to fit beside the brand/back button.
+  lv_obj_set_style_text_font(title,&aurora_font_12,0);
+#endif
   AuroraLayout::pos(title,90,10);
   lv_obj_t *back=button(root_,"<",event,28); AuroraLayout::size(back,28,28);
   const bool consulting=screen_==Screen::PrivatePassword;
@@ -1032,7 +1038,13 @@ void AuroraUI::buildUmbrelQr() {
 
 void AuroraUI::buildSetup() {
   header("Configuration du portefeuille", "1 / 7");
-  lv_obj_t *l1 = label(root_, "Nombre de mots", &aurora_font_12); AuroraLayout::pos(l1, 10, 41);
+#if defined(AURORA_BOARD_P4)
+  const lv_font_t *sectionFont=&aurora_font_12, *countFont=&aurora_font_20, *typeFont=&aurora_font_14;
+#else
+  // Original 320x240 typography (1.7.5); P4 enlargement is not shared.
+  const lv_font_t *sectionFont=&aurora_font_10, *countFont=&aurora_font_10, *typeFont=&aurora_font_10;
+#endif
+  lv_obj_t *l1 = label(root_, "Nombre de mots", sectionFont); AuroraLayout::pos(l1, 10, 41);
   const uint8_t counts[5] = {12,15,18,21,24};
   for (int i=0;i<5;++i) {
     lv_obj_t *b=lv_btn_create(root_); AuroraLayout::pos(b,10+i*61,56); AuroraLayout::size(b,55,27);
@@ -1040,17 +1052,17 @@ void AuroraUI::buildSetup() {
     lv_obj_set_style_bg_color(b,selected?ORANGE:PANEL,0); lv_obj_set_style_border_color(b,ORANGE,0);
     lv_obj_set_style_border_width(b,selected?1:0,0); lv_obj_set_style_shadow_width(b,0,0);
     lv_obj_set_user_data(b,reinterpret_cast<void *>(static_cast<uintptr_t>(WORD_12+i))); lv_obj_add_event_cb(b,event,LV_EVENT_CLICKED,nullptr);
-    char text[3]; snprintf(text,sizeof(text),"%u",counts[i]); lv_obj_t *v=label(b,text,&aurora_font_20);
+    char text[3]; snprintf(text,sizeof(text),"%u",counts[i]); lv_obj_t *v=label(b,text,countFont);
     lv_obj_set_style_text_color(v,selected?BLACK:lv_color_white(),0); lv_obj_center(v);
   }
-  lv_obj_t *l2 = label(root_, "Type d'adresse", &aurora_font_12); AuroraLayout::pos(l2, 10, 86);
+  lv_obj_t *l2 = label(root_, "Type d'adresse", sectionFont); AuroraLayout::pos(l2, 10, 86);
   const char *names[4]={"Legacy\nm/44'/0'/0'/0/0","Nested SegWit\nm/49'/0'/0'/0/0","Native SegWit\nm/84'/0'/0'/0/0","Taproot\nm/86'/0'/0'/0/0"};
   for(int i=0;i<4;++i){
     lv_obj_t *b=lv_btn_create(root_); int x=10+(i%2)*155, y=99+(i/2)*36; AuroraLayout::pos(b,x,y); AuroraLayout::size(b,145,32);
     bool selected=(uint8_t)kind_==i; lv_obj_set_style_radius(b,6,0); lv_obj_set_style_bg_color(b,PANEL,0);
     lv_obj_set_style_border_color(b,ORANGE,0); lv_obj_set_style_border_width(b,selected?2:1,0); lv_obj_set_style_shadow_width(b,0,0);
     lv_obj_set_user_data(b,reinterpret_cast<void *>(static_cast<uintptr_t>(TYPE_LEGACY+i))); lv_obj_add_event_cb(b,event,LV_EVENT_CLICKED,nullptr);
-    lv_obj_t *v=label(b,names[i],&aurora_font_14); lv_obj_set_style_text_color(v,selected?ORANGE:lv_color_white(),0); lv_obj_center(v);
+    lv_obj_t *v=label(b,names[i],typeFont); lv_obj_set_style_text_color(v,selected?ORANGE:lv_color_white(),0); lv_obj_center(v);
   }
   lv_obj_t *safe=label(root_,"Bitcoin Mainnet • hors ligne",&aurora_font_10); lv_obj_set_style_text_color(safe,MUTED,0); AuroraLayout::pos(safe,10,181);
   lv_obj_t *b = button(root_, "CONTINUER", event, 105); lv_obj_set_user_data(b,(void*)TO_PASSPHRASE); AuroraLayout::pos(b,205,198);
@@ -1076,6 +1088,9 @@ void AuroraUI::buildPassphraseFields(bool restoring) {
     lv_obj_t *field=*fields[i]=createInput(root_);
     AuroraLayout::pos(field,i?165:12,70); AuroraLayout::size(field,143,35);
     AuroraLayout::font(field,&aurora_font_10,0);
+#if !defined(AURORA_BOARD_P4)
+    lv_obj_set_style_text_font(field,&aurora_font_12,0);
+#endif
     lv_textarea_set_one_line(field,true); lv_textarea_set_password_mode(field,true);
     lv_textarea_set_password_show_time(field,0);
     lv_textarea_set_max_length(field,63); lv_textarea_set_accepted_chars(field,PASSPHRASE_ASCII);
@@ -1117,7 +1132,7 @@ void AuroraUI::buildEntropy() {
   entropyCompleteDueMs_ = entropyPreviewUpdatedMs_ = 0;
   entropy_.begin();
 
-  lv_obj_t *title = explanation(root_, "Bougez votre doigt dans le cadre", &aurora_font_12);
+  lv_obj_t *title = explanation(root_, "Bougez votre doigt dans le cadre", &aurora_font_14);
   AuroraLayout::pos(title,18,43);
   lv_obj_t *pad = lv_obj_create(root_); AuroraLayout::pos(pad,18,62); AuroraLayout::size(pad,284,72);
   lv_obj_clear_flag(pad,LV_OBJ_FLAG_SCROLLABLE);
@@ -1136,7 +1151,7 @@ void AuroraUI::buildEntropy() {
   entropyPreview_ = label(strip,"",&aurora_font_12);
   lv_label_set_text_static(entropyPreview_,entropyPreviewText_); lv_obj_center(entropyPreview_);
 
-  entropyStatus_ = label(root_,"Collecte insuffisante - 0 %",&aurora_font_12);
+  entropyStatus_ = label(root_,"Collecte insuffisante - 0 %",&aurora_font_10);
   AuroraLayout::pos(entropyStatus_,18,187); lv_obj_set_style_text_color(entropyStatus_,DANGER,0);
   entropyBar_ = lv_bar_create(root_); AuroraLayout::pos(entropyBar_,18,207); AuroraLayout::size(entropyBar_,284,12);
   lv_bar_set_range(entropyBar_,0,100); lv_bar_set_value(entropyBar_,0,LV_ANIM_OFF);
@@ -1491,7 +1506,9 @@ void AuroraUI::buildInfo() {
   const Action lastAction=protectedSession_?TO_BACKUP:(manualRestore_?TO_BACKUP:(loadedWallet_?DO_WIPE:TO_BACKUP));
   lv_obj_t *x=button(root_,lastText,event,95);
   lv_obj_set_user_data(x,(void*)lastAction); AuroraLayout::pos(x,215,181);
+#if defined(AURORA_BOARD_P4)
   lv_obj_set_y(q,720); lv_obj_set_y(r,720); lv_obj_set_y(x,720);
+#endif
   if(protectedSession_) {
 #if defined(AURORA_BOARD_P4)
     lv_obj_set_pos(q,15,648); lv_obj_set_size(q,143,64);
@@ -1511,7 +1528,9 @@ void AuroraUI::buildInfo() {
 #else
       AuroraLayout::pos(b,10+i*102,207); AuroraLayout::size(b,95,26);
 #endif
+#if defined(AURORA_BOARD_P4)
       AuroraLayout::font(lv_obj_get_child(b,0),&aurora_font_10,0);
+#endif
       lv_obj_set_user_data(b,(void*)actions[i]);
       if(actions[i]==SHOW_WORDS || actions[i]==SHOW_LOADED_PASSPHRASE)
         lv_obj_set_style_bg_color(b,DANGER,0);
