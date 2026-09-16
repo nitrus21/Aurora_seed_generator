@@ -26,7 +26,7 @@ const releases = {
     state: "VERSION CONSERVÉE",
     flash: "4 Mo",
     hash: "469A8912CD2A7BA3EF919467D84D6857CF60E726A27865157BD1A04653510218",
-    notes: "./CHANGELOG.md",
+    notes: "./releases/1.7.5.md",
     changes: ["Version 1.7.5 conservée, sans modification.", "Pour les corrections récentes, choisissez la 1.9.5."],
     help: "Ancienne version 1.7.5 conservée pour réinstallation volontaire.",
     description: "Image ESP32-2432S028R fusionnée : flash 4 Mo, mode DIO, fréquence 40 MHz.",
