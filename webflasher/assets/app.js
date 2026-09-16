@@ -7,14 +7,14 @@ const copyButton = document.querySelector("#copy-hash");
 const year = document.querySelector("#year");
 
 const releases = {
-  "cyd-1.9.4": {
+  "cyd-1.9.5": {
     target: "ESP32-2432S028R (CYD)",
-    version: "1.9.4",
+    version: "1.9.5",
     state: "DERNIÈRE VERSION",
     flash: "4 Mo",
-    hash: "C5A23EC593452AAB11713B2AC2ED1795FEA84E43133E89FDDD41DFC6466DAE03",
-    notes: "./releases/1.9.4.md",
-    changes: ["Tailles de police de la 1.7.5.", "Mot de passe à chaque consultation privée.", "Nettoyage mémoire et fermeture sur inactivité renforcés.", "Sauvegardes de crash désactivées ; écritures microSD contrôlées."],
+    hash: "FFD0E180E90D0C44378CA4E6134C7CD1842F8B4C768831E5B7D77EA6D72276B5",
+    notes: "./releases/1.9.5.md",
+    changes: ["Couleurs du clavier de la 1.7.5 sur tous les écrans de saisie.", "Tailles de police, fonctionnalités et protections conservées."],
     help: "Dernière version pour l’ESP32-2432S028R.",
     description: "Image ESP32-2432S028R fusionnée : flash 4 Mo, mode DIO, fréquence 40 MHz.",
     releaseDescription: "ESP32-2432S028R · Image fusionnée 4 Mo · DIO 40 MHz",
@@ -27,7 +27,7 @@ const releases = {
     flash: "4 Mo",
     hash: "469A8912CD2A7BA3EF919467D84D6857CF60E726A27865157BD1A04653510218",
     notes: "./CHANGELOG.md",
-    changes: ["Version 1.7.5 conservée, sans modification.", "Pour les corrections récentes, choisissez la 1.9.4."],
+    changes: ["Version 1.7.5 conservée, sans modification.", "Pour les corrections récentes, choisissez la 1.9.5."],
     help: "Ancienne version 1.7.5 conservée pour réinstallation volontaire.",
     description: "Image ESP32-2432S028R fusionnée : flash 4 Mo, mode DIO, fréquence 40 MHz.",
     releaseDescription: "ESP32-2432S028R · Archive 1.7.5 · Image fusionnée 4 Mo",
@@ -83,7 +83,7 @@ function updateSelection() {
   document.querySelector("#release-hash").textContent = release.hash;
   document.querySelector("#release-notes").href = release.notes;
   document.querySelector("#changes-title").textContent = release.version === "1.7.5"
-    ? "Version conservée" : "Nouveautés depuis la version officielle 1.9.2";
+    ? "Version conservée" : "Nouveautés de cette version";
   document.querySelector("#release-changes").replaceChildren(...release.changes.map((change) => {
     const item = document.createElement("li");
     item.textContent = change;

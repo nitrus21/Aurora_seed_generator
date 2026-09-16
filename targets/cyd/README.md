@@ -1,9 +1,9 @@
 # AURORA — ESP32-2432S028R (CYD)
 
-## 1.9.4 — affichage
+## 1.9.5 — affichage
 
-Tailles de police de la version 1.7.5, avec les fonctionnalités et protections
-de la 1.9.3. Le firmware Waveshare ESP32-P4 reste en 2.0.0.
+Tailles de police et couleurs du clavier de la version 1.7.5, avec les
+fonctionnalités et protections actuelles. Le firmware Waveshare ESP32-P4 reste en 2.0.0.
 
 | Élément | Taille |
 | --- | --- |
@@ -19,6 +19,8 @@ de la 1.9.3. Le firmware Waveshare ESP32-P4 reste en 2.0.0.
 
 Les avertissements spécifiques conservent leurs tailles d’origine. Les nouveaux
 écrans utilisent la même hiérarchie. Les actions restent dans la surface 320 × 240.
+Le clavier reprend les couleurs natives LVGL de la 1.7.5 sur tous les écrans
+de saisie du CYD. Le clavier sombre du P4 reste inchangé.
 
 Conservés : 320 échantillons de collecte, double saisie de passphrase, mot de passe
 par consultation privée, lecture V1/V2, écriture V1, export Electrum, délais de

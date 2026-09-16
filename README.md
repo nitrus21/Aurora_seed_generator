@@ -6,14 +6,14 @@ AURORA est un générateur et lecteur de portefeuilles Bitcoin hors ligne. L'int
 
 | Appareil | Écran | Version du logiciel | Versions disponibles dans le Web Flasher |
 | --- | --- | --- | --- |
-| **ESP32-2432S028R — Cheap Yellow Display (CYD)** | 2,8 pouces, 320 × 240, tactile résistif XPT2046 | **1.9.4**, dernière version | **1.9.4** et **1.7.5** |
+| **ESP32-2432S028R — Cheap Yellow Display (CYD)** | 2,8 pouces, 320 × 240, tactile résistif XPT2046 | **1.9.5**, dernière version | **1.9.5** et **1.7.5** |
 | **Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 (P4)** | 4,3 pouces, 480 × 800 portrait, tactile capacitif GT911 | **2.0.0** | **2.0.0**, images distinctes pour silicium **1.x** et **3.x** |
 
 Les abréviations **CYD** et **P4** désignent ces deux modèles dans la suite du guide.
-Le CYD **1.9.4** reprend les tailles de police de la **1.7.5** et conserve les
-fonctionnalités/protections de la **1.9.3** décrites ci-dessous. Voir le
+Le CYD **1.9.5** reprend les tailles de police et les couleurs du clavier de la **1.7.5**
+et conserve les fonctionnalités/protections décrites ci-dessous. Voir le
 [détail de l’affichage CYD](targets/cyd/README.md).
-La 1.9.4 est la dernière version CYD ; la 1.7.5 reste disponible.
+La 1.9.5 est la dernière version CYD ; la 1.7.5 reste disponible.
 À partir de la v2.0.0, AURORA évolue sur le P4 pour davantage de fonctionnalités.
 Les [notes de version](webflasher/CHANGELOG.md) présentent uniquement les nouveautés retenues depuis la précédente version officielle.
 
@@ -67,7 +67,7 @@ Les deux appareils permettent de générer, restaurer et consulter un portefeuil
 
 ## Fonctionnalités
 
-| Fonction | ESP32-2432S028R — 1.9.3 | Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 — 2.0.0 |
+| Fonction | ESP32-2432S028R — 1.9.5 | Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 — 2.0.0 |
 | --- | --- | --- |
 | Création et restauration BIP39 | 12, 15, 18, 21 ou 24 mots | 12, 15, 18, 21 ou 24 mots |
 | Adresses Bitcoin | Legacy, Nested SegWit, Native SegWit, Taproot | Legacy, Nested SegWit, Native SegWit, Taproot |
@@ -117,7 +117,7 @@ L’accueil présente trois choix sur CYD et un quatrième sur P4 :
 3. **RESTAURER UNE SEED** : saisie manuelle d’une phrase existante, avec autocomplétion.
 4. **RÉCUPÉRER UMBREL / LND** (P4) : conversion hors ligne d’une seed AEZEED en clé maître BIP32 pour Sparrow.
 
-Sur **CYD 1.9.3 et P4 2.0.0**, la création et la restauration initiales fonctionnent sans
+Sur **CYD 1.9.5 et P4 2.0.0**, la création et la restauration initiales fonctionnent sans
 microSD. La carte devient obligatoire à la sauvegarde/export, à l'ouverture
 d'un fichier et à chaque consultation privée de ce fichier. Des contrôles sont
 refaits pendant la préparation et avant l'écriture. Sans carte, l'export est
@@ -148,7 +148,7 @@ Selon la révision de la carte, Windows peut demander le pilote du convertisseur
 
 ## Installation depuis le Web Flasher
 
-Ouvrez [AURORA Web Flasher](https://nitrus21.github.io/Aurora_seed_generator/) dans Chrome ou Microsoft Edge sur ordinateur. Choisissez **CYD 1.9.4**, **CYD 1.7.5**, **P4 2.0.0 silicium 1.x** ou **P4 2.0.0 silicium 3.x**, puis branchez uniquement la carte correspondante et sélectionnez son port série.
+Ouvrez [AURORA Web Flasher](https://nitrus21.github.io/Aurora_seed_generator/) dans Chrome ou Microsoft Edge sur ordinateur. Choisissez **CYD 1.9.5**, **CYD 1.7.5**, **P4 2.0.0 silicium 1.x** ou **P4 2.0.0 silicium 3.x**, puis branchez uniquement la carte correspondante et sélectionnez son port série.
 
 L’installeur utilise une image complète avec son bootloader et ses partitions. Une nouvelle installation peut effacer les données présentes en flash. Les deux images P4 correspondent à des révisions de silicium différentes et ne doivent jamais être interverties. Attendez la confirmation de fin, vérifiez la version au démarrage et l’autotest **E00**, puis débranchez les données USB avant toute génération de secrets.
 
@@ -157,7 +157,7 @@ Les [instructions du Web Flasher](webflasher/README.md) et les [empreintes des b
 ## Installation rapide avec Visual Studio Code
 
 Les étapes ci-dessous décrivent l'**ESP32-2432S028R**, dont la version finale
-est 1.9.3. Pour le **P4 2.0.0**, ouvrir le même dépôt et utiliser le script
+est 1.9.5. Pour le **P4 2.0.0**, ouvrir le même dépôt et utiliser le script
 [de compilation P4](targets/waveshare_p4/README.md#compilation) dans le terminal.
 Le bouton Build du projet racine compile le CYD, pas le P4.
 
@@ -234,7 +234,7 @@ profil correspondant à la carte :
 Ces commandes ne flashent rien. Les profils doivent être compilés séparément ;
 voir les [prérequis et contrôles P4](targets/waveshare_p4/README.md#compilation).
 Les commandes ci-dessous concernent l'**ESP32-2432S028R**.
-La compilation produit 1.9.4 : sa table de partitions doit être installée
+La compilation produit 1.9.5 : sa table de partitions doit être installée
 avec le programme. Un chargement du seul `firmware.bin` sur une ancienne table
 est refusé au démarrage. Aucun fichier microSD n’est effacé par ce contrôle.
 
@@ -295,14 +295,14 @@ Sur une carte déjà initialisée avec exactement le même environnement AURORA,
 
 SHA-256 permet de vérifier que le fichier n’a pas changé entre sa création, son téléchargement et son flashage. Il ne prouve l’authenticité que si la valeur de référence a été obtenue par un canal de confiance.
 
-### Empreinte de l’application CYD 1.9.4
+### Empreinte de l’application CYD 1.9.5
 
 Fichier distribué : `webflasher/firmware/firmware.bin` (copie du build PlatformIO)
-Taille : **1 489 312 octets**
+Taille : **1 489 104 octets**
 SHA-256 :
 
 ```text
-F913E57ED689AD445552A774EE300B086D1C969359001F238ED1F16BF8803074
+4C3A30209EA8240F697A959695D609BBE0CB9114B5425D3DC5FFD697E9820E2E
 ```
 
 Cette empreinte concerne l’application seule, pas l’image fusionnée du Web Flasher. Les empreintes de tous les binaires sont dans [SHA256SUMS.txt](webflasher/firmware/SHA256SUMS.txt). Sous PowerShell, `./tests/release/verify.ps1 -ReleasedArtifactsOnly` contrôle les versions, le manifeste, le contenu de l’image fusionnée et les empreintes, sans flasher l’appareil.
@@ -443,7 +443,7 @@ Vous pouvez exporter sur microSD, puis utiliser **EFFACER**. Cette action écras
 
 ### P4 2.0.0 : mot de passe uniquement
 
-Le même parcours s’applique à l’**ESP32-2432S028R 1.9.3**.
+Le même parcours s’applique à l’**ESP32-2432S028R 1.9.5**.
 
 Sur la **Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3**, l'accès aux fichiers et aux
 consultations privées utilise le mot de passe du fichier. Après ouverture,
@@ -573,7 +573,7 @@ Ce fichier est volontairement non chiffré. Ne l’utilisez pas pour une démons
 
 ## Format chiffré Aurora Wallet
 
-Le **CYD 1.9.3** et le **P4 2.0.0** écrivent V1 et lisent V1/V2.
+Le **CYD 1.9.5** et le **P4 2.0.0** écrivent V1 et lisent V1/V2.
 Les deux formats utilisent
 les paramètres suivants :
 
@@ -684,7 +684,7 @@ Les secrets doivent nécessairement exister en RAM pendant la dérivation et l�
 
 ### Flash
 
-Sur **CYD 1.9.3**, le binaire exclut les routines de sauvegarde de crash et
+Sur **CYD 1.9.5**, le binaire exclut les routines de sauvegarde de crash et
 utilise un redémarrage silencieux sur panique. Avant l’accueil, la zone réservée
 `aurora_scrub` est contrôlée, effacée si nécessaire et relue ; les allocations
 libres obtenues par le nettoyage sont écrasées. Une erreur bloque l’utilisation.
@@ -786,7 +786,7 @@ targets/waveshare_p4/
   main/                       Initialisation P4, pilotes et nettoyage mémoire
 webflasher/
   index.html                  Installeur français publié sur GitHub Pages
-  manifest.json               Image CYD 1.9.4 installée par défaut
+  manifest.json               Image CYD 1.9.5 installée par défaut
   manifests/                  Choix CYD 1.7.5 et P4 par révision
   firmware/                   Images CYD/P4, archives et SHA256SUMS.txt
   CHANGELOG.md                Versions proposées et nouveautés retenues

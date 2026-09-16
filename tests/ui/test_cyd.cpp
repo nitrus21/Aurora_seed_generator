@@ -56,11 +56,31 @@ WalletExportResult writeAuroraWalletFileVerified(const char *,const char *,const
 #include "../../src/pin_security.cpp"
 
 static std::array<lv_color_t,320*240> frame;
+static void expectKeyboardColors175(lv_obj_t *keyboard) {
+  // 1.7.5 used lv_keyboard_create without palette overrides; the pinned
+  // LVGL 8.4 theme/configuration is unchanged. No textarea or secret here.
+  lv_obj_t *reference=lv_keyboard_create(lv_obj_get_parent(keyboard));
+  lv_obj_add_flag(reference,LV_OBJ_FLAG_HIDDEN);
+  for(lv_state_t state:{LV_STATE_DEFAULT,LV_STATE_PRESSED,LV_STATE_CHECKED}) {
+    lv_obj_clear_state(keyboard,LV_STATE_ANY);
+    lv_obj_clear_state(reference,LV_STATE_ANY);
+    lv_obj_add_state(keyboard,state);
+    lv_obj_add_state(reference,state);
+    for(auto part:{LV_PART_MAIN,LV_PART_ITEMS}) {
+      assert(lv_obj_get_style_bg_color(keyboard,part).full==lv_obj_get_style_bg_color(reference,part).full);
+      assert(lv_obj_get_style_text_color(keyboard,part).full==lv_obj_get_style_text_color(reference,part).full);
+      assert(lv_obj_get_style_border_color(keyboard,part).full==lv_obj_get_style_border_color(reference,part).full);
+    }
+  }
+  lv_obj_clear_state(keyboard,LV_STATE_ANY);
+  lv_obj_del(reference);
+}
 static void flush(lv_disp_drv_t *display,const lv_area_t *area,lv_color_t *data) {
   for(int y=area->y1;y<=area->y2;++y) for(int x=area->x1;x<=area->x2;++x) frame[y*320+x]=*data++;
   lv_disp_flush_ready(display);
 }
 static void snapshot(AuroraUI &ui,const char *name) {
+  if(ui.keyboard_) expectKeyboardColors175(ui.keyboard_);
   lv_obj_update_layout(ui.root_); lv_refr_now(nullptr);
   for(uint32_t i=0;i<lv_obj_get_child_cnt(ui.root_);++i) {
     lv_obj_t *child=lv_obj_get_child(ui.root_,i);
@@ -115,17 +135,17 @@ static void typography175(AuroraUI &ui) {
   for(const char *count:{"12","15","18","21","24"}) expectFont(ui,count,&aurora_font_10);
   for(const char *kind:{"Legacy\nm/44'/0'/0'/0/0","Nested SegWit\nm/49'/0'/0'/0/0",
       "Native SegWit\nm/84'/0'/0'/0/0","Taproot\nm/86'/0'/0'/0/0"}) expectFont(ui,kind,&aurora_font_10);
-  expectFont(ui,"CONTINUER",&aurora_font_12); snapshot(ui,"setup-1.9.4.ppm");
+  expectFont(ui,"CONTINUER",&aurora_font_12); snapshot(ui,"setup-1.9.5.ppm");
   ui.show(Screen::ImportName);
   assert(lv_obj_get_style_text_font(ui.importFileDropdown_,0)==&aurora_font_12);
   ui.show(Screen::ImportPassword);
   expectFont(ui,"Mot de passe Aurora Wallet",&aurora_font_12);
   assert(lv_obj_get_style_text_font(ui.filePasswordArea_,0)==&aurora_font_12);
-  snapshot(ui,"password-1.9.4.ppm");
+  snapshot(ui,"password-1.9.5.ppm");
   ui.show(Screen::RestoreSetup);
   expectFont(ui,"Choisissez le nombre de mots de la phrase BIP39.",&aurora_font_10);
   for(const char *count:{"12","15","18","21","24"}) expectFont(ui,count,&aurora_font_12);
-  snapshot(ui,"restore-setup-1.9.4.ppm");
+  snapshot(ui,"restore-setup-1.9.5.ppm");
   ui.show(Screen::RestoreWords);
   assert(lv_obj_get_style_text_font(ui.restoreWordArea_,0)==&aurora_font_14);
   for(auto screen:{Screen::Passphrase,Screen::RestorePassphrase}) {
@@ -134,22 +154,23 @@ static void typography175(AuroraUI &ui) {
     assert(lv_obj_get_style_text_font(ui.passArea_,0)==&aurora_font_12);
     assert(lv_obj_get_style_text_font(ui.passConfirmArea_,0)==&aurora_font_12);
     assert(lv_obj_get_style_text_font(ui.keyboard_,LV_PART_ITEMS)==&lv_font_montserrat_14);
+    expectKeyboardColors175(ui.keyboard_);
   }
-  snapshot(ui,"passphrase-1.9.4.ppm");
+  snapshot(ui,"passphrase-1.9.5.ppm");
   ui.show(Screen::Entropy);
   expectFont(ui,"Bougez votre doigt dans le cadre",&aurora_font_14);
   assert(lv_obj_get_style_text_font(ui.entropyStatus_,0)==&aurora_font_10);
   assert(TouchEntropy::REQUIRED_SAMPLES==320); // No return to the old entropy workflow.
-  snapshot(ui,"entropy-1.9.4.ppm");
+  snapshot(ui,"entropy-1.9.5.ppm");
   ui.show(Screen::Mode);
   ui.words_=12;
   strlcpy(ui.wallet_.mnemonic,"abandon ability able about above absent absorb abstract absurd abuse access accident",sizeof(ui.wallet_.mnemonic));
   ui.show(Screen::Mnemonic);
   expectFont(ui,"abandon",&aurora_font_16); expectFont(ui,"01",&aurora_font_12);
-  snapshot(ui,"words-1.9.4.ppm");
+  snapshot(ui,"words-1.9.5.ppm");
   ui.show(Screen::Info);
   expectFont(ui,"CODES QR",&aurora_font_12);
-  snapshot(ui,"info-initial-1.9.4.ppm"); // All actions must fit the CYD, not y=720.
+  snapshot(ui,"info-initial-1.9.5.ppm"); // All actions must fit the CYD, not y=720.
   ui.show(Screen::Backup);
   expectFont(ui,"Choisissez un format (carte FAT32).",&aurora_font_10);
   ui.show(Screen::ExportName);
@@ -158,7 +179,7 @@ static void typography175(AuroraUI &ui) {
   assert(lv_obj_get_style_text_font(ui.filePasswordArea_,0)==&aurora_font_10);
   assert(lv_obj_get_style_text_font(ui.filePasswordConfirmArea_,0)==&aurora_font_10);
   ui.closeSession(); sdChecks=0;
-  puts("PASS: CYD 1.9.4 matches 1.7.5 typography, retaining current fields/actions/entropy");
+  puts("PASS: CYD 1.9.5 matches 1.7.5 typography and keyboard colors, retaining current fields/actions/entropy");
 }
 int main() {
   lv_init(); static lv_color_t buffer[320*40]; static lv_disp_draw_buf_t draw;

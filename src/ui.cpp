@@ -104,6 +104,9 @@ lv_obj_t *createInput(lv_obj_t *parent) {
 
 lv_obj_t *createKeyboard(lv_obj_t *parent) {
   lv_obj_t *keyboard = lv_keyboard_create(parent);
+#if defined(AURORA_BOARD_P4)
+  // The CYD keeps the native LVGL 8 keyboard palette used in 1.7.5.
+  // Only the P4 uses the custom dark keyboard.
   lv_obj_set_style_bg_color(keyboard, KEYBOARD_BG, LV_PART_MAIN);
   lv_obj_set_style_bg_opa(keyboard, LV_OPA_COVER, LV_PART_MAIN);
   lv_obj_set_style_border_width(keyboard, 0, LV_PART_MAIN);
@@ -120,6 +123,7 @@ lv_obj_t *createKeyboard(lv_obj_t *parent) {
   lv_obj_set_style_bg_color(keyboard, KEY_PRESSED, KEY_CHECKED_SELECTOR);
   lv_obj_set_style_border_color(keyboard, KEY_PRESSED, KEY_CHECKED_SELECTOR);
   lv_obj_set_style_text_color(keyboard, KEY_TEXT, KEY_CHECKED_SELECTOR);
+#endif
   return keyboard;
 }
 

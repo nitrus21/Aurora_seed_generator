@@ -2,7 +2,7 @@
 
 Version du logiciel : **2.0.0**.
 Carte : **Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3**, modèle sans suffixe `-C`.
-Le modèle **ESP32-2432S028R — Cheap Yellow Display (CYD)** termine son développement en **1.9.4** ; la **1.7.5** reste disponible.
+Le modèle **ESP32-2432S028R — Cheap Yellow Display (CYD)** termine son développement en **1.9.5** ; la **1.7.5** reste disponible.
 À partir de la v2.0.0, le développement continue sur le P4 pour davantage de fonctionnalités.
 
 L'ouverture des fichiers et chaque consultation privée utilisent le mot de passe
@@ -78,7 +78,7 @@ ou l'expiration d'inactivité de 120 secondes.
 | Firmware | Lecture | Nouvelle écriture |
 | --- | --- | --- |
 | Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 — 2.0.0 | V1 et V2, mot de passe | V1, 1 120 octets |
-| ESP32-2432S028R — 1.9.3 | V1 et V2, mot de passe par consultation | V1 sans PIN, 1 120 octets |
+| ESP32-2432S028R — 1.9.5 | V1 et V2, mot de passe par consultation | V1 sans PIN, 1 120 octets |
 
 FAT32, mêmes noms et suffixes sur les deux appareils. L'en-tête de 46 octets,
 PBKDF2-HMAC-SHA-256 à 120 000 itérations à l'écriture, AES-256-GCM, le sel de
@@ -139,7 +139,7 @@ Lancer les tests UI **après** le build P4 et les tests crypto, sans compilation
 4. Vérifier microphones, puis refaire la collecte avec OV5647 : image, compteur réel, variations sonores, absence de données après sortie.
 5. Tester annulation, redémarrage de collecte, source muette/bloquée et erreurs I2C/CSI ; aucun accès aux secrets si l'arrêt échoue.
 6. Échanger un portefeuille **de test sans fonds** dans les deux sens entre CYD et P4 ; comparer adresse, dérivation et exports.
-7. Sur P4, créer/restaurer sans SD jusqu'au portefeuille, sans PIN ; la sauvegarde doit exiger une carte FAT32 lisible. Ouvrir des fichiers V1/V2 avec leur mot de passe, puis vérifier qu'une nouvelle consultation privée le redemande et relit le même fichier. Tester absence/retrait de carte hors écriture, substitution de fichier, carte pleine, fichier existant, mauvais mot de passe, annulation et fichier altéré : aucune révélation après échec, aucun formatage ni perte d'une sauvegarde préexistante. L'ESP32-2432S028R 1.9.3 redemande également le mot de passe pour les consultations privées. Ne pas retirer pendant une écriture.
+7. Sur P4, créer/restaurer sans SD jusqu'au portefeuille, sans PIN ; la sauvegarde doit exiger une carte FAT32 lisible. Ouvrir des fichiers V1/V2 avec leur mot de passe, puis vérifier qu'une nouvelle consultation privée le redemande et relit le même fichier. Tester absence/retrait de carte hors écriture, substitution de fichier, carte pleine, fichier existant, mauvais mot de passe, annulation et fichier altéré : aucune révélation après échec, aucun formatage ni perte d'une sauvegarde préexistante. L'ESP32-2432S028R 1.9.5 redemande également le mot de passe pour les consultations privées. Ne pas retirer pendant une écriture.
 8. Tester double passphrase, expiration privée à 15 s traitement compris, préparation d'export à 120 s et inactivité à 120 s, y compris lors de la première création. Vérifier le retour aux seules données publiques entre consultations, l'effacement au verrouillage et le nettoyage au démarrage. Mesurer la stabilité mémoire sur plusieurs cycles ; confirmer que l'adresse reste identique à celle d'un logiciel de référence. Utiliser exclusivement des données publiques de test pour examiner les tampons.
 9. Avec une seed AEZEED de test sans fonds, ouvrir **RÉCUPÉRER UMBREL / LND**, vérifier le résultat avec et sans passphrase, puis importer le XPRV dans Sparrow. Comparer les premières adresses des comptes BIP49, BIP84 et BIP86. Confirmer aussi qu'une mauvaise passphrase est rejetée, que le QR privé expire après 15 s et qu'aucun canal Lightning n'est présenté comme récupéré.
 

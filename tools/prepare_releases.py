@@ -20,7 +20,7 @@ def digest(path):
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     expected = {
-        'aurora-1.9.4-esp32-2432s028r.factory.bin': 'C5A23EC593452AAB11713B2AC2ED1795FEA84E43133E89FDDD41DFC6466DAE03',
+        'aurora-1.9.5-esp32-2432s028r.factory.bin': 'FFD0E180E90D0C44378CA4E6134C7CD1842F8B4C768831E5B7D77EA6D72276B5',
         'aurora-2.0.0-esp32-p4-rev1.factory.bin': 'C412BE99E5D42991C2D333437559836B452175C9CD785F50C59A8706F6A56D0F',
         'aurora-2.0.0-esp32-p4-rev3.factory.bin': 'E4454A36DC0928BD70D5F25AE62BEC284383C60E0A8740B4C27B5A83507C315E',
     }
@@ -31,7 +31,7 @@ def main():
     (FIRMWARE / 'SHA256SUMS.txt').write_text(
         ''.join(f'{digest(FIRMWARE / name)}  {name}\n' for name in names), encoding='ascii')
     for version, device, images in (
-        ('1.9.4', 'CYD', ['aurora-1.9.4-esp32-2432s028r.factory.bin']),
+        ('1.9.5', 'CYD', ['aurora-1.9.5-esp32-2432s028r.factory.bin']),
         ('2.0.0', 'P4', [f'aurora-2.0.0-esp32-p4-rev{r}.factory.bin' for r in (1, 3)]),
     ):
         checksums = ''.join(f'{digest(FIRMWARE / name)}  {name}\n' for name in images)

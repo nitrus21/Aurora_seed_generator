@@ -1,6 +1,6 @@
 #pragma once
 
-#define AURORA_CYD_FIRMWARE_VERSION "1.9.4"
+#define AURORA_CYD_FIRMWARE_VERSION "1.9.5"
 #define AURORA_P4_FIRMWARE_VERSION "2.0.0"
 
 #if defined(AURORA_BOARD_P4)
