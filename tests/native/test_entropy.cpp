@@ -67,7 +67,7 @@ int main() {
   static_assert(HEADER_SIZE == 46 && SALT_OFFSET == 16 && SALT_SIZE == 16);
   static_assert(NONCE_OFFSET == 32 && NONCE_SIZE == 12 && TAG_SIZE == 16 && KEY_SIZE == 32);
   static_assert(FILE_VERSION == 1 && KDF_PBKDF2_HMAC_SHA256 == 1 && CIPHER_AES_256_GCM == 1);
-  static_assert(KDF_ITERATIONS == 120000 && sizeof(AuroraPayloadV1) == 1058);
+  static_assert(KDF_ITERATIONS == 500000 && sizeof(AuroraPayloadV1) == 1058);
   static_assert(offsetof(AuroraPayloadV1, addressKind) == 8 && offsetof(AuroraPayloadV1, wordCount) == 9);
   static_assert(offsetof(AuroraPayloadV1, firmwareVersion) == 10 && offsetof(AuroraPayloadV1, addressType) == 26);
   static_assert(offsetof(AuroraPayloadV1, derivationPath) == 66 && offsetof(AuroraPayloadV1, mnemonic) == 98);

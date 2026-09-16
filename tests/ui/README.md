@@ -8,16 +8,16 @@ python tests/ui/run.py
 python tests/ui/run.py --cyd
 ```
 
-Le test compile les **vraies sources** de `src/ui.cpp`, du code PIN de l'ESP32-2432S028R et du décodage V2, de l'allocateur sécurisé, de l'écran portrait et de LVGL avec un matériel simulé. Il utilise les objets Mbed TLS du test crypto préalable. Le noyau portefeuille, la microSD et les capteurs sont remplacés par des fixtures ; aucune clé utilisable ni capture réelle n'est produite. Ne pas lancer pendant un build P4 : un verrou empêche le remplacement des dépendances gérées pendant le test.
+Le test compile les **vraies sources** de `src/ui.cpp`, de la compatibilité V2, de l’allocateur sécurisé, de l’écran portrait et de LVGL avec un matériel simulé. Il utilise les objets Mbed TLS du test crypto préalable. Le noyau portefeuille, la microSD et les capteurs sont remplacés par des fixtures publiques sans fonds. Ne pas lancer pendant un build P4 : un verrou empêche le remplacement des dépendances gérées pendant le test.
 
 `run.py` est le lanceur des deux profils : P4 par défaut, ESP32-2432S028R avec `--cyd`.
 
-CYD 1.9.5 : assertions sur les tailles de police de la 1.7.5 (configuration,
+CYD 1.9.7 : assertions sur les tailles de police de la 1.7.5 (configuration,
 titres, saisies, mots, boutons, collecte), captures 320 × 240 et contrôle des
 boutons d’information après génération comme après ouverture de fichier.
 Les couleurs du clavier sont comparées au thème natif LVGL 8 de la 1.7.5,
 y compris les états appuyé et sélectionné. Le thème sombre du P4 reste contrôlé.
-Ces contrôles s’ajoutent aux tests de sécurité 1.9.3, sans les remplacer.
+Ces contrôles s’ajoutent aux tests de sécurité du parcours par mot de passe.
 
 Les mocks microSD fournissent des fixtures publiques et une empreinte SHA-256,
 jamais une clé de session. Le banc UI vérifie la saisie du mot de passe à chaque
@@ -77,9 +77,9 @@ essais distincts sur carte avec des données publiques.
 Ces tests n'attestent ni les pilotes physiques, ni le caractère imprévisible des capteurs, ni la compatibilité électrique d'une caméra. La recette sur les deux appareils reste obligatoire. Pour la génération d'entropie et le format binaire figé, voir également `tests/native/run.cmd`.
 
 Le profil `--cyd` compile LVGL **8.4.0** installé par le build CYD et les mêmes
-sources UI/allocateur et le profil **CYD 1.9.3**. Il capture les formulaires en **320 × 240**
+sources UI/allocateur et le profil **CYD 1.9.7**. Il capture les formulaires en **320 × 240**
 dans `tmp/ui-cyd-native/` et vérifie les événements réels de validation du clavier
-ainsi que les consultations par mot de passe, les expirations de 15/120 secondes,
+ainsi que les consultations par mot de passe, les expirations de 15/60/120/180 secondes,
 les calculs trop longs, la substitution du fichier, le retrait SD et le nettoyage
 terminal des allocations possédées. Les tests de vérificateurs PIN restent des
 tests de compatibilité du codec V2, pas du parcours actuel. Le profil P4 reste le test de parcours

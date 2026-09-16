@@ -60,7 +60,7 @@ def patches():
     bad = OUTPUT / "corrupted"
     shutil.copytree(fixture, bad)
     target = bad / "utility/trezor/sha2.c"
-    target.write_text(target.read_text().replace("memzero(W256, sizeof(W256));", "/* missing wipe */", 1))
+    target.write_text(target.read_text().replace("memzero(&aurora_sha_work, sizeof(aurora_sha_work));", "/* missing wipe */", 1))
     before = digest_tree(bad)
     try:
         hardening.patch_tree(bad)
@@ -111,6 +111,28 @@ def overlay_tests():
     before = digest_tree(output)
     overlay.generate(components, output)
     assert before == digest_tree(output)
+    # The KDF adapter now relies directly on these HAL contracts. Changing
+    # any of them must fail before an overlay can be emitted.
+    pinned = OUTPUT / "sdk-pin-fixture"
+    for name in overlay.SOURCES:
+        target = pinned / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(components / name, target)
+    for name in ("hal/sha_hal.c", "hal/esp32p4/include/hal/sha_ll.h",
+                 "mbedtls/port/include/sha/sha_core.h"):
+        target = pinned / name
+        original = target.read_bytes()
+        target.write_bytes(original + b"\n/* changed HAL */\n")
+        rejected = OUTPUT / ("rejected-" + target.name)
+        try:
+            overlay.generate(pinned, rejected)
+        except RuntimeError:
+            pass
+        else:
+            raise AssertionError("Changed KDF HAL accepted: " + name)
+        assert not rejected.exists(), "Rejected overlay must not be emitted"
+        target.write_bytes(original)
+    print("PASS: changed SHA HAL/header rejected before overlay emission.")
     # Exact generated release ordering is checked, including lock release.
     for name, peripheral, release in (("sha_core.c", "sha", "esp_crypto_sha_aes_lock_release();"),
                                       ("esp_aes_dma.c", "aes", "AES_RELEASE();")):

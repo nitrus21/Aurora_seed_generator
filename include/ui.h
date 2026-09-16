@@ -63,6 +63,8 @@ class AuroraUI {
   enum class Access : uint8_t { None, Words, Passphrase, PrivateQr, Export };
   Access accessFor(Screen screen) const;
   bool authorized(Access access) const;
+  static uint32_t accessDurationMs(Access access);
+  void updateSecretCountdown();
   void wipeFileCredentials();
   bool hasPassphrase() const;
   void revokeAccess();
@@ -112,8 +114,16 @@ class AuroraUI {
   Screen afterAuthentication_ = Screen::Info;
   uint32_t accessGrantedMs_ = 0;
   static constexpr uint32_t SECRET_VISIBLE_MS = 15000;
+  static constexpr uint32_t WORDS_VISIBLE_MS = 180000;
+  static constexpr uint32_t PRIVATE_KEY_VISIBLE_MS = 60000;
   static constexpr uint32_t SESSION_IDLE_MS = 120000;
   static constexpr uint32_t EXPORT_AUTH_MS = 120000;
+  // Authenticated .aurora views only: one deadline shared by every word page.
+  // Public timing metadata only; never a credential or decryption key.
+  Access visibleSecret_ = Access::None;
+  uint32_t visibleSecretStartedMs_ = 0;
+  uint32_t countdownSeconds_ = UINT32_MAX;
+  lv_obj_t *secretCountdown_ = nullptr;
   lv_obj_t *passConfirmArea_ = nullptr;
   lv_obj_t *securityStatus_ = nullptr;
   uint8_t mixedEntropy_[32]{};

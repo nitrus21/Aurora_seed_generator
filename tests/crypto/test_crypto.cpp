@@ -6,6 +6,7 @@ extern "C" const char *const *mnemonic_wordlist(void) { return wordlist; }
 #include "../../src/aezeed.cpp"
 #include "../../src/sd_export.cpp"
 #include "../../src/pin_security.cpp"
+#include "test_kdf_policy.h"
 
 #if defined(AURORA_BOARD_P4)
 template <typename T>
@@ -142,6 +143,7 @@ static void testSessionAccess(const WalletExportData &fixture, const char *passw
 #endif
 
 int main() {
+  testKdfPolicy();
   {
     uint8_t scryptKey[32]{};
     constexpr uint8_t expectedKey[32]={0x40,0x4b,0x5a,0xb5,0x54,0x04,0xc3,0xc3,0x4d,0x3b,0x13,0x0b,0x07,0x26,0x2d,0xe7,0xbe,0xd1,0x84,0x1f,0x22,0x19,0x3b,0xd7,0xfc,0x0c,0x38,0x3f,0x07,0x26,0x76,0xfb};
@@ -223,7 +225,7 @@ int main() {
   assert(!strcmp(restored.mnemonic, fixture.mnemonic) && !strcmp(restored.passphrase, fixture.passphrase));
   assert(!strcmp(restored.accountXprv, fixture.accountXprv) && restored.addressKind == 2 && restored.wordCount == 12);
   assert(restored.fileVersion==2 && auroraPinVerify("01234567",restored.pin));
-  assert(original[9]==KDF_PBKDF2_HMAC_SHA256 && getLe32(original.data()+12)==120000);
+  assert(original[9]==KDF_PBKDF2_HMAC_SHA256 && getLe32(original.data()+12)==500000);
 #if defined(AURORA_BOARD_P4)
   testSessionAccess(fixture, filePassword);
 #endif
@@ -238,10 +240,11 @@ int main() {
   AuroraPayloadV1 releasedPayload{}; assert(fillPayload(fixture, releasedPayload));
   strlcpy(releasedPayload.firmwareVersion, "1.7.6", sizeof(releasedPayload.firmwareVersion));
   uint8_t releasedKey[KEY_SIZE]{};
-  assert(deriveKey(filePassword, original.data() + SALT_OFFSET, SALT_SIZE, KDF_ITERATIONS, releasedKey));
+  assert(deriveKey(filePassword, original.data() + SALT_OFFSET, SALT_SIZE, 120000, releasedKey));
   auto &released = testCard.at("/test.aurora");
   released.resize(HEADER_SIZE+sizeof(releasedPayload)+TAG_SIZE);
   memcpy(released.data(),FILE_MAGIC,sizeof(FILE_MAGIC)); released[8]=FILE_VERSION;
+  putLe32(released.data()+12,120000);
   putLe16(released.data()+44,sizeof(releasedPayload));
   assert(aesGcmEncrypt(releasedKey, released.data() + NONCE_OFFSET, released.data(), HEADER_SIZE,
       reinterpret_cast<const uint8_t *>(&releasedPayload), sizeof(releasedPayload),
@@ -273,6 +276,9 @@ int main() {
   memcpy(invalidPayload.wallet.magic,PAYLOAD_MAGIC_V2,sizeof(PAYLOAD_MAGIC_V2));
   testCard["/test.aurora"]=original;
   auto &noPin=testCard["/test.aurora"];
+  secureZero(releasedKey, sizeof(releasedKey));
+  assert(deriveKey(filePassword, noPin.data()+SALT_OFFSET, SALT_SIZE,
+                   getLe32(noPin.data()+12), releasedKey));
   assert(aesGcmEncrypt(releasedKey,noPin.data()+NONCE_OFFSET,noPin.data(),HEADER_SIZE,
       reinterpret_cast<const uint8_t *>(&invalidPayload),sizeof(invalidPayload),
       noPin.data()+HEADER_SIZE,noPin.data()+HEADER_SIZE+sizeof(invalidPayload)));
@@ -314,6 +320,31 @@ int main() {
   testSyncOk = false;
   assert(writeWalletExportFile(WalletExportFormat::AuroraWallet, "failure", filePassword, fixture, path, sizeof(path)) == WalletExportResult::WriteFailed);
   assert(!testCard.count("/failure.aurora") && testCard.at("/test.aurora") == original);
+#if defined(AURORA_BOARD_P4)
+  testSyncOk = true;
+  for (bool closeFailure : {true, false}) {
+    testCloseOk = !closeFailure;
+    testEndOk = closeFailure;
+    const char *base = closeFailure ? "close-error" : "unmount-error";
+    uint8_t fingerprint[32]; memset(fingerprint, 0xA5, sizeof(fingerprint));
+    strcpy(path, "stale-path");
+    assert(writeAuroraWalletFileVerified(base, filePassword, fixture, path, sizeof(path), fingerprint)
+           == WalletExportResult::FinalizeFailed);
+    assert(path[0] == 0 && allZero(fingerprint));
+    assert(testCard.count(std::string("/") + base + ".aurora"));
+    assert(writeWalletExportFile(WalletExportFormat::ElectrumPrivate, base, nullptr, fixture, path, sizeof(path))
+           == WalletExportResult::FinalizeFailed);
+    assert(path[0] == 0 && testCard.count(std::string("/") + base + "-electrum.json"));
+    testCloseOk = testEndOk = true;
+    AuroraWalletData check{};
+    assert(readAuroraWalletFile(base, filePassword, check) == AuroraWalletReadResult::Ok);
+    wipeAuroraWalletData(check);
+    assert(writeWalletExportFile(WalletExportFormat::AuroraWallet, base, filePassword, fixture, path, sizeof(path))
+           == WalletExportResult::AlreadyExists);
+  }
+  assert(testCard.at("/test.aurora") == original);
+  puts("PASS: P4 close/unmount failures never return success for Aurora/Electrum; uncertain backups preserved, outputs cleared, no overwrite");
+#endif
   puts("PASS: read-only SD presence/root check accepts empty media, rejects absent/unreadable media, no-card export creates nothing");
-  puts("PASS: unchanged wallet/file KDF vectors, V1 read and V2 round trip, independent PIN and 3-attempt guard, tamper/wrong-password rejection, no overwrite, failed-sync cleanup");
+  puts("PASS: unchanged wallet derivation, file KDF 500000, legacy V1 120000 read and V2 round trip, legacy PIN record, tamper/wrong-password rejection, no overwrite, failed-sync cleanup");
 }

@@ -162,15 +162,23 @@ void AuroraUI::begin() {
 }
 
 void AuroraUI::tick() {
-  // AEZEED has no .aurora backing file. Once its one-shot private view ends,
-  // close and wipe instead of retaining an unprotected xprv for another view.
+  // AEZEED is not an authenticated .aurora file view: retain its original
+  // one-shot 15-second lifetime, without the file-view countdown.
   if(umbrelRecovery_ && screen_==Screen::UmbrelQr &&
       millis()-accessGrantedMs_>=SECRET_VISIBLE_MS) {
     closeSession(); return;
   }
+  // Display time excludes decryption/rendering. It is absolute: neither touch
+  // nor pagination renews it. Expiration closes the entire wallet.
+  if(visibleSecret_!=Access::None &&
+      millis()-visibleSecretStartedMs_>=accessDurationMs(visibleSecret_)) {
+    closeSession(); return;
+  }
+  updateSecretCountdown();
   // Check before the sensor-shutdown interlock: a failed sensor stop must not
   // keep a partially entered/generated wallet or deferred operation alive.
-  if ((sensitiveStateActive_ || protectedSession_ || entropyCollected_) &&
+  if (visibleSecret_==Access::None &&
+      (sensitiveStateActive_ || protectedSession_ || entropyCollected_) &&
       lv_disp_get_inactive_time(nullptr) >= SESSION_IDLE_MS) {
     closeSession();
     return;
@@ -246,9 +254,16 @@ void AuroraUI::tick() {
       }
       if (ok) {
         access_ = requested;
-        accessGrantedMs_ = attemptStarted;
+        accessGrantedMs_ = (requested==Access::Words || requested==Access::PrivateQr)
+            ? millis() : attemptStarted;
         if (!authorized(requested)) { revokeAccess(); show(Screen::Info); return; }
         show(destination);
+        if(visibleSecret_==requested && fileSession_ && privateLoaded_) {
+          // Only a fresh successful authentication starts a fresh display
+          // grant. Navigation between pages/categories cannot renew it.
+          accessGrantedMs_=visibleSecretStartedMs_=millis();
+          updateSecretCountdown();
+        }
       } else {
         access_ = Access::None; accessGrantedMs_ = 0;
         show(Screen::PrivatePassword);
@@ -341,6 +356,8 @@ void AuroraUI::clear() {
   memset(verifySuggestionButtons_, 0, sizeof(verifySuggestionButtons_));
   memset(restoreSuggestionButtons_, 0, sizeof(restoreSuggestionButtons_));
   passConfirmArea_ = securityStatus_ = nullptr;
+  secretCountdown_ = nullptr;
+  countdownSeconds_ = UINT32_MAX;
 }
 
 lv_obj_t *AuroraUI::label(lv_obj_t *p, const char *text, const lv_font_t *font) {
@@ -417,12 +434,16 @@ lv_obj_t *AuroraUI::header(const char *title, const char *step, bool showBrand) 
 }
 
 void AuroraUI::show(Screen s) {
+  // Navigation at the deadline must not revive an expired view before tick().
+  if(s!=Screen::Splash && s!=Screen::Mode && s!=Screen::Wipe && s!=Screen::SecurityError &&
+      visibleSecret_!=Access::None &&
+      millis()-visibleSecretStartedMs_>=accessDurationMs(visibleSecret_)) s=Screen::Mode;
   if(umbrelRecovery_ && screen_==Screen::UmbrelQr && s!=Screen::UmbrelQr &&
       s!=Screen::SecurityError) s=Screen::Mode;
   // A blocking crypto/SD call may consume the idle deadline while tick() is
   // unable to run. Discard its result before constructing any next screen;
   // completing work is not user activity. Keep fatal security errors blocked.
-  if (s != Screen::SecurityError && sensitiveStateActive_ &&
+  if (s != Screen::SecurityError && visibleSecret_==Access::None && sensitiveStateActive_ &&
       lv_disp_get_inactive_time(nullptr) >= SESSION_IDLE_MS) s = Screen::Mode;
   const bool clearedScreen = s == Screen::Splash || s == Screen::Mode ||
       s == Screen::Wipe || s == Screen::SecurityError;
@@ -524,6 +545,52 @@ void AuroraUI::show(Screen s) {
     case Screen::SdRequired: buildSdRequired(); break;
     case Screen::PrivatePassword: buildImportPassword(); break;
   }
+  // Only reauthenticated .aurora consultations get the extended display
+  // deadlines. Creation, manual restoration and AEZEED keep their own policy.
+  const Access displayed = fileSession_ && protectedSession_ && privateLoaded_ ?
+      (screen_==Screen::Mnemonic ? Access::Words :
+       (screen_==Screen::Qr && qrContent_==QrContent::PrivateKey ? Access::PrivateQr : Access::None)) :
+      Access::None;
+  if(displayed!=visibleSecret_) {
+    visibleSecret_=displayed;
+    visibleSecretStartedMs_=displayed==Access::None ? 0 : millis();
+    if(fileSession_ && displayed!=Access::None && access_==displayed)
+      visibleSecretStartedMs_=accessGrantedMs_;
+  }
+  if(displayed!=Access::None) {
+#if defined(AURORA_BOARD_P4)
+    secretCountdown_=label(root_,"",&aurora_font_18);
+    lv_obj_set_pos(secretCountdown_,15,696);
+#else
+    secretCountdown_=label(root_,"",&aurora_font_10);
+    lv_obj_set_pos(secretCountdown_,10,227);
+#endif
+    lv_obj_set_style_text_color(secretCountdown_,MUTED,0);
+    updateSecretCountdown();
+  }
+}
+
+uint32_t AuroraUI::accessDurationMs(Access access) {
+  switch(access) {
+    case Access::Words: return WORDS_VISIBLE_MS;
+    case Access::PrivateQr: return PRIVATE_KEY_VISIBLE_MS;
+    case Access::Export: return EXPORT_AUTH_MS;
+    default: return SECRET_VISIBLE_MS;
+  }
+}
+
+void AuroraUI::updateSecretCountdown() {
+  if(!secretCountdown_ || visibleSecret_==Access::None) return;
+  const uint32_t duration=accessDurationMs(visibleSecret_);
+  const uint32_t elapsed=millis()-visibleSecretStartedMs_;
+  const uint32_t seconds=elapsed>=duration ? 0 : (duration-elapsed+999)/1000;
+  if(seconds==countdownSeconds_) return;
+  countdownSeconds_=seconds;
+  // This buffer contains only public timing metadata, never wallet material.
+  char text[8];
+  snprintf(text,sizeof(text),"%02lu:%02lu",static_cast<unsigned long>(seconds/60),
+           static_cast<unsigned long>(seconds%60));
+  lv_label_set_text(secretCountdown_,text);
 }
 
 bool AuroraUI::needsSd(Screen screen) const {
@@ -1313,26 +1380,36 @@ void AuroraUI::buildMnemonic() {
   }
   secureZero(copy,sizeof(copy));
 
-#if defined(AURORA_BOARD_P4)
   // Reviewing an unlocked wallet is not a step in the creation wizard.
   // Keep a way to leave immediately, including on the first of two pages.
   if(protectedSession_) {
     if(mnemonicPage_>0) {
       lv_obj_t *previous=button(root_,"PRÉCÉDENT",event,94);
       lv_obj_set_user_data(previous,(void*)MNEMONIC_PREVIOUS);
+#if defined(AURORA_BOARD_P4)
       lv_obj_set_pos(previous,15,720); lv_obj_set_size(previous,140,64);
+#else
+      lv_obj_set_pos(previous,10,190);
+#endif
     }
     lv_obj_t *back=button(root_,"RETOUR",event,94);
-    lv_obj_set_user_data(back,(void*)TO_INFO);
+    lv_obj_set_user_data(back,(void*)LOCK_SESSION);
+#if defined(AURORA_BOARD_P4)
     lv_obj_set_pos(back,170,720); lv_obj_set_size(back,140,64);
+#else
+    lv_obj_set_pos(back,113,190);
+#endif
     if(mnemonicPage_+1<pageCount) {
       lv_obj_t *next=button(root_,"SUIVANT",event,94);
       lv_obj_set_user_data(next,(void*)MNEMONIC_NEXT);
+#if defined(AURORA_BOARD_P4)
       lv_obj_set_pos(next,325,720); lv_obj_set_size(next,140,64);
+#else
+      lv_obj_set_pos(next,216,190);
+#endif
     }
     return;
   }
-#endif
   if(mnemonicPage_>0) {
     lv_obj_t *previous=button(root_,"< PRÉCÉDENT",event,112); lv_obj_set_user_data(previous,(void*)MNEMONIC_PREVIOUS); AuroraLayout::pos(previous,10,190);
 #if defined(AURORA_BOARD_P4)
@@ -1624,7 +1701,7 @@ void AuroraUI::buildQr() {
     hasAlternate=true;
   }
   lv_obj_t *back=button(root_,restoreView?"INFORMATIONS":"RETOUR",event,140);
-  lv_obj_set_user_data(back,(void*)TO_INFO);
+  lv_obj_set_user_data(back,(void*)(fileSession_ && privateKey?LOCK_SESSION:TO_INFO));
   lv_obj_set_pos(back,hasAlternate?246:135,720);lv_obj_set_size(back,buttonWidth,64);
 #else
   if(restoreView) {
@@ -1665,7 +1742,7 @@ void AuroraUI::buildQr() {
     lv_obj_set_user_data(a,(void*)TO_QR_ADDRESS); AuroraLayout::pos(a,rightX,147);
   }
   lv_obj_t *b=button(root_,restoreView?"INFORMATIONS":"RETOUR",event,rightWidth);
-  lv_obj_set_user_data(b,(void*)TO_INFO); AuroraLayout::pos(b,rightX,190);
+  lv_obj_set_user_data(b,(void*)(fileSession_ && privateKey?LOCK_SESSION:TO_INFO)); AuroraLayout::pos(b,rightX,190);
 #endif
 }
 
@@ -1853,6 +1930,10 @@ void AuroraUI::performWalletExport() {
       strlcpy(exportStatus_,"Échec du chiffrement : export annulé.",sizeof(exportStatus_)); break;
     case WalletExportResult::WriteFailed:
       strlcpy(exportStatus_,"Écriture ou vérification échouée : vérifiez la carte.",sizeof(exportStatus_)); break;
+#if defined(AURORA_BOARD_P4)
+    case WalletExportResult::FinalizeFailed:
+      strlcpy(exportStatus_,"Sauvegarde non confirmée : vérifiez le fichier sur la carte.",sizeof(exportStatus_)); break;
+#endif
   }
   secureZero(fileFingerprint,sizeof(fileFingerprint));
   revokeAccess();
@@ -1950,8 +2031,7 @@ AuroraUI::Access AuroraUI::accessFor(Screen screen) const {
 bool AuroraUI::authorized(Access access) const {
   if(!fileSession_) return !protectedSession_;
   return fileSession_ && privateLoaded_ && access!=Access::None &&
-      access_==access && millis()-accessGrantedMs_ <
-      (access==Access::Export?EXPORT_AUTH_MS:SECRET_VISIBLE_MS);
+      access_==access && millis()-accessGrantedMs_ < accessDurationMs(access);
 }
 
 void AuroraUI::wipeFileCredentials() {
@@ -2077,6 +2157,7 @@ void AuroraUI::emergencyWipeSecrets() noexcept {
   entropy_.wipeSecretsWithoutHardware();
   revokeAccess();
   sensitiveStateActive_=protectedSession_=false;
+  visibleSecret_=Access::None; visibleSecretStartedMs_=0;
   entropyCollected_=exportSucceeded_=loadedWallet_=manualRestore_=umbrelRecovery_=false;
   entropyReadyPending_=entropyFailurePending_=false;
   generationDueMs_=entropyCompleteDueMs_=fileOperationDueMs_=0;

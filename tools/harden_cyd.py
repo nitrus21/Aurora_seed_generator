@@ -10,6 +10,8 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(env.subst("$PROJECT_DIR")) / "tools"))
 from patch_ubitcoin_p4 import patch_tree
 patch_tree(Path(env.subst("$PROJECT_LIBDEPS_DIR")) / env.subst("$PIOENV") / "uBitcoin/src")
+from patch_ubitcoin_rng import patch_tree as patch_rng
+patch_rng(Path(env.subst("$PROJECT_LIBDEPS_DIR")) / env.subst("$PIOENV") / "uBitcoin/src")
 
 def verify_image(source, target, env):
     sys.path.insert(0, str(Path(env.subst("$PROJECT_DIR")) / "tools"))

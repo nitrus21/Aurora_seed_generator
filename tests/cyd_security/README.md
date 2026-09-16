@@ -1,4 +1,4 @@
-# Audit de régression ESP32-2432S028R 1.9.3
+# Tests de sécurité — ESP32-2432S028R 1.9.7
 
 Après compilation du CYD et installation des dépendances natives indiquées dans
 `tests/crypto/README.md` et `tests/ui/README.md` :
@@ -9,7 +9,8 @@ python tests/cyd_security/run.py
 
 Ce banc ne flashe rien. Les preuves et copies de binaires restent dans `tmp/`.
 Il vérifie le binaire Xtensa lié (absence de sauvegarde de crash et de session
-PIN), les appels d’effacement SHA via les pools de constantes ELF, la table de
+PIN), les appels d’effacement SHA via les pools de constantes ELF, dont les
+112 octets du bloc SHA-256 regroupé avant retour, la table de
 partitions, les erreurs de démarrage et de synchronisation, les durées de vie
 de l’interface CYD et la non-régression de l’interface P4.
 

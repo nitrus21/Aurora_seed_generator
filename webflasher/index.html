@@ -36,7 +36,7 @@
       <div class="header-meta">
         <span class="status-dot" aria-hidden="true"></span>
         <span id="header-target">ESP32-2432S028R (CYD)</span>
-        <span class="version" id="header-version">v1.9.5</span>
+        <span class="version" id="header-version">v1.9.7</span>
       </div>
     </header>
 
@@ -77,7 +77,7 @@
             ESP32-2432S028R : 320 × 240 · Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 : 480 × 800 · Bitcoin Mainnet
           </p>
           <p class="lifecycle-note">
-            Le développement de l’ESP32-2432S028R se termine en <strong>1.9.5</strong> ; la 1.7.5 reste disponible.
+            Le développement de l’ESP32-2432S028R se termine en <strong>1.9.7</strong> ; la 1.7.5 reste disponible.
             À partir de la <strong>v2.0.0</strong>, AURORA évolue sur le Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 pour davantage de fonctionnalités.
           </p>
         </div>
@@ -90,15 +90,15 @@
             alt="Montagne AURORA sous un symbole Bitcoin lumineux"
           />
           <div class="image-caption">
-            <span>100 % hors ligne</span>
-            <span>RNG + tactile + lumière</span>
+            <span>Utilisation hors ligne</span>
+            <span>RNG + tactile + capteurs</span>
           </div>
         </div>
       </section>
 
       <section class="installer" aria-labelledby="hero-title">
         <div class="installer-copy">
-          <p class="eyebrow">INSTALLATION SÉCURISÉE PAR USB</p>
+          <p class="eyebrow">INSTALLATION PAR USB</p>
           <h2 id="hero-title">Choisissez votre carte et sa version.</h2>
           <p>
             Le firmware est envoyé localement à votre ESP32. Aucun mot, aucune
@@ -111,12 +111,12 @@
             <label for="firmware-selection">Carte et firmware</label>
             <select id="firmware-selection" aria-describedby="selection-help">
               <optgroup label="ESP32-2432S028R (CYD)">
-                <option value="cyd-1.9.5" selected>ESP32-2432S028R — 1.9.5 (dernière version)</option>
+                <option value="cyd-1.9.7" selected>ESP32-2432S028R — 1.9.7 (dernière version)</option>
                 <option value="cyd-1.7.5">ESP32-2432S028R — 1.7.5 (conservée)</option>
               </optgroup>
               <optgroup label="Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3">
-                <option value="p4-rev1-2.0.0">Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 — 2.0.0 · silicium 1.x</option>
-                <option value="p4-rev3-2.0.0">Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 — 2.0.0 · silicium 3.x</option>
+                <option value="p4-rev1-2.0.3">Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 — 2.0.3 · silicium 1.x</option>
+                <option value="p4-rev3-2.0.3">Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 — 2.0.3 · silicium 3.x</option>
               </optgroup>
             </select>
             <p id="selected-board">ESP32-2432S028R (CYD)</p>
@@ -128,9 +128,9 @@
             <span id="compatibility-text">Vérification du navigateur…</span>
           </div>
 
-          <esp-web-install-button id="install-button" data-release="cyd-1.9.5" manifest="./manifest.json">
+          <esp-web-install-button id="install-button" data-release="cyd-1.9.7" manifest="./manifest.json">
             <button class="flash-button" slot="activate" type="button">
-              <span>Installer AURORA ESP32-2432S028R v1.9.5</span>
+              <span>Installer AURORA ESP32-2432S028R v1.9.7</span>
               <span class="button-arrow" aria-hidden="true">→</span>
             </button>
             <div class="unsupported" slot="unsupported">
@@ -150,18 +150,18 @@
             <div class="unsupported" slot="not-allowed">L’accès au port série est bloqué. Ouvrez cette page en HTTPS.</div>
           </esp-web-install-button>
 
-          <esp-web-install-button data-release="p4-rev1-2.0.0" manifest="./manifests/p4-rev1-2.0.0.json" hidden>
+          <esp-web-install-button data-release="p4-rev1-2.0.3" manifest="./manifests/p4-rev1-2.0.3.json" hidden>
             <button class="flash-button" slot="activate" type="button">
-              <span>Installer AURORA v2.0.0 — Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 · silicium 1.x</span>
+              <span>Installer AURORA v2.0.3 — Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 · silicium 1.x</span>
               <span class="button-arrow" aria-hidden="true">→</span>
             </button>
             <div class="unsupported" slot="unsupported">Utilisez Chrome ou Microsoft Edge sur ordinateur avec une connexion HTTPS.</div>
             <div class="unsupported" slot="not-allowed">L’accès au port série est bloqué. Ouvrez cette page en HTTPS.</div>
           </esp-web-install-button>
 
-          <esp-web-install-button data-release="p4-rev3-2.0.0" manifest="./manifests/p4-rev3-2.0.0.json" hidden>
+          <esp-web-install-button data-release="p4-rev3-2.0.3" manifest="./manifests/p4-rev3-2.0.3.json" hidden>
             <button class="flash-button" slot="activate" type="button">
-              <span>Installer AURORA v2.0.0 — Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 · silicium 3.x</span>
+              <span>Installer AURORA v2.0.3 — Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 · silicium 3.x</span>
               <span class="button-arrow" aria-hidden="true">→</span>
             </button>
             <div class="unsupported" slot="unsupported">Utilisez Chrome ou Microsoft Edge sur ordinateur avec une connexion HTTPS.</div>
@@ -198,6 +198,30 @@
         </ol>
       </section>
 
+      <section class="steps" aria-labelledby="journey-title">
+        <div class="section-heading">
+          <p class="eyebrow">VOTRE PREMIER PORTEFEUILLE</p>
+          <h2 id="journey-title">Créez. Notez. Sauvegardez.</h2>
+        </div>
+        <ol class="step-grid">
+          <li>
+            <span class="step-number">01</span>
+            <h3>Créez hors ligne</h3>
+            <p>Choisissez 12 à 24 mots et votre type d’adresse. Participez à la collecte tactile, puis confirmez votre passphrase éventuelle.</p>
+          </li>
+          <li>
+            <span class="step-number">02</span>
+            <h3>Gardez une trace durable</h3>
+            <p>Recopiez les mots dans l’ordre, sans photo. AURORA vérifie trois mots avant d’afficher les informations de votre portefeuille.</p>
+          </li>
+          <li>
+            <span class="step-number">03</span>
+            <h3>Sauvegardez et verrouillez</h3>
+            <p>Créez un fichier .aurora chiffré sur microSD, vérifiez sa réouverture et verrouillez l’appareil. Gardez aussi vos mots en lieu sûr.</p>
+          </li>
+        </ol>
+      </section>
+
       <section class="details" aria-labelledby="details-title">
         <div>
           <p class="eyebrow">BUILD VÉRIFIÉ</p>
@@ -206,7 +230,7 @@
         </div>
         <dl>
           <div><dt>Carte</dt><dd id="detail-target">ESP32-2432S028R (CYD)</dd></div>
-          <div><dt>Version</dt><dd id="detail-version">1.9.5</dd></div>
+          <div><dt>Version</dt><dd id="detail-version">1.9.7</dd></div>
           <div><dt>Flash</dt><dd id="detail-flash">4 Mo</dd></div>
           <div><dt>Image Web</dt><dd>offset 0x0000</dd></div>
         </dl>
@@ -298,21 +322,22 @@
 
         <article class="current-release">
           <div class="release-topline">
-            <span class="release-version" id="release-version">v1.9.5</span>
+            <span class="release-version" id="release-version">v1.9.7</span>
             <span class="release-state" id="release-state">DERNIÈRE VERSION</span>
           </div>
           <strong>AURORA Seed Generator</strong>
           <p id="release-description">ESP32-2432S028R · Image fusionnée 4 Mo · DIO 40 MHz</p>
           <p id="changes-title">Nouveautés de cette version</p>
           <ul id="release-changes">
-            <li>Couleurs du clavier de la 1.7.5 sur tous les écrans de saisie.</li>
-            <li>Tailles de police, fonctionnalités et protections conservées.</li>
+            <li>Sauvegardes .aurora : KDF à 500 000 itérations et mot de passe par consultation.</li>
+            <li>Mots : 3 min ; clé privée : 1 min, uniquement depuis un fichier authentifié.</li>
+            <li>RNG contrôlé, nettoyage renforcé ; polices et clavier classiques conservés.</li>
           </ul>
           <span class="release-hash-label">SHA-256</span>
-          <code id="release-hash">FFD0E180E90D0C44378CA4E6134C7CD1842F8B4C768831E5B7D77EA6D72276B5</code>
+          <code id="release-hash">3FD8388FD5662B106989FF30C7B25DEED2E55D9D399AECA2C03163EA51C8FBAC</code>
           <a
             id="release-notes"
-            href="./releases/1.9.5.md"
+            href="./releases/1.9.7.md"
             target="_blank"
             rel="noreferrer"
           >
@@ -320,6 +345,18 @@
           </a>
         </article>
       </section>
+      <aside class="warning" aria-label="Limites de sécurité">
+        <span class="warning-mark" aria-hidden="true">!</span>
+        <div>
+          <strong>Un projet expérimental, pas un portefeuille matériel certifié.</strong>
+          <p>AURORA ne signe pas de transactions. Commencez avec un portefeuille de test sans fonds.
+            Une coupure de courant ne peut pas déclencher un effacement logiciel ; aucune purge physique complète n’est garantie.</p>
+          <p><strong>L’export Electrum contient une clé privée étendue en clair sur microSD.</strong>
+            Le mot de passe .aurora ne le protège pas, et le verrouillage ne le supprime pas.</p>
+          <p><a href="https://github.com/nitrus21/Aurora_seed_generator#readme" rel="noreferrer">Le guide complet</a>
+            · <a href="https://github.com/nitrus21/Aurora_seed_generator/blob/main/SECURITY.md" rel="noreferrer">Sécurité et limites</a></p>
+        </div>
+      </aside>
     </main>
 
     <footer>

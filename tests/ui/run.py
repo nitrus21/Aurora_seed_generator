@@ -79,6 +79,7 @@ cpp_rsp = output / "link-ui.rsp"
 cpp_rsp.write_text("\n".join(common + ([] if cyd else ["/DAURORA_BOARD_P4"]) + ["/std:c++20", "/EHsc", "/UNDEBUG",
     f'/FI"{root / "tests/crypto/config_select.h"}"',
     "/DAURORA_NATIVE_TEST", f'"{root / ("tests/ui/test_cyd.cpp" if cyd else "tests/ui/test_ui.cpp")}"',
+    f'"{root / "src/hardware_rng.cpp"}"',
     f'/Fe"{output / "ui_tests.exe"}"'] +
     [f'"{objects / (p.stem + ".obj")}"' for p in sources] +
     [f'"{p}"' for p in crypto_objects] + ["bcrypt.lib"]), encoding="utf-8")

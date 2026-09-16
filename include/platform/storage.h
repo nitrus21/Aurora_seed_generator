@@ -19,7 +19,7 @@ class AuroraFile {
   size_t write(const uint8_t *data, size_t length);
   size_t size();
   bool flush();
-  void close();
+  bool close();
   bool isDirectory() const { return directory_ != nullptr; }
   const char *name() const { return name_; }
   AuroraFile openNextFile();
@@ -36,7 +36,7 @@ class AuroraStorage {
  public:
   ~AuroraStorage() { end(); }
   bool begin();
-  void end();
+  bool end();
   bool exists(const char *path);
   bool remove(const char *path);
   bool sync(AuroraFile &file) { return file.flush(); }

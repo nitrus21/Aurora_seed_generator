@@ -21,6 +21,9 @@ enum class WalletExportResult : uint8_t {
   MemoryFailed,
   CryptoFailed,
   WriteFailed
+#if defined(AURORA_BOARD_P4)
+  , FinalizeFailed
+#endif
 };
 
 enum class AuroraWalletReadResult : uint8_t {

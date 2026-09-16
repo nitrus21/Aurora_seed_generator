@@ -235,8 +235,19 @@ int main() {
     assert(!ui.wallet_.mnemonic[0] && !ui.restoreWords_[0][0]);
   }
   ui.show(Screen::Setup); ui.entropyCollected_=true; assert(ui.generate());
-  ui.show(Screen::Mnemonic); mock.time+=121000000; ui.tick();
+  ui.show(Screen::Mnemonic);
+  assert(!ui.secretCountdown_ && ui.visibleSecret_==AuroraUI::Access::None);
+  mock.time+=121000000; ui.tick();
   assert(ui.screen_==Screen::Mode && !ui.wallet_.mnemonic[0]);
+  for(bool restored:{false,true}) {
+    ui.show(Screen::Setup); ui.entropyCollected_=true; assert(ui.generate());
+    ui.manualRestore_=restored; ui.loadedWallet_=restored;
+    ui.qrContent_=AuroraUI::QrContent::PrivateKey; ui.show(Screen::Qr);
+    assert(!ui.secretCountdown_ && ui.visibleSecret_==AuroraUI::Access::None);
+    mock.time+=61000000; ui.tick(); assert(ui.screen_==Screen::Qr);
+    click(ui,TO_INFO); assert(ui.screen_==Screen::Info && !ui.fileSession_);
+    ui.closeSession();
+  }
   ui.show(Screen::ImportPassword);
   lv_textarea_set_text(ui.filePasswordArea_,"PUBLIC-TEST-PASSWORD");
   lv_event_send(ui.keyboard_,LV_EVENT_READY,nullptr);
@@ -252,15 +263,36 @@ int main() {
     lv_event_send(ui.keyboard_,LV_EVENT_READY,nullptr);
     mock.time+=200000; ui.tick();
     assert(ui.screen_==Screen::Mnemonic && ui.privateLoaded_ && !ui.filePassword_[0]);
+    if(round==0) {
+      ui.words_=24;
+      strlcpy(ui.wallet_.mnemonic,"abandon ability able about above absent absorb abstract absurd abuse access accident account accuse achieve acid acoustic acquire across act action actor actress actual",sizeof(ui.wallet_.mnemonic));
+      ui.show(Screen::Mnemonic);
+      const auto start=ui.visibleSecretStartedMs_;
+      mock.time+=61000000; ui.tick();
+      assert(!strcmp(lv_label_get_text(ui.secretCountdown_),"01:59"));
+      click(ui,MNEMONIC_NEXT);
+      assert(ui.mnemonicPage_==1 && ui.visibleSecretStartedMs_==start);
+      assert(!strcmp(lv_label_get_text(ui.secretCountdown_),"01:59"));
+      snapshot(ui,"words-countdown-page-2.ppm");
+      click(ui,MNEMONIC_PREVIOUS);
+      assert(ui.mnemonicPage_==0 && ui.visibleSecretStartedMs_==start);
+    }
     // Public marker deliberately injected after successful mock derivation.
     strlcpy(ui.wallet_.mnemonic,"PUBLIC-TEST-WORDS",sizeof(ui.wallet_.mnemonic));
     strlcpy(ui.wallet_.privateWif,"PUBLIC-TEST-WIF",sizeof(ui.wallet_.privateWif));
     if(round==0) ui.show(Screen::Info);
-    else if(round==1) { mock.time+=16000000; ui.tick(); }
-    else { ui.closeSession(); }
+    else if(round==1) { mock.time+=180000000; ui.tick(); }
+    else { click(ui,LOCK_SESSION); }
     assert(!ui.wallet_.mnemonic[0] && !ui.wallet_.privateWif[0] && !ui.privateLoaded_ && !ui.passphrase_[0]);
+    if(round!=0) {
+      assert(ui.screen_==Screen::Mode && !ui.fileSession_);
+      if(round!=2) {
+        strlcpy(ui.filePassword_,"PUBLIC-TEST-PASSWORD",sizeof(ui.filePassword_));
+        assert(ui.performWalletImport()); ui.show(Screen::Info);
+      }
+    }
   }
-  assert(reads==firstRead+3);
+  assert(reads==firstRead+4);
   for(unsigned mode=0;mode<3;++mode) {
     ui.show(Screen::Mode); ui.show(Screen::ImportPassword);
     strlcpy(ui.filePassword_,"PUBLIC-TEST-PASSWORD",sizeof(ui.filePassword_));
@@ -268,8 +300,34 @@ int main() {
     changedFile=mode==0; cryptoTime=mode==1?16000000:(mode==2?121000000:0);
     lv_textarea_set_text(ui.filePasswordArea_,"PUBLIC-TEST-PASSWORD");
     lv_event_send(ui.keyboard_,LV_EVENT_READY,nullptr); mock.time+=200000; ui.tick();
-    assert(ui.screen_!=Screen::Mnemonic && !ui.wallet_.mnemonic[0] && !ui.filePassword_[0]);
+    if(mode==1) {
+      assert(ui.screen_==Screen::Mnemonic && ui.privateLoaded_);
+      assert(!strcmp(lv_label_get_text(ui.secretCountdown_),"03:00"));
+      click(ui,LOCK_SESSION);
+    } else assert(ui.screen_!=Screen::Mnemonic && !ui.wallet_.mnemonic[0]);
+    assert(!ui.filePassword_[0]);
     changedFile=false; cryptoTime=0;
+  }
+  for(bool returnEarly:{false,true}) {
+    ui.closeSession();
+    strlcpy(ui.filePassword_,"PUBLIC-TEST-PASSWORD",sizeof(ui.filePassword_));
+    assert(ui.performWalletImport()); ui.show(Screen::Info);
+    click(ui,REVEAL_PRIVATE);
+    cryptoTime=65000000;
+    lv_textarea_set_text(ui.filePasswordArea_,"PUBLIC-TEST-PASSWORD");
+    lv_event_send(ui.keyboard_,LV_EVENT_READY,nullptr); mock.time+=200000; ui.tick();
+    cryptoTime=0;
+    assert(ui.screen_==Screen::Qr && ui.privateLoaded_);
+    assert(!strcmp(lv_label_get_text(ui.secretCountdown_),"01:00"));
+    if(returnEarly) click(ui,LOCK_SESSION);
+    else {
+      mock.time+=59999000; ui.tick();
+      assert(ui.screen_==Screen::Qr);
+      assert(!strcmp(lv_label_get_text(ui.secretCountdown_),"00:01"));
+      mock.time+=1000; ui.tick();
+    }
+    assert(ui.screen_==Screen::Mode && !ui.fileSession_ && !ui.privateLoaded_);
+    assert(!ui.wallet_.mnemonic[0] && !ui.wallet_.privateWif[0] && !ui.filePassword_[0]);
   }
   ui.show(Screen::Mode); ui.show(Screen::ImportPassword);
   lv_textarea_set_text(ui.filePasswordArea_,"PUBLIC-TEST-PASSWORD");
@@ -285,5 +343,5 @@ int main() {
   assert(auroraUiTryFreezeAllocations()); auroraUiWipeFrozenAllocations();
   for(unsigned i=0;i<256;++i) assert(static_cast<uint8_t *>(first)[i]==0);
   for(unsigned i=0;i<512;++i) assert(static_cast<uint8_t *>(second)[i]==0);
-  puts("PASS: CYD LVGL8 password-only sessions, public-only idle state, 120s all-workflow expiry, 15s secret expiry, slow crypto, replaced file, SD removal, wiped UI allocations");
+  puts("PASS: CYD LVGL8 password-only sessions, public-only idle state, 120s workflow / 180s words expiry, display time excludes crypto, Return locks, replaced file, SD removal, wiped UI allocations");
 }

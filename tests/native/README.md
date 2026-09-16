@@ -19,7 +19,7 @@ La compilation du firmware P4 actif utilise ses dépendances épinglées :
 ```
 
 Pour un P4 1.x, utiliser `-Target waveshare-p4-rev1`. Les tests du profil CYD
-restent des contrôles de compatibilité : sa version publiée est figée en 1.9.2.
+restent des contrôles de compatibilité : sa dernière version est la 1.9.7.
 
 Pour contrôler les binaires de la version finale inclus dans le dépôt, sans compiler ni flasher :
 
@@ -27,7 +27,7 @@ Pour contrôler les binaires de la version finale inclus dans le dépôt, sans c
 .\tests\release\verify.ps1 -ReleasedArtifactsOnly
 ```
 
-Ce contrôle vérifie le manifeste publié, les octets de chaque composant aux offsets prévus dans l’image fusionnée, toutes les empreintes SHA-256 et celles affichées dans le Web Flasher et le README. Sans l'option, une version finale identique dans les sources est aussi exigée ; la version P4 2.0.0 en développement ne correspond pas aux binaires publiés 1.9.2.
+Ce contrôle vérifie les manifestes, les octets de chaque composant aux offsets prévus dans les images fusionnées, les empreintes SHA-256 et celles affichées dans le Web Flasher. Sans l’option, les versions finales des sources et des images doivent correspondre. La distribution conserve ESP32-2432S028R 1.7.5 / 1.9.7 et Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 2.0.3.
 
 ## Validation historique de la version publiée 1.7.6 (14 septembre 2026)
 

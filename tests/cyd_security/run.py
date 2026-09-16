@@ -1,4 +1,4 @@
-"""CYD 1.9.3 local audit: actual linked image and public native fixtures only."""
+"""CYD security regressions: actual linked image and public native fixtures only."""
 from pathlib import Path
 import hashlib
 import json
@@ -9,7 +9,7 @@ import subprocess
 import sys
 sys.dont_write_bytecode = True
 ROOT=Path(__file__).resolve().parents[2]
-OUT=ROOT/'tmp/audit-cyd-1.9.3-2026-09-15'
+OUT=ROOT/'tmp/cyd-security-regression'
 OUT.mkdir(parents=True,exist_ok=True)
 env={k.upper():v for k,v in os.environ.items()}
 env.pop('PSMODULEPATH',None)
@@ -55,11 +55,20 @@ def word(address):
 addresses={line.split(maxsplit=2)[2]:int(line.split()[0],16) for line in symbols.splitlines()
     if len(line.split(maxsplit=2))==3 and all(c in '0123456789abcdefABCDEF' for c in line.split()[0])}
 import re
-for sym,target,minimum in [('sha256_Transform','memzero',13),('sha512_Transform','memzero',13),
+for sym,target,minimum in [('sha256_Transform','memzero',1),('sha512_Transform','memzero',13),
                            ('panic_handler','__wrap_esp_panic_handler',1)]:
     asm=(OUT/('asm-'+sym+'.log')).read_text()
     loads=[int(m,16) for m in re.findall(r'l32r\s+a\d+,\s*([0-9a-f]+)',asm)]
     assert sum(word(addr)==addresses[target] for addr in loads)>=minimum,(sym,target)
+# SHA-256 now owns its 12 scalar words and 16 schedule words in one 112-byte
+# struct. Verify the *linked call*, its byte count, and immediate return rather
+# than accepting any occurrence of a memzero symbol. Native residue tests below
+# independently verify schedules disappear and public vectors remain unchanged.
+sha256_asm=(OUT/'asm-sha256_Transform.log').read_text()
+wipe_call=re.search(r'movi\s+a11,\s*112\b(?:(?!callx|retw).)*?'
+    r'l32r\s+a8,\s*([0-9a-f]+)[^\n]*\n[^\n]*callx8\s+a8\s*\n[^\n]*retw\.n',
+    sha256_asm,re.S)
+assert wipe_call and word(int(wipe_call.group(1),16))==addresses['memzero'], 'Missing full 112-byte SHA256 wipe before return'
 print('PASS: linked SHA temporary wipes and wrapped panic call resolved through ELF literal pools',flush=True)
 
 vswhere=Path(env['PROGRAMFILES(X86)'])/'Microsoft Visual Studio/Installer/vswhere.exe'

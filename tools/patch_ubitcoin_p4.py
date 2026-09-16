@@ -14,6 +14,9 @@ BASE_HASHES = {
     "HDWallet.cpp": "c0f44c12fc577b04c165fd69e3cd99eee25229158b77ad773aa061cf4c2a18e4",
     "utility/trezor/sha2.c": "127f7e9f1da56fa07b1c46e058d48ee63ae0690c4cc2ebc41722e66f8fefcee4",
     "utility/trezor/memzero.c": "001fde1ffaba74f9f902db548ab880a7e81b901b7518c254ebe2476aea3aad2e",
+    "utility/trezor/pbkdf2.c": "4c1d6e3d8a44899cf18bebcbe82c0369fce5b5085039cbfc9c0a865b92246645",
+    "utility/trezor/pbkdf2.h": "9f814e17e7c9a5f958e57c1f2228d8737c9873ed99282022739700be57727ce8",
+    "utility/trezor/hmac.c": "70d062a8f41387fef8eaa610720e652d3924b10153ebd2f59892da66873b72fe",
 }
 
 
@@ -24,6 +27,14 @@ def replace_exact(text, old, new, count=1):
 
 
 def replacements(name):
+    if name in ("utility/trezor/pbkdf2.c", "utility/trezor/pbkdf2.h"):
+        return []  # Pin the chunked API and its exact first-iteration semantics.
+    if name == "utility/trezor/hmac.c":
+        return [
+            ("static CONFIDENTIAL uint32_t key_pad[SHA256_BLOCK_LENGTH/sizeof(uint32_t)];",
+             "uint32_t key_pad[SHA256_BLOCK_LENGTH/sizeof(uint32_t)];", 1),
+            ("static CONFIDENTIAL SHA256_CTX context;", "SHA256_CTX context;", 1),
+        ]  # SHA256 preparation temporaries are call-owned, already wiped by upstream.
     if name == "HDWallet.cpp":
         return [
             ("    memcpy(arr, hex, len);\n    return len;\n}\nsize_t HDPrivateKey::to_stream",
@@ -83,6 +94,30 @@ def sha_replacements(text):
     return result
 
 
+def group_sha256(text, reverse=False):
+    # Preserve every addressable working word and schedule wipe, but issue one
+    # cache writeback for a contiguous owned object instead of 12/13 tiny ones.
+    # Prefix field names to prevent macro argument rescanning collisions.
+    for unrolled in (True, False):
+        names = "a b c d e f g h s0 s1 T1".split()
+        if not unrolled:
+            names.append("T2")
+        old_decl = "\tsha2_word32\ta, b, c, d, e, f, g, h, s0, s1;\n"
+        old_decl += ("\tsha2_word32\tT1;\n\tsha2_word32 W256[16];" if unrolled
+                     else "\tsha2_word32\tT1, T2, W256[16];")
+        new_decl = ("\t/* AURORA_SHA256_GROUPED_WIPE: same secrets, one owned range. */\n"
+                    "\tstruct {\n\t\tsha2_word32 " + ", ".join("v_"+n for n in names) + ";\n"
+                    "\t\tsha2_word32 v_W256[16];\n\t} aurora_sha_work;\n")
+        new_decl += "\n".join("#define %s aurora_sha_work.v_%s" % (n,n) for n in names+["W256"])
+        old_wipe = "\t/* Erase reversible schedule and addressable working state. */\n\tmemzero(W256, sizeof(W256));\n"
+        old_wipe += "\n".join("\tmemzero(&%s, sizeof(%s));" % (n,n) for n in names)
+        new_wipe = "\tmemzero(&aurora_sha_work, sizeof(aurora_sha_work));\n"
+        new_wipe += "\n".join("#undef " + n for n in names+["W256"])
+        for old,new in ((old_decl,new_decl),(old_wipe+"\n}",new_wipe+"\n}")):
+            text=replace_exact(text,new if reverse else old,old if reverse else new)
+    return text
+
+
 def patch_tree(lib_root):
     staged = []
     for name, expected_hash in BASE_HASHES.items():
@@ -90,8 +125,11 @@ def patch_tree(lib_root):
         text = path.read_text(encoding="utf-8")
         original = text
         patched = text.startswith(MARKER)
+        grouped = "AURORA_SHA256_GROUPED_WIPE" in text
         if patched:
             text = text[len(MARKER):]
+        if grouped:
+            text = group_sha256(text, reverse=True)
         if name == "utility/trezor/sha2.c":
             # Reverse our exact cleanup first, allowing the original whole-file
             # digest to validate both first and repeated invocations.
@@ -119,8 +157,10 @@ def patch_tree(lib_root):
             raise RuntimeError("AURORA P4: unrecognized/partial pinned source: " + name)
         for old, new, count in changes:
             text = replace_exact(text, old, new, count)
+        if name == "utility/trezor/sha2.c":
+            text = group_sha256(text)
         text = MARKER + text
-        if patched and original != text:
+        if patched and original != text and not (name == "utility/trezor/sha2.c" and not grouped):
             raise RuntimeError("AURORA P4: inconsistent hardening marker: " + name)
         staged.append((path, original, text))
     # Validate every input before changing any dependency file.

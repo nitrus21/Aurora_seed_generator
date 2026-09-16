@@ -44,6 +44,9 @@ target_compile_definitions(mbedcrypto PRIVATE AURORA_BOARD_P4=1)
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     "${AURORA_ROOT}/tools/prepare_p4_crypto_overlay.py"
     "${AURORA_ROOT}/tools/patch_ubitcoin_p4.py"
+    "${IDF_PATH}/components/hal/sha_hal.c"
+    "${IDF_PATH}/components/hal/esp32p4/include/hal/sha_ll.h"
+    "${IDF_PATH}/components/mbedtls/port/include/sha/sha_core.h"
     "${IDF_PATH}/components/mbedtls/mbedtls/library/md.c"
     "${IDF_PATH}/components/mbedtls/mbedtls/library/platform_util.c"
     "${IDF_PATH}/components/mbedtls/port/sha/core/sha.c"

@@ -22,7 +22,7 @@ static std::map<void *,size_t> allocations;
 static std::map<FILE *,void *> streams;
 static bool failAllocation=false, failSetvbuf=false, failFdopen=false;
 static bool failClose=false, failFlush=false, failSync=false;
-static bool failPower=false, failMount=false, failUnmount=false;
+static bool failPower=false, failMount=false, failUnmount=false, failPowerRelease=false;
 static unsigned allocationCount=0, freeCount=0, powerCount=0, mountCount=0;
 static sdmmc_card_t testCard;
 
@@ -68,6 +68,7 @@ int sd_pwr_ctrl_new_on_chip_ldo(const sd_pwr_ctrl_ldo_config_t *config,sd_pwr_ct
   ++powerCount; *out=&testCard; return ESP_OK;
 }
 int sd_pwr_ctrl_del_on_chip_ldo(sd_pwr_ctrl_handle_t power) {
+  if (failPowerRelease) return -1;
   assert(power==&testCard && powerCount>0); --powerCount; return ESP_OK;
 }
 int esp_vfs_fat_sdmmc_mount(const char *path,const sdmmc_host_t *host,const sdmmc_slot_config_t *slot,
@@ -120,8 +121,8 @@ int main() {
     AuroraFile moved(std::move(file)); assert(!file && moved && allocations.count(original));
     moved=std::move(moved); assert(moved && allocations.count(original));
     assert(storage.sync(moved));
-    failClose=true; moved.close(); assert(!moved); // Even fclose error wipes owned buffer.
-    moved.close(); noBuffers();
+    failClose=true; assert(!moved.close()); assert(!moved); // Error reported AND buffer wiped.
+    assert(moved.close()); noBuffers();
   }
   assert(bytes("storage-card/electrum.json")==electrum); // Newline/bytes unchanged.
   assert(!storage.open("/electrum.json",true)); // O_EXCL never truncates an export.
@@ -165,9 +166,13 @@ int main() {
     assert(files==5 && !failSetvbuf); // Failure closes that file then skips to the next.
   }
   assert(storageOpenDirectories==0); noBuffers();
-  failUnmount=true; storage.end(); assert(powerCount==1 && mountCount==1);
-  failUnmount=false; storage.end(); assert(!powerCount && !mountCount);
-  storage.end(); noBuffers();
+  failUnmount=true; assert(!storage.end()); assert(powerCount==1 && mountCount==1);
+  failUnmount=false; failPowerRelease=true;
+  assert(!storage.end() && powerCount==1 && !mountCount);
+  assert(!storage.begin() && powerCount==1); // No overwritten/leaked LDO handle.
+  failPowerRelease=false; assert(storage.end()); assert(!powerCount && !mountCount);
+  assert(storage.end()); noBuffers();
+  puts("PASS: close, unmount and power-release failures propagated; owned buffers still wiped and cleanup retryable");
   puts("PASS: actual P4 storage.cpp owns/zeros/frees every 512-byte stdio buffer after fclose, including injected failures and moves");
   puts("PASS: binary payload/newline identity, exclusive export creation, reads, flush/fsync failures, directory ownership, mount/power cleanup");
   puts("LIMIT: Windows CRT and simulated SDK/allocator hooks, not ESP-IDF FATFS or physical SD/power-loss validation");

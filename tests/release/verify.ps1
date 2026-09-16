@@ -18,6 +18,8 @@ if ($ReleasedArtifactsOnly) {
 } else {
     Assert-Release $versionMatch.Success 'A final CYD firmware version is required. Use -ReleasedArtifactsOnly to verify preserved release binaries on a development branch.'
     $version = $versionMatch.Groups[1].Value
+    $p4VersionMatch = [regex]::Match($versionHeader, 'AURORA_P4_FIRMWARE_VERSION\s+"(\d+\.\d+\.\d+)"')
+    Assert-Release ($p4VersionMatch.Success -and $p4VersionMatch.Groups[1].Value -eq '2.0.3') 'P4 source/release version mismatch.'
 }
 $layout = Get-Content -Raw -LiteralPath (Join-Path $firmwareRoot 'flash-layout.json') | ConvertFrom-Json
 $factoryName = "aurora-$version-esp32-2432s028r.factory.bin"
@@ -70,14 +72,14 @@ $index = Get-Content -Raw -LiteralPath (Join-Path $webRoot 'index.html')
 $readme = Get-Content -Raw -LiteralPath (Join-Path $taskRoot 'README.md')
 Assert-Release ($appJs.Contains($factoryHash) -and $index.Contains($factoryHash)) 'Website factory hash mismatch.'
 Assert-Release ($index.Contains("Installer AURORA ESP32-2432S028R v$version")) 'Website version mismatch.'
-Assert-Release ($readme.Contains($checksums['firmware.bin'])) 'README application hash mismatch.'
+Assert-Release ($readme.Contains('webflasher/README.md')) 'README must link to installation and checksum guidance.'
 Assert-Release (Test-Path -LiteralPath (Join-Path $webRoot 'CHANGELOG.md')) 'Missing release notes.'
 
 $variants = @(
-    @{ Id = 'cyd-1.9.5'; Manifest = 'manifest.json'; Chip = 'ESP32'; Image = 'aurora-1.9.5-esp32-2432s028r.factory.bin' },
+    @{ Id = 'cyd-1.9.7'; Manifest = 'manifest.json'; Chip = 'ESP32'; Image = 'aurora-1.9.7-esp32-2432s028r.factory.bin' },
     @{ Id = 'cyd-1.7.5'; Manifest = 'manifests\cyd-1.7.5.json'; Chip = 'ESP32'; Image = 'aurora-1.7.5-esp32-2432s028r.factory.bin' },
-    @{ Id = 'p4-rev1-2.0.0'; Manifest = 'manifests\p4-rev1-2.0.0.json'; Chip = 'ESP32-P4'; Image = 'aurora-2.0.0-esp32-p4-rev1.factory.bin' },
-    @{ Id = 'p4-rev3-2.0.0'; Manifest = 'manifests\p4-rev3-2.0.0.json'; Chip = 'ESP32-P4'; Image = 'aurora-2.0.0-esp32-p4-rev3.factory.bin' }
+    @{ Id = 'p4-rev1-2.0.3'; Manifest = 'manifests\p4-rev1-2.0.3.json'; Chip = 'ESP32-P4'; Image = 'aurora-2.0.3-esp32-p4-rev1.factory.bin' },
+    @{ Id = 'p4-rev3-2.0.3'; Manifest = 'manifests\p4-rev3-2.0.3.json'; Chip = 'ESP32-P4'; Image = 'aurora-2.0.3-esp32-p4-rev3.factory.bin' }
 )
 foreach ($variant in $variants) {
     $variantManifest = Get-Content -Raw -LiteralPath (Join-Path $webRoot $variant.Manifest) | ConvertFrom-Json
@@ -93,4 +95,4 @@ foreach ($variant in $variants) {
 Assert-Release ($LASTEXITCODE -eq 0) 'Embedded image/revision verification failed.'
 & node (Join-Path $PSScriptRoot 'test_webflasher.cjs')
 Assert-Release ($LASTEXITCODE -eq 0) 'Web Flasher selection tests failed.'
-Write-Output "PASS: CYD 1.9.5/1.7.5 and P4 2.0.0 (1.x/3.x): manifests, images, offsets, hashes and selection"
+Write-Output "PASS: CYD 1.9.7/1.7.5 and P4 2.0.3 (1.x/3.x): manifests, images, offsets, hashes and selection"

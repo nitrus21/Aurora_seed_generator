@@ -773,6 +773,8 @@ h2 {
 
 .warning strong { display: block; margin: 3px 0 5px; }
 .warning p { margin: 0; color: var(--muted); font-size: 0.86rem; }
+.warning p + p { margin-top: 0.65rem; }
+.warning a { color: var(--orange-light); }
 
 footer {
   display: flex;

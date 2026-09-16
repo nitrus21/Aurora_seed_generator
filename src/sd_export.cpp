@@ -5,6 +5,7 @@
 #include "secure_memory.h"
 #include "version.h"
 #include "wallet_file_format.h"
+#include "wallet_kdf.h"
 
 #include "platform/storage.h"
 #include <mbedtls/gcm.h>
@@ -109,9 +110,9 @@ uint32_t getLe32(const uint8_t *source) {
 bool deriveKey(const char *password, const uint8_t *salt, size_t saltLength,
                uint32_t iterations, uint8_t key[KEY_SIZE]) {
   if (!password || !salt || saltLength == 0 || !key || iterations == 0) return false;
-  const bool ok = auroraPbkdf2Hmac(MBEDTLS_MD_SHA256,
+  const bool ok = auroraWalletKdf(
       reinterpret_cast<const unsigned char *>(password), strlen(password),
-      salt, saltLength, iterations, KEY_SIZE, key) == 0;
+      salt, saltLength, iterations, key);
   if (!ok) secureZero(key, KEY_SIZE);
   return ok;
 }
@@ -380,11 +381,21 @@ WalletExportResult writeWalletExportFile(WalletExportFormat format,
   ok = storage.sync(file) && ok;
 #if defined(AURORA_BOARD_CYD)
   ok = file.close() && ok;
+#elif defined(AURORA_BOARD_P4)
+  // A late close/unmount error makes durability uncertain. Preserve this newly
+  // created file for verification; never claim success or reveal its path as
+  // a confirmed backup. close() still wipes owned plaintext buffers on error.
+  const bool closed = file.close();
+  if (!ok && closed) storage.remove(path);
+  const bool ended = storage.end();
+  if (!closed || !ended) return WalletExportResult::FinalizeFailed;
 #else
   file.close();
 #endif
+#if !defined(AURORA_BOARD_P4)
   if (!ok) storage.remove(path);
   storage.end();
+#endif
 
   if (!ok) return WalletExportResult::WriteFailed;
   if (writtenPath && writtenPathLength) strlcpy(writtenPath, path, writtenPathLength);

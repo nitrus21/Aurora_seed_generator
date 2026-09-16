@@ -11,9 +11,12 @@ constexpr uint8_t PAYLOAD_MAGIC[8] = {'A', 'U', 'R', 'D', 'A', 'T', '0', '1'};
 constexpr uint8_t FILE_VERSION = 1;
 constexpr uint8_t KDF_PBKDF2_HMAC_SHA256 = 1;
 constexpr uint8_t CIPHER_AES_256_GCM = 1;
-constexpr uint32_t KDF_ITERATIONS = 120000;
+// New exports only; existing files retain their authenticated iteration count.
+constexpr uint32_t KDF_ITERATIONS = 500000;
 constexpr uint32_t KDF_ITERATIONS_MIN = 10000;
 constexpr uint32_t KDF_ITERATIONS_MAX = 500000;
+static_assert(KDF_ITERATIONS >= KDF_ITERATIONS_MIN && KDF_ITERATIONS <= KDF_ITERATIONS_MAX,
+              "Writer KDF must remain readable by the compatible V1/V2 readers");
 constexpr size_t HEADER_SIZE = 46;
 constexpr size_t SALT_OFFSET = 16;
 constexpr size_t SALT_SIZE = 16;
@@ -22,12 +25,12 @@ constexpr size_t NONCE_SIZE = 12;
 constexpr size_t TAG_SIZE = 16;
 constexpr size_t KEY_SIZE = 32;
 // Wire layouts stay frozen. P4 password-only files reuse V1 (same AES-GCM and
-// password KDF as V2, without the obsolete PIN record). CYD still writes V2.
+// password KDF as V2, without the obsolete PIN record). Both UIs write V1.
 constexpr uint8_t FILE_MAGIC_V2[8] = {'A','U','R','O','R','A','W','2'};
 constexpr uint8_t PAYLOAD_MAGIC_V2[8] = {'A','U','R','D','A','T','0','2'};
 constexpr uint8_t FILE_VERSION_V2 = 2;
-// The file-password derivation remains PBKDF2-HMAC-SHA-256 / 120000 rounds,
-// exactly as V1. The PIN never changes any wallet or file-encryption key.
+// V1/V2 use PBKDF2-HMAC-SHA-256 with the authenticated header's iteration count.
+// Legacy 120000-round files remain readable. The PIN never changes an encryption key.
 
 #pragma pack(push, 1)
 struct AuroraPayloadV1 {

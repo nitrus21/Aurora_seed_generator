@@ -56,15 +56,17 @@ size_t AuroraFile::size() {
 bool AuroraFile::flush() {
   return file_ && fflush(file_) == 0 && !ferror(file_) && fsync(fileno(file_)) == 0;
 }
-void AuroraFile::close() {
-  if (file_) fclose(file_);
+bool AuroraFile::close() {
+  bool ok = true;
+  if (file_) ok = fclose(file_) == 0;
   if (ioBuffer_) {
     secureZero(ioBuffer_, IO_BUFFER_SIZE);
     auroraUiFree(ioBuffer_);
     ioBuffer_ = nullptr;
   }
-  if (directory_) closedir(directory_);
+  if (directory_) ok = (closedir(directory_) == 0) && ok;
   file_ = nullptr; directory_ = nullptr;
+  return ok;
 }
 AuroraFile AuroraFile::openNextFile() {
   AuroraFile next;
@@ -85,6 +87,7 @@ AuroraFile AuroraFile::openNextFile() {
 }
 bool AuroraStorage::begin() {
   if (mounted_) return true;
+  if (power_ && !end()) return false;
   // Own the LDO handle too: repeated mount/unmount must not leak BSP resources.
   sd_pwr_ctrl_ldo_config_t ldo{}; ldo.ldo_chan_id = 4;
   if (sd_pwr_ctrl_new_on_chip_ldo(&ldo, &power_) != ESP_OK) return false;
@@ -96,15 +99,23 @@ bool AuroraStorage::begin() {
   config.format_if_mount_failed = false; config.max_files = 5;
   config.allocation_unit_size = 64 * 1024;
   mounted_ = esp_vfs_fat_sdmmc_mount(BSP_SD_MOUNT_POINT, &host, &slot, &config, &card_) == ESP_OK;
-  if (!mounted_) { sd_pwr_ctrl_del_on_chip_ldo(power_); power_ = nullptr; card_ = nullptr; }
+  if (!mounted_) {
+    card_ = nullptr;
+    // Retain failed-release ownership so end()/the destructor can retry.
+    if (sd_pwr_ctrl_del_on_chip_ldo(power_) == ESP_OK) power_ = nullptr;
+  }
   return mounted_;
 }
-void AuroraStorage::end() {
+bool AuroraStorage::end() {
   if (mounted_) {
-    if (esp_vfs_fat_sdcard_unmount(BSP_SD_MOUNT_POINT, card_) != ESP_OK) return;
+    if (esp_vfs_fat_sdcard_unmount(BSP_SD_MOUNT_POINT, card_) != ESP_OK) return false;
     mounted_ = false; card_ = nullptr;
   }
-  if (power_) { sd_pwr_ctrl_del_on_chip_ldo(power_); power_ = nullptr; }
+  if (power_) {
+    if (sd_pwr_ctrl_del_on_chip_ldo(power_) != ESP_OK) return false;
+    power_ = nullptr;
+  }
+  return true;
 }
 bool AuroraStorage::exists(const char *path) {
   char full[160]; struct stat info{};

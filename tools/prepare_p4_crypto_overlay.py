@@ -11,6 +11,10 @@ sys.dont_write_bytecode = True
 from patch_ubitcoin_p4 import replace_exact
 
 SOURCES = {
+    # Chunk-owned KDF adapter: byte ordering, digest continuation and idle waits.
+    "hal/sha_hal.c": (None, "391d3ed4be3a773298c0775d023d51b121bb3e46016b5ed6f46741501810c47b"),
+    "hal/esp32p4/include/hal/sha_ll.h": (None, "cec6b41ab0168a7f01e9340825ef7e182d1215f39798b7d41ba8e3d16adc9fac"),
+    "mbedtls/port/include/sha/sha_core.h": (None, "46df52ad2dd70c5ac8de99f8aca63f5bb06bb33fca6fbb2538acdf5f6f8ec9e7"),
     "mbedtls/mbedtls/library/md.c": ("md.c", "5ba79d51ff85951cb4001a22b2428568e4bc1072b367222808f3eac1ad91884d"),
     "mbedtls/mbedtls/library/platform_util.c": ("platform_util.c", "83051fddcd37171831ff5706613dc3d336b2e53c42e6515f2f14ac0f8aa649f1"),
     "mbedtls/port/sha/core/sha.c": ("sha_core.c", "ea21ac935f2012729778d540db895f6bd3f2a7aa33d2ca52decf41a202ac006a"),

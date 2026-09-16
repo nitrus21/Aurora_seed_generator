@@ -1,4 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_LIST_DIR}/../../include/version.h")
 file(STRINGS "${CMAKE_CURRENT_LIST_DIR}/../../include/version.h" AURORA_VERSION_LINE
      REGEX "^#define AURORA_P4_FIRMWARE_VERSION \"[0-9]+\\.[0-9]+\\.[0-9]+\"$")
 string(REGEX REPLACE

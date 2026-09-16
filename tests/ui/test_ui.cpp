@@ -11,6 +11,7 @@
 #include "sensors.h"
 #include "secure_lvgl_memory.h"
 #include "platform/crypto.h"
+#include "version.h"
 static unsigned wipedAllocations=0;
 extern "C" void auroraUiWipeAudit(const void *pointer,size_t size) {
   for(size_t i=0;i<size;++i) assert(static_cast<const uint8_t *>(pointer)[i]==0);
@@ -21,6 +22,7 @@ extern "C" void auroraUiWipeAudit(const void *pointer,size_t size) {
 static WalletOutput importedWallet{};
 static AuroraWalletData importedData{};
 static bool importOk=false, exportOk=false;
+static bool exportFinalizeFails=false;
 static unsigned exportCalls=0, xprvCalls=0, importCalls=0;
 static unsigned sessionReadCalls=0;
 static bool sessionReadOk=true;
@@ -61,6 +63,7 @@ WalletExportResult writeWalletExportFile(WalletExportFormat format, const char *
   consumeOperationDelay();
   ++exportCalls;
   if(format==WalletExportFormat::AuroraWallet) assert(!data.pin);
+  if(exportFinalizeFails) { if(size) path[0]=0; return WalletExportResult::FinalizeFailed; }
   strlcpy(path,"/fixture.aurora",size); return exportOk && sdReady?WalletExportResult::Ok:WalletExportResult::NoCard;
 }
 AuroraWalletReadResult readAuroraWalletFile(const char *, const char *, AuroraWalletData &out) {
@@ -385,11 +388,20 @@ static void testPasswordFileSessions(AuroraUI &ui) {
     assert(ui.screen_==Screen::Mnemonic && ui.privateLoaded_ && ui.wallet_.mnemonic[0]);
     assert(!ui.filePassword_[0]);
     assert(!actionButton(ui,BACK_MODE_WIPE) && !actionButton(ui,BACK_ENTROPY));
-    auto *back=actionButton(ui,TO_INFO); assert(back);
+    auto *back=actionButton(ui,LOCK_SESSION); assert(back);
     assert(!strcmp(lv_label_get_text(lv_obj_get_child(back,0)),"RETOUR"));
     const auto grant=ui.accessGrantedMs_;
+    assert(!strcmp(lv_label_get_text(ui.secretCountdown_),"03:00"));
+    mock.time+=121000000; ui.tick(); // The 120s idle lock must not shorten this view.
+    assert(ui.screen_==Screen::Mnemonic);
+    assert(!strcmp(lv_label_get_text(ui.secretCountdown_),"00:59"));
     click(ui,MNEMONIC_NEXT); assert(ui.mnemonicPage_==1 && ui.accessGrantedMs_==grant);
-    click(ui,TO_INFO); assertPublicFileSession(ui); assertDisplayReplaced(ui);
+    assert(!strcmp(lv_label_get_text(ui.secretCountdown_),"00:59"));
+    click(ui,MNEMONIC_PREVIOUS); assert(ui.mnemonicPage_==0 && ui.accessGrantedMs_==grant);
+    assert(!strcmp(lv_label_get_text(ui.secretCountdown_),"00:59"));
+    snapshot(ui,"words-countdown.ppm");
+    click(ui,LOCK_SESSION); assertSessionWiped(ui); assertDisplayReplaced(ui);
+    runMockImport(ui);
     for(Action action:{SHOW_LOADED_PASSPHRASE,REVEAL_PRIVATE,SHOW_WORDS}) {
       click(ui,action); assert(ui.screen_==Screen::PrivatePassword);
       // Cancel destroys edited password copies too.
@@ -398,8 +410,20 @@ static void testPasswordFileSessions(AuroraUI &ui) {
       assert(ui.screen_==Screen::Info); assertPublicFileSession(ui); assertDisplayReplaced(ui);
       click(ui,action); enterPrivatePassword(ui);
       assert(ui.privateLoaded_ && !ui.filePassword_[0]);
-      mock.time+=15001000; ui.tick();
-      assert(ui.screen_==Screen::Info); assertPublicFileSession(ui);
+      const auto duration=AuroraUI::accessDurationMs(ui.access_);
+      mock.time+=(duration-1)*1000; ui.tick();
+      assert(ui.privateLoaded_);
+      if(action==REVEAL_PRIVATE) {
+        assert(!strcmp(lv_label_get_text(ui.secretCountdown_),"00:01"));
+        snapshot(ui,"private-key-countdown.ppm");
+      }
+      mock.time+=1000; ui.tick();
+      if(action==SHOW_LOADED_PASSPHRASE) {
+        assert(ui.screen_==Screen::Info); assertPublicFileSession(ui);
+      } else {
+        assert(ui.screen_==Screen::Mode); assertSessionWiped(ui); assertDisplayReplaced(ui);
+        runMockImport(ui);
+      }
     }
     // Switching private categories cannot reuse the preceding authorization.
     click(ui,SHOW_WORDS); enterPrivatePassword(ui);
@@ -422,10 +446,17 @@ static void testPasswordFileSessions(AuroraUI &ui) {
     }
     sessionFileChanged=false; sessionReadOk=true;
     enterPrivatePassword(ui); assert(ui.screen_==Screen::Mnemonic);
-    click(ui,TO_INFO); assertPublicFileSession(ui);
-    // Slow work cannot renew a private grant or the idle deadline.
-    click(ui,SHOW_WORDS); accountXprvDelayMs=AuroraUI::SECRET_VISIBLE_MS;
-    enterPrivatePassword(ui); assert(ui.screen_==Screen::Info); assertPrivateStateAbsent(ui);
+    ui.show(Screen::Info); assertPublicFileSession(ui);
+    // Slow decryption does not consume the display grant, but the independent
+    // idle limit still rejects a blocked job which exceeds 120 seconds.
+    click(ui,SHOW_WORDS); accountXprvDelayMs=65000;
+    enterPrivatePassword(ui); assert(ui.screen_==Screen::Mnemonic);
+    assert(!strcmp(lv_label_get_text(ui.secretCountdown_),"03:00"));
+    click(ui,LOCK_SESSION); assertSessionWiped(ui); runMockImport(ui);
+    click(ui,REVEAL_PRIVATE); accountXprvDelayMs=65000;
+    enterPrivatePassword(ui); assert(ui.screen_==Screen::Qr);
+    assert(!strcmp(lv_label_get_text(ui.secretCountdown_),"01:00"));
+    click(ui,LOCK_SESSION); assertSessionWiped(ui); runMockImport(ui);
     click(ui,SHOW_WORDS); accountXprvDelayMs=AuroraUI::SESSION_IDLE_MS;
     enterPrivatePassword(ui); assert(ui.screen_==Screen::Mode); assertSessionWiped(ui);
   }
@@ -475,17 +506,67 @@ static void testPasswordFileSessions(AuroraUI &ui) {
   ui.exportFormat_=WalletExportFormat::ElectrumPrivate; exportOk=true;
   ui.performWalletExport(); assert(ui.exportSucceeded_);
   ui.closeSession(); assertSessionWiped(ui);
+  for (auto format : {WalletExportFormat::AuroraWallet, WalletExportFormat::ElectrumPrivate}) {
+    fixture(ui); ui.show(Screen::ExportName); ui.exportFormat_=format;
+    strlcpy(ui.filePassword_,"public-test-password",sizeof(ui.filePassword_));
+    exportFinalizeFails=true;
+    ui.performWalletExport();
+    assert(!ui.exportSucceeded_ && !ui.loadedWallet_);
+    assert(strstr(ui.exportStatus_,"Sauvegarde non confirmée"));
+    assert(!ui.filePassword_[0]);
+    exportFinalizeFails=false;
+    ui.closeSession(); assertSessionWiped(ui);
+  }
+  puts("PASS: late export failure shows unconfirmed backup, never Created, and clears the file password");
   for(unsigned route=0;route<4;++route) {
     prepareImportedFixture(ui,legacyPin); runMockImport(ui);
     click(ui,SHOW_WORDS); enterPrivatePassword(ui);
     if(route==0) ui.closeSession();
-    if(route==1) { mock.time+=120001000; ui.tick(); }
+    if(route==1) { mock.time+=180000000; ui.tick(); }
     if(route==2) { ui.begin(); ui.selfTestPending_=false; }
     if(route==3) { ui.emergencyWipeSecrets(); ui.clear(); }
     assertSessionWiped(ui); assertDisplayReplaced(ui);
   }
   puts("PASS: password-only V1/V2 import, private reauthentication, no retained password/PIN/key/capsule, cancellation/expiry/lock/boot cleanup");
   puts("PASS: file identity binding, SD removal/errors, new pinless export and existing Electrum exception");
+  // Expired navigation cannot redraw words before the periodic tick; unsigned
+  // subtraction must also work when the millisecond deadline crosses zero.
+  for(bool wrapped:{false,true}) {
+    prepareImportedFixture(ui,legacyPin); runMockImport(ui);
+    click(ui,SHOW_WORDS); enterPrivatePassword(ui);
+    const auto savedTime=mock.time;
+    if(wrapped) mock.time=20000;
+    ui.visibleSecretStartedMs_=millis()-(AuroraUI::WORDS_VISIBLE_MS-1);
+    ui.accessGrantedMs_=ui.visibleSecretStartedMs_;
+    ui.tick(); assert(ui.screen_==Screen::Mnemonic);
+    assert(!strcmp(lv_label_get_text(ui.secretCountdown_),"00:01"));
+    mock.time+=1000;
+    click(ui,MNEMONIC_NEXT); // Deliberately no tick at the expired instant.
+    assert(ui.screen_==Screen::Mode); assertSessionWiped(ui);
+    mock.time=savedTime;
+    lv_disp_trig_activity(nullptr);
+  }
+  puts("PASS: one word countdown across pagination, deadline navigation and millis wrap; Return equals lock");
+  prepareImportedFixture(ui,legacyPin); runMockImport(ui);
+  click(ui,SHOW_WORDS); enterPrivatePassword(ui);
+  mock.time+=180000000;
+  ui.show(Screen::SecurityError);
+  assert(ui.screen_==Screen::SecurityError); assertSessionWiped(ui);
+  ui.closeSession();
+  for(bool restored:{false,true}) {
+    fixture(ui); ui.manualRestore_=restored; ui.loadedWallet_=restored;
+    ui.show(Screen::Mnemonic);
+    assert(!ui.secretCountdown_ && ui.visibleSecret_==AuroraUI::Access::None);
+    click(ui,MNEMONIC_NEXT);
+    assert(!ui.secretCountdown_);
+    ui.qrContent_=AuroraUI::QrContent::PrivateKey; ui.show(Screen::Qr);
+    assert(!ui.secretCountdown_ && !actionButton(ui,LOCK_SESSION));
+    mock.time+=61000000; ui.tick();
+    assert(ui.screen_==Screen::Qr && ui.wallet_.privateWif[0]);
+    click(ui,TO_INFO); assert(ui.screen_==Screen::Info && ui.wallet_.valid);
+    ui.closeSession();
+  }
+  puts("PASS: creation/restoration have no countdown; private QR keeps its previous navigation and idle limit");
 }
 
 static void testSensitiveLifecycle(AuroraUI &ui) {
@@ -505,6 +586,7 @@ static void testSensitiveLifecycle(AuroraUI &ui) {
     lifecycleTick+=1000;
     ui.show(screen);
     assert(ui.screen_==screen && ui.sensitiveStateActive_ && !ui.protectedSession_);
+    assert(!ui.secretCountdown_ && ui.visibleSecret_==AuroraUI::Access::None);
     // The same rule covers partially typed secrets and errors, not only a
     // successful wallet or password validation. These are public fixtures.
     if(ui.restoreWordArea_) lv_textarea_set_text(ui.restoreWordArea_,"abandon");
@@ -513,9 +595,12 @@ static void testSensitiveLifecycle(AuroraUI &ui) {
     strlcpy(ui.restoreWords_[0],"ability",sizeof(ui.restoreWords_[0]));
     strlcpy(ui.restoreMnemonic_,"abandon ability",sizeof(ui.restoreMnemonic_));
     strlcpy(ui.umbrelRootXprv_,"test-only-xprv",sizeof(ui.umbrelRootXprv_));
-    lifecycleTick+=AuroraUI::SESSION_IDLE_MS-1;
+    const bool timed=ui.visibleSecret_!=AuroraUI::Access::None;
+    const auto duration=timed?AuroraUI::accessDurationMs(ui.visibleSecret_):AuroraUI::SESSION_IDLE_MS;
+    lifecycleTick+=duration-1;
+    if(timed) mock.time+=(duration-1)*1000;
     ui.tick(); assert(ui.screen_==screen && ui.sensitiveStateActive_);
-    ++lifecycleTick; ui.tick();
+    ++lifecycleTick; if(timed) mock.time+=1000; ui.tick();
     assert(ui.screen_==Screen::Mode);
     assertSessionWiped(ui);
     ui.tick(); assert(!ui.sensorStopPending_);
@@ -642,7 +727,7 @@ static void testSensitiveLifecycle(AuroraUI &ui) {
   ui.closeSession(); assert(!mock.rngEnabled);
   lv_tick_set_cb([]() -> uint32_t { return millis(); });
   lv_disp_trig_activity(nullptr);
-  puts("PASS: all P4 workflows expire from entry at 120 s, including initial words/passwords, errors, back routes, deadline and tick wraparound");
+  puts("PASS: P4 workflow idle expiry 120s, absolute words/key display deadlines 180s/60s, errors, back routes and tick wraparound");
   puts("PASS: explicit/idle lock wipes immediately during stalled sensor shutdown; deferred secret screen and operations cannot resume");
   puts("PASS: security-error/startup cleanup and memory-only emergency wipe of fixed owned buffers");
   puts("PASS: elapsed deadline inside blocking generation/restore/AEZEED/import/export discards returned secrets before the next screen");
@@ -691,7 +776,7 @@ int main() {
       } else if(!strcmp(text,"SEED GENERATOR")) {
         assert(lv_obj_get_y(child)==204);
         assert(lv_obj_get_style_text_font(child,LV_PART_MAIN)==&aurora_font_24); ++splashTitles;
-      } else if(!strcmp(text,"v2.0.0")) {
+      } else if(!strcmp(text,"v" AURORA_P4_FIRMWARE_VERSION)) {
         ++splashVersions;
       }
     }
@@ -875,7 +960,8 @@ int main() {
   }
   assert(umbrelQrCount==1 && umbrelValueCount==1);
   snapshot(ui,"umbrel-qr.ppm");
-  mock.time+=15001000; ui.tick();
+  assert(!ui.secretCountdown_ && ui.visibleSecret_==AuroraUI::Access::None);
+  mock.time+=15000000; ui.tick();
   assert(ui.screen_==Screen::Mode && !ui.umbrelRootXprv_[0]);
   for(auto screen:{Screen::Setup,Screen::RestoreSetup,Screen::ImportName,
                   Screen::Passphrase,Screen::RestoreWords,Screen::RestorePassphrase,

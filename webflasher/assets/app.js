@@ -7,14 +7,14 @@ const copyButton = document.querySelector("#copy-hash");
 const year = document.querySelector("#year");
 
 const releases = {
-  "cyd-1.9.5": {
+  "cyd-1.9.7": {
     target: "ESP32-2432S028R (CYD)",
-    version: "1.9.5",
+    version: "1.9.7",
     state: "DERNIÈRE VERSION",
     flash: "4 Mo",
-    hash: "FFD0E180E90D0C44378CA4E6134C7CD1842F8B4C768831E5B7D77EA6D72276B5",
-    notes: "./releases/1.9.5.md",
-    changes: ["Couleurs du clavier de la 1.7.5 sur tous les écrans de saisie.", "Tailles de police, fonctionnalités et protections conservées."],
+    hash: "3FD8388FD5662B106989FF30C7B25DEED2E55D9D399AECA2C03163EA51C8FBAC",
+    notes: "./releases/1.9.7.md",
+    changes: ["Sauvegardes .aurora : KDF à 500 000 itérations et mot de passe par consultation.", "Mots : 3 min ; clé privée : 1 min, uniquement depuis un fichier authentifié.", "RNG contrôlé, nettoyage renforcé ; polices et clavier classiques conservés."],
     help: "Dernière version pour l’ESP32-2432S028R.",
     description: "Image ESP32-2432S028R fusionnée : flash 4 Mo, mode DIO, fréquence 40 MHz.",
     releaseDescription: "ESP32-2432S028R · Image fusionnée 4 Mo · DIO 40 MHz",
@@ -27,36 +27,36 @@ const releases = {
     flash: "4 Mo",
     hash: "469A8912CD2A7BA3EF919467D84D6857CF60E726A27865157BD1A04653510218",
     notes: "./releases/1.7.5.md",
-    changes: ["Version 1.7.5 conservée, sans modification.", "Pour les corrections récentes, choisissez la 1.9.5."],
+    changes: ["Version 1.7.5 conservée, sans modification.", "Pour les corrections récentes, choisissez la 1.9.7."],
     help: "Ancienne version 1.7.5 conservée pour réinstallation volontaire.",
     description: "Image ESP32-2432S028R fusionnée : flash 4 Mo, mode DIO, fréquence 40 MHz.",
     releaseDescription: "ESP32-2432S028R · Archive 1.7.5 · Image fusionnée 4 Mo",
     warning: "Vous avez choisi la version 1.7.5 pour l’ESP32-2432S028R. Elle ne contient pas les protections et corrections ajoutées depuis cette version."
   },
-  "p4-rev1-2.0.0": {
+  "p4-rev1-2.0.3": {
     target: "Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 · silicium 1.x",
-    version: "2.0.0",
+    version: "2.0.3",
     state: "DÉVELOPPEMENT ACTIF",
     flash: "32 Mo",
-    hash: "C412BE99E5D42991C2D333437559836B452175C9CD785F50C59A8706F6A56D0F",
-    notes: "./releases/2.0.0.md",
-    changes: ["Interface plus lisible, claviers sombres, 12 mots par page et QR agrandis.", "Mot de passe à chaque consultation privée.", "Nettoyage des données temporaires renforcé."],
+    hash: "C4DC3D3A0178402CCFB1F9A5B16246C346A0BDD4AAB5DFEA4FE8CC84E1261594",
+    notes: "./releases/2.0.3.md",
+    changes: ["KDF à 500 000 itérations, accéléré par blocs sur P4.", "RNG et tampons SD renforcés ; mots 3 min / clé privée 1 min depuis le fichier.", "Interface portrait, 12 mots par page et récupération Umbrel/LND conservées."],
     help: "Réservé au silicium P4 révision 1.x, notamment 1.3.",
     description: "Image Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3, silicium 1.x fusionnée : flash 32 Mo, bootloader à 0x2000 et application à 0x10000.",
-    releaseDescription: "Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 · Silicium 1.x · 2.0.0",
+    releaseDescription: "Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 · Silicium 1.x · 2.0.3",
     warning: "DANGER : utilisez cette image uniquement avec un Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3, silicium 1.x. Ne la flashez jamais sur un ESP32-2432S028R ni sur le silicium 3.x."
   },
-  "p4-rev3-2.0.0": {
+  "p4-rev3-2.0.3": {
     target: "Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 · silicium 3.x",
-    version: "2.0.0",
+    version: "2.0.3",
     state: "DÉVELOPPEMENT ACTIF",
     flash: "32 Mo",
-    hash: "E4454A36DC0928BD70D5F25AE62BEC284383C60E0A8740B4C27B5A83507C315E",
-    notes: "./releases/2.0.0.md",
-    changes: ["Interface plus lisible, claviers sombres, 12 mots par page et QR agrandis.", "Mot de passe à chaque consultation privée.", "Nettoyage des données temporaires renforcé."],
-    help: "Réservé au silicium P4 révision 3.x.",
+    hash: "72B909397C61C5731DFDA801C6BB2F503941152811FB13E740AB83CB97CCA6B7",
+    notes: "./releases/2.0.3.md",
+    changes: ["KDF à 500 000 itérations, accéléré par blocs sur P4.", "RNG et tampons SD renforcés ; mots 3 min / clé privée 1 min depuis le fichier.", "Interface portrait, 12 mots par page et récupération Umbrel/LND conservées."],
+    help: "Réservé au silicium P4 révision 3.x. Image contrôlée par logiciel, non testée sur carte 3.x.",
     description: "Image Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3, silicium 3.x fusionnée : flash 32 Mo, bootloader à 0x2000 et application à 0x10000.",
-    releaseDescription: "Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 · Silicium 3.x · 2.0.0",
+    releaseDescription: "Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 · Silicium 3.x · 2.0.3",
     warning: "DANGER : utilisez cette image uniquement avec un Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3, silicium 3.x. Ne la flashez jamais sur un ESP32-2432S028R ni sur le silicium 1.x."
   }
 };

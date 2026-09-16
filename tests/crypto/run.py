@@ -23,17 +23,24 @@ subprocess.run([sys.executable, str(root / "tools/prepare_p4_crypto_overlay.py")
     "--components", str(mbed.parents[1]), "--output", str(crypto_overlay)], check=True)
 includes = [root / "tests/crypto", root / "tests/crypto/stubs", root / "tests/ui/stubs",
             root / "tests/native/stubs", root / "include", mbed / "include", mbed / "library"]
+ubitcoin = root / ".pio/libdeps/esp32-2432S028R/uBitcoin/src"
+subprocess.run([sys.executable, str(root / "tools/patch_ubitcoin_p4.py"),
+    "--lib-root", str(ubitcoin)], check=True)
+includes.append(ubitcoin)
 flags = ["/nologo", "/utf-8", "/D_CRT_SECURE_NO_WARNINGS", f'/FI"{root / "tests/crypto/config_select.h"}"']
 flags += [f'/I"{path}"' for path in includes]
 names = ["aes", "gcm", "md", "pkcs5", "sha256", "sha512", "platform_util", "constant_time", "cipher", "cipher_wrap", "block_cipher"]
 sources = [mbed / "library" / (name + ".c") for name in names]
 sources = [crypto_overlay / source.name if source.name in ("md.c", "platform_util.c") else source
            for source in sources]
+sources += [ubitcoin / "utility/trezor" / (name + ".c") for name in ("sha2", "hmac", "pbkdf2", "memzero")]
+names += ["sha2", "hmac", "pbkdf2", "memzero"]
 c_rsp = output / "compile.rsp"
 c_rsp.write_text("\n".join(flags + ["/c", "/std:c11", "/O2", "/w"] + [f'"{p}"' for p in sources]), encoding="utf-8")
 cpp_rsp = output / "link.rsp"
-cpp_rsp.write_text("\n".join(flags + ["/std:c++20", "/EHsc", "/UNDEBUG", "/DAURORA_BOARD_P4", "/DAURORA_NATIVE_TEST",
-    f'"{root / "tests/crypto/test_crypto.cpp"}"', "/Fecrypto_tests.exe"] + [name + ".obj" for name in names]), encoding="utf-8")
+cpp_rsp.write_text("\n".join(flags + ["/std:c++20", "/EHsc", "/UNDEBUG", "/DAURORA_BOARD_P4", "/DAURORA_NATIVE_TEST", "/DAURORA_KDF_TEST",
+    f'"{root / "tests/crypto/test_crypto.cpp"}"', f'"{root / "src/hardware_rng.cpp"}"',
+    f'"{root / "src/wallet_kdf.cpp"}"', "/Fecrypto_tests.exe"] + [name + ".obj" for name in names]), encoding="utf-8")
 for command in ([compiler, "@" + str(c_rsp)], [compiler, "@" + str(cpp_rsp)], [str(output / "crypto_tests.exe")]):
     result = subprocess.run(command, cwd=output, env=env, capture_output=True, text=True, errors="replace", timeout=180)
     print(result.stdout[-6000:] + result.stderr[-3000:], flush=True)

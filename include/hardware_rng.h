@@ -11,13 +11,10 @@
 // On the original ESP32, esp_random() is only a true hardware RNG while an
 // entropy source is active. AURORA keeps Wi-Fi/Bluetooth disabled, therefore
 // the internal SAR-ADC entropy source must be enabled explicitly.
-inline void hardwareRngEnable() {
-  bootloader_random_enable();
-}
-
-inline void hardwareRngDisable() {
-  bootloader_random_disable();
-}
+// Balanced ownership: a short cryptographic read must not disable the source
+// still owned by the entropy collector. Task context only; not an ISR API.
+void hardwareRngEnable();
+void hardwareRngDisable();
 
 inline void hardwareRandomFill(void *buffer, size_t length) {
   hardwareRngEnable();
