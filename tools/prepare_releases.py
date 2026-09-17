@@ -22,7 +22,7 @@ def main():
     OUT.mkdir(parents=True, exist_ok=True)
     expected = {
         'aurora-1.7.5-esp32-2432s028r.factory.bin': '469A8912CD2A7BA3EF919467D84D6857CF60E726A27865157BD1A04653510218',
-        'aurora-1.9.7-esp32-2432s028r.factory.bin': '3FD8388FD5662B106989FF30C7B25DEED2E55D9D399AECA2C03163EA51C8FBAC',
+        'aurora-1.9.9-esp32-2432s028r.factory.bin': '34A7928985AA88D0E79F2D48EB5143A839E69106B2322DB78D2404EAB03DAD1E',
         'aurora-2.0.3-esp32-p4-rev1.factory.bin': 'C4DC3D3A0178402CCFB1F9A5B16246C346A0BDD4AAB5DFEA4FE8CC84E1261594',
         'aurora-2.0.3-esp32-p4-rev3.factory.bin': '72B909397C61C5731DFDA801C6BB2F503941152811FB13E740AB83CB97CCA6B7',
     }
@@ -34,7 +34,7 @@ def main():
         ''.join(f'{digest(FIRMWARE / name)}  {name}\n' for name in names), encoding='ascii', newline='\n')
     for version, device, images in (
         ('1.7.5', 'CYD', ['aurora-1.7.5-esp32-2432s028r.factory.bin']),
-        ('1.9.7', 'CYD', ['aurora-1.9.7-esp32-2432s028r.factory.bin']),
+        ('1.9.9', 'CYD', ['aurora-1.9.9-esp32-2432s028r.factory.bin']),
         ('2.0.3', 'P4', [f'aurora-2.0.3-esp32-p4-rev{r}.factory.bin' for r in (1, 3)]),
     ):
         checksums = ''.join(f'{digest(FIRMWARE / name)}  {name}\n' for name in images)

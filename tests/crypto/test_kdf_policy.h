@@ -43,7 +43,13 @@ static void testOptimizedKdf() {
 // Python hashlib.pbkdf2_hmac('sha256', password, salt, 500000, 32).
 static void testKdfPolicy() {
   testOptimizedKdf();
-  static_assert(KDF_ITERATIONS == 500000, "New exports must use the selected cost");
+#if defined(AURORA_BOARD_CYD) && !defined(AURORA_BOARD_P4)
+  static_assert(KDF_ITERATIONS == 120000, "CYD writer cost must be 120000");
+#else
+  static_assert(KDF_ITERATIONS == 500000, "P4 writer cost must stay 500000");
+#endif
+  static_assert(KDF_ITERATIONS_MIN == 10000 && KDF_ITERATIONS_MAX == 500000,
+                "Existing files must remain readable on either board");
   constexpr const char *password = "AURORA-public-KDF-test-only";
   const uint8_t salt[16] = {'A','U','R','O','R','A','-','T','E','S','T','-','S','A','L','T'};
   constexpr uint8_t expected[32] = {

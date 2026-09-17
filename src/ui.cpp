@@ -5,6 +5,7 @@
 #include "secure_memory.h"
 #include "splash_img.h"
 #include "version.h"
+#include "aurora_log.h"
 #include "platform/ui_layout.h"
 #if defined(AURORA_BOARD_P4)
 #include "sensors.h"
@@ -76,7 +77,8 @@ enum Action : uint8_t { START, OPEN_WALLET, NEW_WALLET, RESTORE_WALLET, RECOVER_
                         LOCK_SESSION = 113,
                         SHOW_WORDS, RETRY_SD,
                         UMBREL_CONTINUE = 120, UMBREL_DECODE, UMBREL_SHOW_XPRV,
-                        UMBREL_RESULT_BACK, PRIVATE_PASSWORD_CHECK, PRIVATE_PASSWORD_CANCEL };
+                        UMBREL_RESULT_BACK, PRIVATE_PASSWORD_CHECK, PRIVATE_PASSWORD_CANCEL,
+                        BACK_EXPORT_WARNING };
 
 void styleRoot(lv_obj_t *o) {
   lv_obj_set_style_bg_color(o, BLACK, 0); lv_obj_set_style_bg_opa(o, LV_OPA_COVER, 0);
@@ -211,13 +213,15 @@ void AuroraUI::tick() {
   }
   if (selfTestPending_ && static_cast<int32_t>(millis() - selfTestDueMs_) >= 0) {
     selfTestPending_ = false;
+#if AURORA_DEBUG
     const uint32_t selfTestStarted = millis();
+#endif
     selfTestResult_ = engine_.selfTest();
     if (selfTestResult_ == WalletSelfTest::Ok && !auroraWalletCryptoSelfTest()) {
       selfTestResult_ = WalletSelfTest::AuroraWalletCrypto;
     }
-    Serial.printf("AURORA autotest : E%02u\n", static_cast<unsigned>(selfTestResult_));
-    Serial.printf("AURORA autotest durée : %lu ms\n",
+    AURORA_DIAG("AURORA autotest : E%02u\n", static_cast<unsigned>(selfTestResult_));
+    AURORA_DIAG("AURORA autotest durée : %lu ms\n",
                   static_cast<unsigned long>(millis() - selfTestStarted));
     if (selfTestResult_ != WalletSelfTest::Ok) {
       show(Screen::SecurityError);
@@ -233,13 +237,13 @@ void AuroraUI::tick() {
     if (operation == FileOperation::Export) {
       performWalletExport();
       wipeFileCredentials();
-      Serial.printf("AURORA export SD : %lu ms\n", static_cast<unsigned long>(millis() - started));
+      AURORA_DIAG("AURORA export SD : %lu ms\n", static_cast<unsigned long>(millis() - started));
       revokeAccess();
       show(exportSucceeded_ && protectedSession_ ? Screen::Info : Screen::Backup);
     } else if (operation == FileOperation::Import) {
       const bool imported = performWalletImport();
       secureZero(filePassword_, sizeof(filePassword_));
-      Serial.printf("AURORA lecture SD : %lu ms\n", static_cast<unsigned long>(millis() - started));
+      AURORA_DIAG("AURORA lecture SD : %lu ms\n", static_cast<unsigned long>(millis() - started));
       if (imported) {
         show(Screen::Info);
       } else show(Screen::ImportPassword);
@@ -401,7 +405,9 @@ lv_obj_t *AuroraUI::header(const char *title, const char *step, bool showBrand) 
       case Screen::Setup: backAction=BACK_MODE; break;
       case Screen::Passphrase: backAction=BACK_ENTROPY; break;
       case Screen::Entropy: backAction=BACK_SETUP; break;
-      case Screen::Mnemonic: backAction=loadedWallet_ ? BACK_MODE_WIPE : BACK_ENTROPY; break;
+      case Screen::Mnemonic:
+        backAction=manualRestore_ ? TO_INFO : (loadedWallet_ ? BACK_MODE_WIPE : BACK_ENTROPY);
+        break;
       case Screen::PassphraseReveal: backAction=BACK_MNEMONIC; break;
       case Screen::Verify: backAction=BACK_MNEMONIC; break;
       case Screen::Info:
@@ -409,7 +415,8 @@ lv_obj_t *AuroraUI::header(const char *title, const char *step, bool showBrand) 
             SHOW_LOADED_PASSPHRASE : (loadedWallet_ ? BACK_MNEMONIC : BACK_VERIFY);
         break;
       case Screen::Backup: backAction=BACK_INFO; break;
-      case Screen::ExportWarning: case Screen::ExportName: backAction=BACK_BACKUP; break;
+      case Screen::ExportWarning: backAction=BACK_BACKUP; break;
+      case Screen::ExportName: backAction=BACK_EXPORT_WARNING; break;
       case Screen::ExportPassword: backAction=BACK_EXPORT_NAME; break;
       default: break;
     }
@@ -1090,7 +1097,7 @@ void AuroraUI::buildUmbrelQr() {
   lv_obj_t *warning=explanation(root_,"Quiconque possède ce xprv peut dépenser tous les fonds.",&aurora_font_10);
   lv_label_set_long_mode(warning,LV_LABEL_LONG_WRAP);lv_obj_set_size(warning,432,46);
   lv_obj_set_style_text_color(warning,DANGER,0);lv_obj_set_pos(warning,24,665);
-  lv_obj_t *back=button(root_,"RETOUR",event,116);lv_obj_set_user_data(back,(void*)UMBREL_RESULT_BACK);
+  lv_obj_t *back=button(root_,"FERMER",event,116);lv_obj_set_user_data(back,(void*)UMBREL_RESULT_BACK);
   lv_obj_set_pos(back,153,720);lv_obj_set_size(back,174,64);
 #else
   if(!renderQr(root_,umbrelRootXprv_,128,6,48)) {
@@ -1102,7 +1109,7 @@ void AuroraUI::buildUmbrelQr() {
   lv_obj_t *warning=explanation(root_,"Quiconque possède ce xprv peut dépenser tous les fonds.",&aurora_font_10);
   lv_label_set_long_mode(warning,LV_LABEL_LONG_WRAP);AuroraLayout::size(warning,168,34);
   lv_obj_set_style_text_color(warning,DANGER,0);AuroraLayout::pos(warning,142,151);
-  lv_obj_t *back=button(root_,"RETOUR",event,116);lv_obj_set_user_data(back,(void*)UMBREL_RESULT_BACK);
+  lv_obj_t *back=button(root_,"FERMER",event,116);lv_obj_set_user_data(back,(void*)UMBREL_RESULT_BACK);
   AuroraLayout::pos(back,192,194);
 #endif
 }
@@ -1393,7 +1400,9 @@ void AuroraUI::buildMnemonic() {
 #endif
     }
     lv_obj_t *back=button(root_,"RETOUR",event,94);
-    lv_obj_set_user_data(back,(void*)LOCK_SESSION);
+    // Returning revokes private access via show(Info), but keeps the public
+    // file identity. Only explicit lock or expiry closes the entire session.
+    lv_obj_set_user_data(back,(void*)TO_INFO);
 #if defined(AURORA_BOARD_P4)
     lv_obj_set_pos(back,170,720); lv_obj_set_size(back,140,64);
 #else
@@ -1433,7 +1442,7 @@ void AuroraUI::buildMnemonic() {
 }
 
 void AuroraUI::buildPassphraseReveal() {
-  header("Mot supplémentaire", "2 / 4");
+  header("Mot supplémentaire", fileSession_ ? nullptr : "2 / 4");
   lv_obj_t *warning=explanation(root_,
       "DANGER : cette passphrase BIP39 est indispensable pour retrouver exactement ce portefeuille.",
       &aurora_font_10);
@@ -1448,7 +1457,7 @@ void AuroraUI::buildPassphraseReveal() {
   lv_label_set_long_mode(value,LV_LABEL_LONG_WRAP); AuroraLayout::size(value,278,74);
   lv_obj_set_style_text_color(value,lv_color_white(),0); AuroraLayout::pos(value,1,1);
 
-  lv_obj_t *next=button(root_,"CONTINUER",event,132);
+  lv_obj_t *next=button(root_,fileSession_?"RETOUR":"CONTINUER",event,132);
   lv_obj_set_user_data(next,(void*)TO_INFO); AuroraLayout::pos(next,94,190);
 }
 
@@ -1576,13 +1585,10 @@ void AuroraUI::buildInfo() {
     lv_obj_set_pos(saved,12,438); lv_obj_set_style_text_font(saved,&aurora_font_18,0);
 #endif
   }
-  lv_obj_t *q=button(root_,"CODES QR",event,95); lv_obj_set_user_data(q,(void*)TO_QR_ADDRESS); AuroraLayout::pos(q,10,181);
+  lv_obj_t *q=button(root_,"CLÉ PUBLIQUE",event,95); lv_obj_set_user_data(q,(void*)TO_QR_ADDRESS); AuroraLayout::pos(q,10,181);
   lv_obj_t *r=button(root_,"CLÉ PRIVÉE",event,100); lv_obj_set_user_data(r,(void*)REVEAL_PRIVATE); AuroraLayout::pos(r,110,181);
-#if defined(AURORA_BOARD_P4)
-  lv_label_set_text(lv_obj_get_child(q,0),"CLÉ PUBLIQUE");
   lv_obj_set_style_bg_color(q,SUCCESS,0);
   if(protectedSession_) lv_obj_set_style_bg_color(r,DANGER,0);
-#endif
   const char *lastText=protectedSession_?"EXPORTER":(manualRestore_?"EXPORTER":(loadedWallet_?"EFFACER":"SUIVANT"));
   const Action lastAction=protectedSession_?TO_BACKUP:(manualRestore_?TO_BACKUP:(loadedWallet_?DO_WIPE:TO_BACKUP));
   lv_obj_t *x=button(root_,lastText,event,95);
@@ -1701,7 +1707,7 @@ void AuroraUI::buildQr() {
     hasAlternate=true;
   }
   lv_obj_t *back=button(root_,restoreView?"INFORMATIONS":"RETOUR",event,140);
-  lv_obj_set_user_data(back,(void*)(fileSession_ && privateKey?LOCK_SESSION:TO_INFO));
+  lv_obj_set_user_data(back,(void*)TO_INFO);
   lv_obj_set_pos(back,hasAlternate?246:135,720);lv_obj_set_size(back,buttonWidth,64);
 #else
   if(restoreView) {
@@ -1742,7 +1748,7 @@ void AuroraUI::buildQr() {
     lv_obj_set_user_data(a,(void*)TO_QR_ADDRESS); AuroraLayout::pos(a,rightX,147);
   }
   lv_obj_t *b=button(root_,restoreView?"INFORMATIONS":"RETOUR",event,rightWidth);
-  lv_obj_set_user_data(b,(void*)(fileSession_ && privateKey?LOCK_SESSION:TO_INFO)); AuroraLayout::pos(b,rightX,190);
+  lv_obj_set_user_data(b,(void*)TO_INFO); AuroraLayout::pos(b,rightX,190);
 #endif
 }
 
@@ -1823,6 +1829,7 @@ void AuroraUI::buildExportName() {
   keyboard_=createKeyboard(root_); AuroraLayout::size(keyboard_,320,112);
   AuroraLayout::align(keyboard_,LV_ALIGN_BOTTOM_MID,0,0); lv_keyboard_set_textarea(keyboard_,exportNameArea_);
   lv_obj_add_event_cb(keyboard_,event,LV_EVENT_READY,(void*)SAVE_EXPORT);
+  lv_obj_add_event_cb(keyboard_,event,LV_EVENT_CANCEL,(void*)BACK_EXPORT_WARNING);
 }
 
 void AuroraUI::buildExportPassword() {
@@ -1854,6 +1861,7 @@ void AuroraUI::buildExportPassword() {
   keyboard_=createKeyboard(root_); AuroraLayout::size(keyboard_,320,112);
   AuroraLayout::align(keyboard_,LV_ALIGN_BOTTOM_MID,0,0); lv_keyboard_set_textarea(keyboard_,filePasswordArea_);
   lv_obj_add_event_cb(keyboard_,event,LV_EVENT_READY,(void*)SAVE_EXPORT_PASSWORD);
+  lv_obj_add_event_cb(keyboard_,event,LV_EVENT_CANCEL,(void*)BACK_EXPORT_NAME);
 }
 
 void AuroraUI::performWalletExport() {
@@ -2405,10 +2413,14 @@ void AuroraUI::event(lv_event_t *e) {
     }
     case DO_WIPE: g_ui->show(Screen::Wipe); break;
     case PRIVATE_PASSWORD_CHECK: g_ui->submitPrivatePassword(); break;
-    case PRIVATE_PASSWORD_CANCEL:
+    case PRIVATE_PASSWORD_CANCEL: {
+      // Export authentication originates in Backup; other private categories
+      // originate in Info. Keep only a public destination, never credentials.
+      const Screen parent=g_ui->requestedAccess_==Access::Export?Screen::Backup:Screen::Info;
       g_ui->revokeAccess();
       g_ui->fileOperation_=FileOperation::None; g_ui->fileOperationDueMs_=0;
-      g_ui->qrContent_=QrContent::Address; g_ui->show(Screen::Info); break;
+      g_ui->qrContent_=QrContent::Address; g_ui->show(parent); break;
+    }
     case LOCK_SESSION: g_ui->closeSession(); break;
     case RETRY_SD: g_ui->show(g_ui->afterSd_); break;
     case SHOW_WORDS:
@@ -2439,7 +2451,12 @@ void AuroraUI::event(lv_event_t *e) {
       g_ui->show(Screen::ImportName); break;
     case BACK_EXPORT_NAME:
       secureZero(g_ui->filePassword_,sizeof(g_ui->filePassword_));
+      secureZero(g_ui->passwordStatus_,sizeof(g_ui->passwordStatus_));
       g_ui->show(Screen::ExportName); break;
+    case BACK_EXPORT_WARNING:
+      secureZero(g_ui->filePassword_,sizeof(g_ui->filePassword_));
+      secureZero(g_ui->passwordStatus_,sizeof(g_ui->passwordStatus_));
+      g_ui->show(Screen::ExportWarning); break;
     case BACK_MODE_WIPE: g_ui->show(Screen::Wipe); break;
     case BACK_RESTORE_SETUP:
       g_ui->restoreWordIndex_=0; secureZero(g_ui->restoreStatus_,sizeof(g_ui->restoreStatus_));

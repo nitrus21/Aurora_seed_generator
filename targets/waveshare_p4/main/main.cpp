@@ -4,6 +4,7 @@
 #include "ui.h"
 #include "version.h"
 #include "security_memory.h"
+#include "aurora_log.h"
 
 namespace { AuroraUI ui; }
 
@@ -27,19 +28,19 @@ extern "C" void app_main() {
   size_t internalCleaned = 0, externalCleaned = 0;
   if (!auroraStartupMemoryScrub(&internalCleaned, &externalCleaned))
     auroraSecurityPanic();
-  printf("AURORA: startup scrub verified %u internal / %u external bytes\n",
+  AURORA_DIAG("AURORA: startup scrub verified %u internal / %u external bytes\n",
          (unsigned)internalCleaned, (unsigned)externalCleaned);
 
   lv_display_t *display = bsp_display_start();
   if (!display || lv_display_get_horizontal_resolution(display) != 480 ||
       lv_display_get_vertical_resolution(display) != 800) {
-    printf("AURORA P4: unexpected display profile; startup stopped\n");
+    AURORA_DIAG("AURORA P4: unexpected display profile; startup stopped\n");
     return;
   }
   // The LVGL task has just started and can already own this mutex. In this
   // adapter, zero means a non-blocking try, not an infinite wait.
   if (bsp_display_lock(5000) != ESP_OK) {
-    printf("AURORA P4: display startup lock timed out; startup stopped\n");
+    AURORA_DIAG("AURORA P4: display startup lock timed out; startup stopped\n");
     return;
   }
   ui.begin();
@@ -51,7 +52,7 @@ extern "C" void app_main() {
   ESP_ERROR_CHECK(refreshTimer ? ESP_OK : ESP_ERR_NO_MEM);
   bsp_display_unlock();
   bsp_display_backlight_on();
-  printf("AURORA %s: interface P4 480x800 initialisee\n", AURORA_FIRMWARE_VERSION);
+  AURORA_DIAG("AURORA %s: interface P4 480x800 initialisee\n", AURORA_FIRMWARE_VERSION);
   for (;;) {
     if (bsp_display_lock(50) == ESP_OK) {
       ui.tick();

@@ -9,6 +9,7 @@
 #include "ui.h"
 #include "cyd_security.h"
 #include "secure_memory.h"
+#include "aurora_log.h"
 
 namespace {
 TFT_eSPI tft;
@@ -58,7 +59,9 @@ void setup() {
   ui.emergencyWipeSecrets();
   secureZero(pixels, sizeof(pixels));
   if (!auroraCydBootCleanup()) auroraCydUiFailure();
+#if AURORA_DEBUG
   Serial.begin(115200);
+#endif
   // Stop radios without erasing or writing Wi-Fi credentials in NVS.
   WiFi.disconnect(false, false); WiFi.mode(WIFI_OFF);
   btStop(); esp_bt_controller_disable();

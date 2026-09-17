@@ -356,9 +356,12 @@ static void enterPrivatePassword(AuroraUI &ui,const char *password="test-passwor
   lv_obj_send_event(ui.keyboard_,LV_EVENT_READY,nullptr);
   if(ui.screen_==AuroraUI::Screen::FileProcessing) { mock.time+=101000; ui.tick(); }
 }
+#include "test_navigation.h"
 static void testPasswordFileSessions(AuroraUI &ui) {
   using Screen=AuroraUI::Screen;
   AuroraPinRecord legacyPin{}; assert(auroraPinCreate("01234567",legacyPin));
+  prepareImportedFixture(ui,legacyPin,"fixture-passphrase"); runMockImport(ui);
+  testFileNavigation(ui,"test-password-only");
   for(uint8_t version:{1,2}) {
     prepareImportedFixture(ui,legacyPin,"fixture-passphrase");
     importedData.fileVersion=version;
@@ -388,7 +391,7 @@ static void testPasswordFileSessions(AuroraUI &ui) {
     assert(ui.screen_==Screen::Mnemonic && ui.privateLoaded_ && ui.wallet_.mnemonic[0]);
     assert(!ui.filePassword_[0]);
     assert(!actionButton(ui,BACK_MODE_WIPE) && !actionButton(ui,BACK_ENTROPY));
-    auto *back=actionButton(ui,LOCK_SESSION); assert(back);
+    auto *back=actionButton(ui,TO_INFO); assert(back);
     assert(!strcmp(lv_label_get_text(lv_obj_get_child(back,0)),"RETOUR"));
     const auto grant=ui.accessGrantedMs_;
     assert(!strcmp(lv_label_get_text(ui.secretCountdown_),"03:00"));
@@ -400,7 +403,9 @@ static void testPasswordFileSessions(AuroraUI &ui) {
     click(ui,MNEMONIC_PREVIOUS); assert(ui.mnemonicPage_==0 && ui.accessGrantedMs_==grant);
     assert(!strcmp(lv_label_get_text(ui.secretCountdown_),"00:59"));
     snapshot(ui,"words-countdown.ppm");
-    click(ui,LOCK_SESSION); assertSessionWiped(ui); assertDisplayReplaced(ui);
+    lv_disp_trig_activity(nullptr); // Model the real touch after 121s of reading.
+    click(ui,TO_INFO); assertPublicFileSession(ui); assertDisplayReplaced(ui);
+    click(ui,LOCK_SESSION); assertSessionWiped(ui);
     runMockImport(ui);
     for(Action action:{SHOW_LOADED_PASSPHRASE,REVEAL_PRIVATE,SHOW_WORDS}) {
       click(ui,action); assert(ui.screen_==Screen::PrivatePassword);
@@ -452,10 +457,12 @@ static void testPasswordFileSessions(AuroraUI &ui) {
     click(ui,SHOW_WORDS); accountXprvDelayMs=65000;
     enterPrivatePassword(ui); assert(ui.screen_==Screen::Mnemonic);
     assert(!strcmp(lv_label_get_text(ui.secretCountdown_),"03:00"));
+    click(ui,TO_INFO); assertPublicFileSession(ui);
     click(ui,LOCK_SESSION); assertSessionWiped(ui); runMockImport(ui);
     click(ui,REVEAL_PRIVATE); accountXprvDelayMs=65000;
     enterPrivatePassword(ui); assert(ui.screen_==Screen::Qr);
     assert(!strcmp(lv_label_get_text(ui.secretCountdown_),"01:00"));
+    click(ui,TO_INFO); assertPublicFileSession(ui);
     click(ui,LOCK_SESSION); assertSessionWiped(ui); runMockImport(ui);
     click(ui,SHOW_WORDS); accountXprvDelayMs=AuroraUI::SESSION_IDLE_MS;
     enterPrivatePassword(ui); assert(ui.screen_==Screen::Mode); assertSessionWiped(ui);
@@ -546,7 +553,7 @@ static void testPasswordFileSessions(AuroraUI &ui) {
     mock.time=savedTime;
     lv_disp_trig_activity(nullptr);
   }
-  puts("PASS: one word countdown across pagination, deadline navigation and millis wrap; Return equals lock");
+  puts("PASS: one word countdown across pagination, deadline navigation and millis wrap; Return keeps public session, lock/expiry close it");
   prepareImportedFixture(ui,legacyPin); runMockImport(ui);
   click(ui,SHOW_WORDS); enterPrivatePassword(ui);
   mock.time+=180000000;
@@ -557,6 +564,10 @@ static void testPasswordFileSessions(AuroraUI &ui) {
     fixture(ui); ui.manualRestore_=restored; ui.loadedWallet_=restored;
     ui.show(Screen::Mnemonic);
     assert(!ui.secretCountdown_ && ui.visibleSecret_==AuroraUI::Access::None);
+    if(restored) {
+      click(ui,TO_INFO); assert(ui.screen_==Screen::Info && ui.wallet_.mnemonic[0]);
+      click(ui,BACK_MNEMONIC); assert(ui.screen_==Screen::Mnemonic);
+    }
     click(ui,MNEMONIC_NEXT);
     assert(!ui.secretCountdown_);
     ui.qrContent_=AuroraUI::QrContent::PrivateKey; ui.show(Screen::Qr);

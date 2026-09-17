@@ -1,4 +1,4 @@
-# Tests de sécurité — ESP32-2432S028R 1.9.7
+# Tests de sécurité — ESP32-2432S028R 1.9.9
 
 Après compilation du CYD et installation des dépendances natives indiquées dans
 `tests/crypto/README.md` et `tests/ui/README.md` :

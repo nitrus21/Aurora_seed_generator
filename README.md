@@ -44,10 +44,10 @@ sauvegarde chiffrée sur microSD. Pas de compte à ouvrir, pas de cloud à confi
 
 | Carte exacte | Expérience | Version à installer |
 | --- | --- | --- |
-| **ESP32-2432S028R — Cheap Yellow Display (CYD)** | Tactile résistif 2,8″, 320 × 240 ; interface compacte et clavier classique. | **1.9.7** ; **1.7.5** conservée comme ancienne version. |
+| **ESP32-2432S028R — Cheap Yellow Display (CYD)** | Tactile résistif 2,8″, 320 × 240 ; interface compacte et clavier classique. | **1.9.9**, version finale ; **1.7.5** conservée. |
 | **Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3** | Tactile capacitif 4,3″, 480 × 800 portrait ; 12 mots par page, grands QR et clavier sombre. | **2.0.3**, image adaptée au silicium **1.x** ou **3.x**. |
 
-La **1.9.7 clôt la branche ESP32-2432S028R**. Depuis la version 2.0.0, les nouvelles
+La **1.9.9 clôt la branche ESP32-2432S028R**. Depuis la version 2.0.0, les nouvelles
 fonctionnalités se développent sur la **Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3**.
 Les mentions CYD et P4 ci-dessous désignent ces deux références.
 Le modèle Waveshare avec suffixe `-C` n’est pas la cible de ces images.
@@ -113,8 +113,9 @@ d’observer les adresses de son compte.
 
 Insérez une microSD FAT32 et choisissez **Aurora Wallet**. Nommez le fichier
 et choisissez un mot de passe long, unique et imprévisible. Le fichier `.aurora`
-est chiffré avec AES-256-GCM ; les versions actuelles utilisent
-**500 000 itérations PBKDF2-HMAC-SHA-256** pour les nouvelles sauvegardes.
+est chiffré avec AES-256-GCM. Le CYD 1.9.9 utilise **120 000 itérations
+PBKDF2-HMAC-SHA-256** pour les nouvelles sauvegardes ; le P4 2.0.3 en utilise
+**500 000**. Choisissez toujours un mot de passe long, unique et imprévisible.
 
 Vérifiez l’ouverture de votre sauvegarde avant de compter sur elle. Conservez
 aussi une copie durable des mots et de votre éventuelle passphrase.
@@ -147,8 +148,11 @@ ou la clé de déchiffrement entre ces consultations. Il n’y a pas de PIN.
 | Passphrase | **15 secondes**, traitement compris. |
 | Préparation d’export | **120 secondes**, avec contrôle avant écriture. |
 
-Pour les mots et la clé privée, **RETOUR** ou la fin du décompte ferme toute la
-session. Changer de page ne prolonge pas la durée. Ces décomptes sont absents
+Sur le CYD 1.9.9, **RETOUR** efface les secrets consultés et revient aux boutons
+du portefeuille. Seules les informations publiques et l’identité du fichier
+restent disponibles ; la prochaine consultation privée redemande le mot de passe.
+**VERROUILLER** ou la fin du décompte des mots/de la clé privée ferme toute la session.
+Changer de page ne prolonge pas la durée. Ces décomptes sont absents
 de la création/restauration manuelle : les autres parcours du portefeuille
 conservent **2 minutes d’inactivité**. L’accueil n’est pas concerné.
 Verrouiller ne supprime pas les fichiers microSD.
@@ -193,8 +197,17 @@ cache ou périphérique n’est garantie. Ces images ne provisionnent ni Secure 
 ni chiffrement flash, ni protection irréversible contre un accès physique.
 Le logiciel ne protège pas contre un appareil modifié ou un firmware remplacé.
 
+**Gardez un appareil de confiance :** un appareil préflashé, prêté ou dont le
+passé est inconnu peut avoir été modifié. Réinstaller un firmware de confiance
+ne suffit pas à exclure une modification matérielle. Saisissez et consultez vos
+secrets à l’abri des regards et des caméras ; les traces de doigts peuvent aussi
+révéler des indices sur la saisie. Après le flash, utilisez une alimentation
+autonome sans données USB, pas un ordinateur ou un hôte USB inconnu.
+Supprimer un fichier de la microSD ne garantit pas l’effacement de ses anciennes
+copies physiques.
+
 Tests logiciels, contrôles d’images et essais de démarrage ne constituent pas
-une certification. Consultez les [limites détaillées](SECURITY.md) et le
+une certification. Consultez le
 [suivi des dépendances](DEPENDENCIES.md).
 
 ## Pour aller plus loin

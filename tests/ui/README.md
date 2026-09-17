@@ -12,7 +12,7 @@ Le test compile les **vraies sources** de `src/ui.cpp`, de la compatibilité V2,
 
 `run.py` est le lanceur des deux profils : P4 par défaut, ESP32-2432S028R avec `--cyd`.
 
-CYD 1.9.7 : assertions sur les tailles de police de la 1.7.5 (configuration,
+CYD 1.9.9 : assertions sur les tailles de police de la 1.7.5 (configuration,
 titres, saisies, mots, boutons, collecte), captures 320 × 240 et contrôle des
 boutons d’information après génération comme après ouverture de fichier.
 Les couleurs du clavier sont comparées au thème natif LVGL 8 de la 1.7.5,
@@ -46,6 +46,13 @@ AES-GCM/PBKDF2 et la liaison exacte au fichier.
 - Retour/annulation/expiration effacent les secrets. Une navigation entre pages
   de mots ne renouvelle pas la limite. Les durées simulées de dérivation testent
   les échéances privées et l’inactivité, avant affichage ou écriture.
+- Le banc commun de navigation vérifie sur les deux interfaces le retour des
+  consultations au portefeuille public, sans mot de passe/clé/mots/passphrase
+  conservés, l’identité du fichier inchangée et une nouvelle authentification.
+  Il couvre aussi les QR publics, l’annulation d’authentification d’export vers
+  les formats, les retours des formulaires par flèche et clavier, ainsi que le
+  retour depuis les mots d’une restauration manuelle. Verrouillage, retour à
+  l’échéance et inactivité ferment toujours entièrement la session.
 - La validation du mot de passe d’export et de sa confirmation planifie directement
   l’écriture, sans écran PIN. Les nouveaux fichiers sont sans PIN (V1 exact).
   L’export Electrum explicitement autorisé reste disponible.
@@ -77,7 +84,7 @@ essais distincts sur carte avec des données publiques.
 Ces tests n'attestent ni les pilotes physiques, ni le caractère imprévisible des capteurs, ni la compatibilité électrique d'une caméra. La recette sur les deux appareils reste obligatoire. Pour la génération d'entropie et le format binaire figé, voir également `tests/native/run.cmd`.
 
 Le profil `--cyd` compile LVGL **8.4.0** installé par le build CYD et les mêmes
-sources UI/allocateur et le profil **CYD 1.9.7**. Il capture les formulaires en **320 × 240**
+sources UI/allocateur et le profil **CYD 1.9.9**. Il capture les formulaires en **320 × 240**
 dans `tmp/ui-cyd-native/` et vérifie les événements réels de validation du clavier
 ainsi que les consultations par mot de passe, les expirations de 15/60/120/180 secondes,
 les calculs trop longs, la substitution du fichier, le retrait SD et le nettoyage

@@ -2,9 +2,13 @@
 .vscode/
 sources/
 tmp/
+node_modules/
 .agents/
 .codex/
 AGENTS.md
+
+# Security documents and audit evidence remain private (under tmp/).
+[Ss][Ee][Cc][Uu][Rr][Ii][Tt][Yy].[Mm][Dd]
 
 *.log
 .DS_Store

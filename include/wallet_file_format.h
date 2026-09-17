@@ -3,8 +3,9 @@
 #include <stdint.h>
 #include "pin_security.h"
 
-// Aurora Wallet V1 is a device-independent wire format. Changing these values
-// requires an explicit format migration, never a board-specific fork.
+// Aurora Wallet V1 is a device-independent wire format. Layout/algorithm changes
+// require a format migration. Writer cost is policy stored in the authenticated
+// header; different costs never change the layout or reader compatibility.
 namespace AuroraWalletFormat {
 constexpr uint8_t FILE_MAGIC[8] = {'A', 'U', 'R', 'O', 'R', 'A', 'W', '1'};
 constexpr uint8_t PAYLOAD_MAGIC[8] = {'A', 'U', 'R', 'D', 'A', 'T', '0', '1'};
@@ -12,7 +13,12 @@ constexpr uint8_t FILE_VERSION = 1;
 constexpr uint8_t KDF_PBKDF2_HMAC_SHA256 = 1;
 constexpr uint8_t CIPHER_AES_256_GCM = 1;
 // New exports only; existing files retain their authenticated iteration count.
+#if defined(AURORA_BOARD_CYD) && !defined(AURORA_BOARD_P4)
+// User-selected CYD latency trade-off (1.9.9); no change to P4 or reader bounds.
+constexpr uint32_t KDF_ITERATIONS = 120000;
+#else
 constexpr uint32_t KDF_ITERATIONS = 500000;
+#endif
 constexpr uint32_t KDF_ITERATIONS_MIN = 10000;
 constexpr uint32_t KDF_ITERATIONS_MAX = 500000;
 static_assert(KDF_ITERATIONS >= KDF_ITERATIONS_MIN && KDF_ITERATIONS <= KDF_ITERATIONS_MAX,

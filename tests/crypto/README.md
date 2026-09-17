@@ -4,14 +4,20 @@ Prérequis : Python 3, outils C++ Visual Studio et SDK ESP-IDF installé par la 
 
 ```powershell
 python tests/crypto/run.py
+# Exception CYD explicitement autorisée : politique 120000 et lecteur CYD
+python tests/crypto/run.py --cyd
 ```
 
-Le test compile **`src/sd_export.cpp`, `src/pin_security.cpp` et Mbed TLS réel** avec une carte simulée uniquement en RAM. Il vérifie les vecteurs PBKDF2-HMAC-SHA-256/AES-256-GCM et BIP39 SHA-512 inchangés, l'équivalence des API, la lecture V1 de 1 120 octets avec firmware `1.7.6`, l'aller-retour V2 de 1 200 octets, le rejet d'un mauvais mot de passe, des altérations/troncatures, l'effacement après échec, le non-écrasement et le nettoyage d'une écriture dont la synchronisation échoue. Les tests de l’ancien vérificateur PIN sont conservés uniquement pour la compatibilité V2 : zéros initiaux, bornes 4–8, caractères refusés, sels indépendants et blocage après trois erreurs cumulées même séparées par un succès. Ils ne décrivent pas un parcours PIN actuel sur l’une ou l’autre carte.
+Le test compile **`src/sd_export.cpp`, `src/pin_security.cpp` et Mbed TLS réel** avec une carte simulée uniquement en RAM. Il vérifie les vecteurs PBKDF2-HMAC-SHA-256/AES-256-GCM et BIP39 SHA-512 inchangés, l'équivalence des API, la lecture d’une fixture V1 de 1 120 octets, l'aller-retour V2 de 1 200 octets, le rejet d'un mauvais mot de passe, des altérations/troncatures, l'effacement après échec, le non-écrasement et le nettoyage d'une écriture dont la synchronisation échoue. Les tests de l’ancien vérificateur PIN sont conservés uniquement pour la compatibilité V2 : zéros initiaux, bornes 4–8, caractères refusés, sels indépendants et blocage après trois erreurs cumulées même séparées par un succès. Ils ne décrivent pas un parcours PIN actuel sur l’une ou l’autre carte.
 
 Les parcours actuels sont couverts par l’écriture **V1 sans PIN**, de taille
 inchangée, puis la relecture authentifiée. Le KDF de fichier conserve PBKDF2-HMAC-SHA-256
-mais utilise 500 000 itérations pour les nouvelles sauvegardes. Les tests incluent
-les anciennes sauvegardes à 120 000, les bornes et les vecteurs différentiels.
+mais utilise 500 000 itérations sur P4 et 120 000 sur CYD 1.9.9 pour les
+nouvelles sauvegardes. Les deux profils vérifient les fichiers V1/V2 à 10 000,
+120 000 et 500 000, les bornes, les vecteurs différentiels, les en-têtes réellement
+écrits et le rejet d'une modification non authentifiée du compteur.
+Le mode `--cyd` reste un test hôte avec carte RAM et Mbed TLS natif ; il n'est
+pas une mesure du SDK ou de la durée sur appareil.
 `readAuroraWalletFileChecked` vérifie l'empreinte SHA-256 attendue avant
 d'autoriser la lecture ; une substitution, même chiffrée avec le même mot de
 passe, est refusée. `writeAuroraWalletFileVerified` relit et authentifie la

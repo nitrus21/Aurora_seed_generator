@@ -4,9 +4,14 @@ import os
 import shutil
 import subprocess
 import sys
+import argparse
+
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--cyd', action='store_true', help='CYD policy/backend on host, no hardware I/O')
+args = parser.parse_args()
 
 root = Path(__file__).resolve().parents[2]
-output = root / "tmp/crypto-native"
+output = root / ("tmp/crypto-native-cyd" if args.cyd else "tmp/crypto-native")
 output.mkdir(parents=True, exist_ok=True)
 env = {k.upper(): v for k, v in os.environ.items()}
 vswhere = Path(env["PROGRAMFILES(X86)"]) / "Microsoft Visual Studio/Installer/vswhere.exe"
@@ -38,7 +43,8 @@ names += ["sha2", "hmac", "pbkdf2", "memzero"]
 c_rsp = output / "compile.rsp"
 c_rsp.write_text("\n".join(flags + ["/c", "/std:c11", "/O2", "/w"] + [f'"{p}"' for p in sources]), encoding="utf-8")
 cpp_rsp = output / "link.rsp"
-cpp_rsp.write_text("\n".join(flags + ["/std:c++20", "/EHsc", "/UNDEBUG", "/DAURORA_BOARD_P4", "/DAURORA_NATIVE_TEST", "/DAURORA_KDF_TEST",
+board_flag = '/DAURORA_BOARD_CYD' if args.cyd else '/DAURORA_BOARD_P4'
+cpp_rsp.write_text("\n".join(flags + ["/std:c++20", "/EHsc", "/UNDEBUG", board_flag, "/DAURORA_NATIVE_TEST", "/DAURORA_KDF_TEST",
     f'"{root / "tests/crypto/test_crypto.cpp"}"', f'"{root / "src/hardware_rng.cpp"}"',
     f'"{root / "src/wallet_kdf.cpp"}"', "/Fecrypto_tests.exe"] + [name + ".obj" for name in names]), encoding="utf-8")
 for command in ([compiler, "@" + str(c_rsp)], [compiler, "@" + str(cpp_rsp)], [str(output / "crypto_tests.exe")]):

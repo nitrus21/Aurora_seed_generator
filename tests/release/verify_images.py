@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[2]
 WEB = ROOT / 'webflasher'
 FW = WEB / 'firmware'
 CATALOG = {
-    'cyd-1.9.7': ('manifest.json', '1.9.7', 0, 0x1000, None),
+    'cyd-1.9.9': ('manifest.json', '1.9.9', 0, 0x1000, None),
     'cyd-1.7.5': ('manifests/cyd-1.7.5.json', '1.7.5', 0, 0x1000, None),
     'p4-rev1-2.0.3': ('manifests/p4-rev1-2.0.3.json', '2.0.3', 18, 0x2000, (100, 199)),
     'p4-rev3-2.0.3': ('manifests/p4-rev3-2.0.3.json', '2.0.3', 18, 0x2000, (300, 399)),
@@ -56,13 +56,14 @@ class Page(HTMLParser):
 
 def main():
     # Withdrawn releases must not remain downloadable through direct site URLs.
-    for withdrawn in ('1.9.2', '1.9.3', '1.9.4', '1.9.5', '1.9.6', '2.0.0', '2.0.1', '2.0.2'):
+    for withdrawn in ('1.9.2', '1.9.3', '1.9.4', '1.9.5', '1.9.6', '1.9.7', '1.9.8', '2.0.0', '2.0.1', '2.0.2'):
         assert not list(WEB.rglob(f'*{withdrawn}*')), f'Withdrawn release still present: {withdrawn}'
     page = Page()
     page.feed((WEB / 'index.html').read_text(encoding='utf-8'))
     assert set(page.options) == set(CATALOG) and len(page.options) == len(CATALOG)
     assert set(page.installers) == set(CATALOG)
-    assert {p.relative_to(WEB).as_posix() for p in WEB.rglob('*.json')} == {v[0] for v in CATALOG.values()} | {'firmware/flash-layout.json'}
+    assert {p.relative_to(WEB).as_posix() for p in WEB.rglob('*.json')} == {v[0] for v in CATALOG.values()} | {
+        'firmware/flash-layout.json', 'assets/vendor/esp-web-tools/integrity.json'}
     names = set()
     for release, (manifest, version, chip, boot, revisions) in CATALOG.items():
         assert page.installers[release] == manifest
@@ -87,7 +88,7 @@ def main():
             assert version.encode() + b'\0' in data[0x10000:]
         if release == 'cyd-1.7.5':
             assert hashlib.sha256(data[0x10000:]).hexdigest() == 'ba275c95507a713335a15c2452d5ae47f70d95f077f3f624f93a96f83beb6bf4'
-        if release == 'cyd-1.9.7':
+        if release == 'cyd-1.9.9':
             assert b'aurora_scrub\0' in data[0x8000:0x8c00]
             assert b'coredump' not in data[0x8000:0x8c00]
         print('PASS: embedded images, checksums, version and silicon range:', release)
@@ -95,7 +96,7 @@ def main():
     # Optional locally prepared ZIPs: strictly allowlist public release inputs.
     for version, device, images in (
         ('1.7.5', 'CYD', ['aurora-1.7.5-esp32-2432s028r.factory.bin']),
-        ('1.9.7', 'CYD', ['aurora-1.9.7-esp32-2432s028r.factory.bin']),
+        ('1.9.9', 'CYD', ['aurora-1.9.9-esp32-2432s028r.factory.bin']),
         ('2.0.3', 'P4', [f'aurora-2.0.3-esp32-p4-rev{r}.factory.bin' for r in (1, 3)]),
     ):
         path = ROOT / f'tmp/release-candidates/AURORA-v{version}-{device}.zip'

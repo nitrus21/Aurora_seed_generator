@@ -1,6 +1,6 @@
 #pragma once
 #include <cstdio>
-#include <cstdlib>
+#include <cerrno>
 #include <cstring>
 #include <dirent.h>
 #include <fcntl.h>
@@ -8,8 +8,9 @@
 #include <unistd.h>
 #include "secure_memory.h"
 
-// Arduino File::flush() drops fflush/fsync errors. Own the VFS handle and its
-// buffer instead. No overwrite and no hidden plaintext stdio buffer on close.
+// Own the FAT VFS descriptor: Arduino File::flush() loses sync errors, while
+// IDF 4.4 fdopen() requires an unsupported FAT fcntl(F_GETFL). Direct I/O also
+// avoids an application-owned plaintext stdio buffer. SDK buffers are separate.
 class AuroraFile {
  public:
   AuroraFile() = default;
@@ -20,41 +21,50 @@ class AuroraFile {
   AuroraFile &operator=(AuroraFile &&other) noexcept {
     if (this != &other) { close(); take(other); } return *this;
   }
-  explicit operator bool() const { return file_ || dir_; }
+  explicit operator bool() const { return fd_ >= 0 || dir_; }
   bool isDirectory() const { return dir_ != nullptr; }
   const char *name() const { return name_; }
   size_t read(uint8_t *out, size_t length) {
-    if (!file_) return 0;
-    const size_t n = fread(out, 1, length, file_);
-    failed_ |= ferror(file_) != 0;
-    return n;
+    if (fd_ < 0 || writing_ || failed_) return 0;
+    size_t done = 0;
+    while (done < length) {
+      const auto n = ::read(fd_, out + done, length - done);
+      if (n < 0) { if (errno == EINTR) continue; failed_ = true; break; }
+      if (n == 0) break; // EOF is not an error.
+      done += static_cast<size_t>(n);
+    }
+    return done;
   }
   size_t write(const uint8_t *data, size_t length) {
-    if (!file_ || !writing_ || failed_) return 0;
-    const size_t n = fwrite(data, 1, length, file_);
-    failed_ |= n != length || ferror(file_) != 0;
-    return n;
+    if (fd_ < 0 || !writing_ || failed_) return 0;
+    size_t done = 0;
+    while (done < length) {
+      const auto n = ::write(fd_, data + done, length - done);
+      if (n < 0 && errno == EINTR) continue;
+      if (n <= 0) { failed_ = true; break; }
+      done += static_cast<size_t>(n);
+    }
+    return done;
   }
   size_t size() {
     struct stat st{};
-    if (!file_ || fstat(fileno(file_), &st) != 0 || st.st_size < 0) { failed_ = true; return 0; }
+    if (fd_ < 0 || fstat(fd_, &st) != 0 || st.st_size < 0) { failed_ = true; return 0; }
     return static_cast<size_t>(st.st_size);
   }
   bool flush() {
-    if (!file_) return false;
-    const bool flushed = fflush(file_) == 0;
-    const bool synced = fsync(fileno(file_)) == 0;
-    failed_ |= !flushed || !synced || ferror(file_) != 0;
+    if (fd_ < 0) return false;
+    int status;
+    do { status = fsync(fd_); } while (status != 0 && errno == EINTR);
+    failed_ |= status != 0;
     return !failed_;
   }
   bool close() {
-    if (file_) {
-      // Flush before zeroing: wiping pending bytes would corrupt the backup.
+    if (fd_ >= 0) {
       if (writing_) flush();
-      if (fclose(file_) != 0) failed_ = true;
-      file_ = nullptr;
+      // Never retry close: after an error descriptor ownership is ambiguous.
+      if (::close(fd_) != 0) failed_ = true;
+      fd_ = -1;
     }
-    if (buffer_) { secureZero(buffer_, BUFFER_SIZE); free(buffer_); buffer_ = nullptr; }
     if (dir_) { if (closedir(dir_) != 0) failed_ = true; dir_ = nullptr; }
     secureZero(name_, sizeof(name_));
     return !failed_;
@@ -70,23 +80,12 @@ class AuroraFile {
       if (fd >= 0) {
         struct stat st{};
         if (fstat(fd, &st) != 0 || !S_ISREG(st.st_mode)) {
-          ::close(fd);
-          if (write) unlink(full); // Only the file just created with O_EXCL.
+          const bool closed = ::close(fd) == 0;
+          if (write && closed) unlink(full); // Only our own empty O_EXCL artifact.
           secureZero(full, sizeof(full));
           return result;
         }
-        result.file_ = fdopen(fd, write ? "wb" : "rb");
-        if (!result.file_) ::close(fd);
-        else {
-          result.buffer_ = static_cast<uint8_t *>(malloc(BUFFER_SIZE));
-          if (result.buffer_) secureZero(result.buffer_, BUFFER_SIZE);
-          if (!result.buffer_ || setvbuf(result.file_, reinterpret_cast<char *>(result.buffer_), _IOFBF, BUFFER_SIZE) != 0) {
-            result.failed_ = true; result.close();
-          }
-        }
-        // Only this call created the file with O_EXCL. A failed setup may
-        // remove its empty artifact, never an existing or read-only backup.
-        if (!result.file_ && write) unlink(full);
+        result.fd_ = fd;
       }
     }
     result.writing_ = write;
@@ -108,16 +107,15 @@ class AuroraFile {
   }
  private:
   void take(AuroraFile &other) {
-    file_ = other.file_; dir_ = other.dir_; buffer_ = other.buffer_;
+    fd_ = other.fd_; dir_ = other.dir_;
     failed_ = other.failed_; writing_ = other.writing_;
     memcpy(name_, other.name_, sizeof(name_));
-    other.file_ = nullptr; other.dir_ = nullptr; other.buffer_ = nullptr;
+    other.fd_ = -1; other.dir_ = nullptr;
+    other.failed_ = false; other.writing_ = false;
     secureZero(other.name_, sizeof(other.name_));
   }
-  static constexpr size_t BUFFER_SIZE = 512;
-  FILE *file_ = nullptr;
+  int fd_ = -1;
   DIR *dir_ = nullptr;
-  uint8_t *buffer_ = nullptr;
   bool failed_ = false;
   bool writing_ = false;
   char name_[128]{};

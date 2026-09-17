@@ -8,7 +8,6 @@ extern "C" const char *const *mnemonic_wordlist(void) { return wordlist; }
 #include "../../src/pin_security.cpp"
 #include "test_kdf_policy.h"
 
-#if defined(AURORA_BOARD_P4)
 template <typename T>
 static bool allZero(const T &value) {
   const auto *bytes = reinterpret_cast<const uint8_t *>(&value);
@@ -140,8 +139,6 @@ static void testSessionAccess(const WalletExportData &fixture, const char *passw
   assert(allZero(access) && allZero(opened));
   puts("PASS: password-only reread, no key output, exact SHA256 binding, wrong-password/tag/replacement/format rejection, failure-output wipe, authenticated read-back and preservation of written backups");
 }
-#endif
-
 int main() {
   testKdfPolicy();
   {
@@ -225,10 +222,8 @@ int main() {
   assert(!strcmp(restored.mnemonic, fixture.mnemonic) && !strcmp(restored.passphrase, fixture.passphrase));
   assert(!strcmp(restored.accountXprv, fixture.accountXprv) && restored.addressKind == 2 && restored.wordCount == 12);
   assert(restored.fileVersion==2 && auroraPinVerify("01234567",restored.pin));
-  assert(original[9]==KDF_PBKDF2_HMAC_SHA256 && getLe32(original.data()+12)==500000);
-#if defined(AURORA_BOARD_P4)
+  assert(original[9]==KDF_PBKDF2_HMAC_SHA256 && getLe32(original.data()+12)==KDF_ITERATIONS);
   testSessionAccess(fixture, filePassword);
-#endif
   assert(auroraPinCreate("4321",another));
   auto otherFile=fixture; otherFile.pin=&another;
   assert(writeWalletExportFile(WalletExportFormat::AuroraWallet,"other",filePassword,otherFile,path,sizeof(path))==WalletExportResult::Ok);
@@ -252,7 +247,6 @@ int main() {
   assert(readAuroraWalletFile("test", filePassword, restored) == AuroraWalletReadResult::Ok);
   assert(!strcmp(restored.mnemonic, fixture.mnemonic));
   assert(restored.fileVersion==1 && !auroraPinRecordValid(restored.pin));
-#if defined(AURORA_BOARD_P4)
   uint8_t legacyAccess[32]{};
   assert(readAuroraWalletFileChecked("test", filePassword, restored, legacyAccess) == AuroraWalletReadResult::Ok);
   uint8_t legacyFingerprint[32]{}; fingerprintFixture(released, legacyFingerprint);
@@ -260,7 +254,6 @@ int main() {
   assert(readAuroraWalletFileChecked("test", filePassword, restored, nullptr, legacyAccess) == AuroraWalletReadResult::Ok);
   assert(restored.fileVersion == 1 && !strcmp(restored.mnemonic, fixture.mnemonic));
   secureZero(legacyAccess,sizeof(legacyAccess)); secureZero(legacyFingerprint, sizeof(legacyFingerprint));
-#endif
   testCard["/test.aurora"] = original;
   assert(writeWalletExportFile(WalletExportFormat::AuroraWallet, "test", filePassword, fixture, path, sizeof(path)) == WalletExportResult::AlreadyExists);
   assert(testCard.at("/test.aurora") == original);
@@ -302,7 +295,6 @@ int main() {
   assert(readAuroraWalletFile("test", filePassword, restored) == AuroraWalletReadResult::InvalidFormat);
   testCard["/test.aurora"] = original;
   auto missingPin=fixture; missingPin.pin=nullptr;
-#if defined(AURORA_BOARD_P4)
   uint8_t pinlessFingerprint[32]{};
   assert(writeAuroraWalletFileVerified("no-pin",filePassword,missingPin,path,sizeof(path),pinlessFingerprint)==WalletExportResult::Ok);
   assert(readAuroraWalletFileChecked("no-pin",filePassword,restored,nullptr,pinlessFingerprint)==AuroraWalletReadResult::Ok);
@@ -311,12 +303,6 @@ int main() {
   assert(testCard.at("/no-pin.aurora").size()==HEADER_SIZE+sizeof(AuroraPayloadV1)+TAG_SIZE);
   assert(getLe32(testCard.at("/no-pin.aurora").data()+12)==KDF_ITERATIONS);
   wipeAuroraWalletData(restored);
-#else
-  assert(writeWalletExportFile(WalletExportFormat::AuroraWallet,"no-pin",filePassword,missingPin,path,sizeof(path))==WalletExportResult::InvalidPin);
-#endif
-#if !defined(AURORA_BOARD_P4)
-  assert(!testCard.count("/no-pin.aurora"));
-#endif
   testSyncOk = false;
   assert(writeWalletExportFile(WalletExportFormat::AuroraWallet, "failure", filePassword, fixture, path, sizeof(path)) == WalletExportResult::WriteFailed);
   assert(!testCard.count("/failure.aurora") && testCard.at("/test.aurora") == original);
@@ -346,5 +332,5 @@ int main() {
   puts("PASS: P4 close/unmount failures never return success for Aurora/Electrum; uncertain backups preserved, outputs cleared, no overwrite");
 #endif
   puts("PASS: read-only SD presence/root check accepts empty media, rejects absent/unreadable media, no-card export creates nothing");
-  puts("PASS: unchanged wallet derivation, file KDF 500000, legacy V1 120000 read and V2 round trip, legacy PIN record, tamper/wrong-password rejection, no overwrite, failed-sync cleanup");
+  printf("PASS: selected writer KDF %lu, legacy V1 120000 read and V2 round trip, legacy PIN record, tamper/wrong-password rejection, no overwrite, failed-sync cleanup\n", static_cast<unsigned long>(KDF_ITERATIONS));
 }

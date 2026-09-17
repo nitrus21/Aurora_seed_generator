@@ -1,41 +1,35 @@
-# AURORA · Les versions distribuées
-
-Trois versions, deux références de cartes. Les notes détaillent **toutes les
-fonctions présentes**, puis les ajouts depuis la version de comparaison.
+# AURORA · Versions distribuées
 
 | Version | Carte | Rôle |
 | --- | --- | --- |
-| [1.7.5](releases/1.7.5.md) | ESP32-2432S028R — Cheap Yellow Display | Ancienne version conservée, binaire inchangé. |
-| [1.9.7](releases/1.9.7.md) | ESP32-2432S028R — Cheap Yellow Display | Dernière version de cette branche. |
-| [2.0.3](releases/2.0.3.md) | Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 | Branche active ; images silicium 1.x / 3.x. |
+| [1.7.5](releases/1.7.5.md) | ESP32-2432S028R — Cheap Yellow Display | Version historique conservée. |
+| [1.9.9](releases/1.9.9.md) | ESP32-2432S028R — Cheap Yellow Display | Version finale de cette carte. |
+| [2.0.3](releases/2.0.3.md) | Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 | Version P4, images silicium 1.x et 3.x. |
 
-## ESP32-2432S028R : 1.7.5 → 1.9.7
+## ESP32-2432S028R : 1.7.5 → 1.9.9
 
-- Collecte : 320 échantillons au lieu de 160, lumière et aperçu indépendant.
-- Passphrase confirmée deux fois après collecte.
-- Mot de passe redemandé par consultation privée du fichier.
-- Nettoyage des temporaires, contrôles des erreurs et protection contre les dumps de crash.
-- KDF des nouveaux fichiers : 500 000 itérations au lieu de 120 000.
-- Mots du fichier : 3 minutes ; clé privée : 1 minute ; RETOUR ferme la session.
-- Polices et couleurs du clavier de la 1.7.5 conservées.
-- Douze mots par page au lieu de huit.
+- Collecte portée à 320 échantillons tactiles, avec timings et lumière.
+- Confirmation de la passphrase BIP39 et douze mots par page.
+- Lecture des fichiers `.aurora` V1/V2 et nouvelles sauvegardes V1 sans PIN.
+- Accès microSD fiabilisé pour la création et l’ouverture des sauvegardes.
+- Mot de passe redemandé pour chaque consultation privée du fichier.
+- Mots affichés pendant 3 minutes et clé privée pendant 1 minute.
+- Retour au portefeuille public après effacement de la consultation privée.
+- Bouton public vert, actions privées rouges et passphrase absente grisée.
+- Nettoyage renforcé au verrouillage et au démarrage.
+- Polices compactes et couleurs du clavier de la 1.7.5 conservées.
 
-Depuis la précédente version publiée, **1.9.5** : source RNG des appels
-cryptographiques contrôlée, KDF renforcé et décomptes des consultations privées.
+La branche ESP32-2432S028R est terminée en **1.9.9**. Les futures fonctionnalités
+sont développées pour la Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3.
 
-## Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 : 2.0.0 → 2.0.3
+## Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 : 2.0.3
 
-- Source RNG contrôlée pour les appels cryptographiques.
-- Tampons de lecture/écriture SD nettoyés explicitement.
-- KDF à 500 000 itérations, accéléré par blocs sans conserver les clés.
-- Décomptes 3 minutes / 1 minute pour les consultations privées du fichier uniquement.
-- Suivi des dépendances et tests de non-régression étendus.
+- Interface portrait 480 × 800, douze mots par page et grands QR.
+- Images distinctes pour silicium P4 1.x et 3.x.
+- Collecte tactile et audio, caméra OV5647 facultative.
+- KDF PBKDF2-HMAC-SHA-256 à 500 000 itérations, accéléré sur P4.
+- Consultations privées avec mot de passe, décomptes de 3 minutes et 1 minute.
+- Récupération AEZEED Umbrel/LND vers une clé maître BIP32.
 
-Le P4 conserve son écran portrait, ses 12 mots par page, ses grands QR,
-la collecte audio/vidéo facultative et la récupération AEZEED vers BIP32.
-Depuis la 2.0.0, les nouvelles fonctionnalités se développent sur cette carte.
-La branche ESP32-2432S028R s’arrête en 1.9.7.
-
-Les anciens fichiers restent lisibles, sans renforcement automatique.
-**Projet expérimental ; limites physiques et export Electrum en clair :
-[précautions](https://github.com/nitrus21/Aurora_seed_generator/blob/main/SECURITY.md).**
+Les fichiers `.aurora` V1/V2 restent lisibles. L’export Electrum privé contient
+une clé étendue en clair sur microSD et doit être conservé comme un secret.

@@ -7,10 +7,10 @@
 
 | Carte exacte | Versions proposées |
 | --- | --- |
-| **ESP32-2432S028R — Cheap Yellow Display (CYD)** | **1.9.7**, dernière version ; **1.7.5**, ancienne version conservée. |
+| **ESP32-2432S028R — Cheap Yellow Display (CYD)** | **1.9.9**, version finale ; **1.7.5**, version historique conservée. |
 | **Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3** | **2.0.3**, images distinctes pour silicium **1.x** et **3.x**. |
 
-La branche ESP32-2432S028R est terminée en 1.9.7.
+La branche ESP32-2432S028R est terminée en 1.9.9.
 Depuis la v2.0.0, les nouvelles fonctionnalités se développent sur la
 Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3.
 
@@ -49,7 +49,7 @@ Les [empreintes SHA-256](firmware/SHA256SUMS.txt) couvrent les binaires du site.
 Comparez le fichier téléchargé à une référence obtenue par un canal de confiance :
 
 ```powershell
-Get-FileHash -Algorithm SHA256 .\aurora-1.9.7-esp32-2432s028r.factory.bin
+Get-FileHash -Algorithm SHA256 .\aurora-1.9.9-esp32-2432s028r.factory.bin
 ```
 
 Sous Linux : `sha256sum fichier.factory.bin`. Sous macOS :
@@ -59,7 +59,7 @@ Sous Linux : `sha256sum fichier.factory.bin`. Sous macOS :
 
 Utilisez une alimentation autonome sans données USB. Commencez par un portefeuille
 de test sans fonds et suivez le [parcours guidé](../README.md#votre-premier-portefeuille-en-6-étapes).
-Préférez la 1.9.7 à l’ancienne 1.7.5 sur ESP32-2432S028R.
+Choisissez la 1.9.9 pour la version finale de l’ESP32-2432S028R.
 
 > [!WARNING]
 > Projet expérimental, sans garantie d’effacement physique à la coupure.
@@ -71,6 +71,11 @@ Préférez la 1.9.7 à l’ancienne 1.7.5 sur ESP32-2432S028R.
 - `tools/prepare_releases.py` : paquets locaux à liste de fichiers autorisés ; aucun secret ni rapport.
 - Le [workflow Pages](../.github/workflows/deploy-webflasher-pages.yml) publie uniquement
   `webflasher/`, après validation, lors d’un push sur `main`.
-- Releases : `v1.7.5`, `v1.9.7`, `v2.0.3` ; préparation locale sans publication automatique.
-- ESP Web Tools est épinglé à `10.4.0`, actions GitHub par SHA. Le module et ses
-  dépendances chargés depuis `unpkg.com` restent une dépendance de confiance.
+- Releases : `v1.7.5`, `v1.9.9`, `v2.0.3`.
+- ESP Web Tools `10.4.0` est intégré localement en un bundle, dialogues et modules
+  de flash inclus. Aucun CDN n'est autorisé par la politique de scripts du site.
+  Le navigateur vérifie aussi son empreinte SRI SHA-384. Licences conservées dans
+  `assets/vendor/esp-web-tools/LICENSES.txt` ; actions GitHub épinglées par SHA.
+- [Reconstruire et vérifier le bundle](../tools/webflasher/README.md).
+  Ces contrôles détectent une altération isolée du bundle, pas une compromission
+  simultanée du dépôt, de la page et de ses empreintes de référence.

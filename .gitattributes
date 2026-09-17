@@ -1,1 +1,4 @@
 *.bin binary
+# Byte-stable SRI/build references on Windows and Linux checkouts.
+webflasher/assets/vendor/** text eol=lf -whitespace
+tools/webflasher/package-lock.json text eol=lf

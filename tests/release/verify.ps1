@@ -19,7 +19,7 @@ if ($ReleasedArtifactsOnly) {
     Assert-Release $versionMatch.Success 'A final CYD firmware version is required. Use -ReleasedArtifactsOnly to verify preserved release binaries on a development branch.'
     $version = $versionMatch.Groups[1].Value
     $p4VersionMatch = [regex]::Match($versionHeader, 'AURORA_P4_FIRMWARE_VERSION\s+"(\d+\.\d+\.\d+)"')
-    Assert-Release ($p4VersionMatch.Success -and $p4VersionMatch.Groups[1].Value -eq '2.0.3') 'P4 source/release version mismatch.'
+    Assert-Release ($p4VersionMatch.Success -and $p4VersionMatch.Groups[1].Value -eq '2.0.4') 'P4 source version mismatch.'
 }
 $layout = Get-Content -Raw -LiteralPath (Join-Path $firmwareRoot 'flash-layout.json') | ConvertFrom-Json
 $factoryName = "aurora-$version-esp32-2432s028r.factory.bin"
@@ -76,7 +76,7 @@ Assert-Release ($readme.Contains('webflasher/README.md')) 'README must link to i
 Assert-Release (Test-Path -LiteralPath (Join-Path $webRoot 'CHANGELOG.md')) 'Missing release notes.'
 
 $variants = @(
-    @{ Id = 'cyd-1.9.7'; Manifest = 'manifest.json'; Chip = 'ESP32'; Image = 'aurora-1.9.7-esp32-2432s028r.factory.bin' },
+    @{ Id = 'cyd-1.9.9'; Manifest = 'manifest.json'; Chip = 'ESP32'; Image = 'aurora-1.9.9-esp32-2432s028r.factory.bin' },
     @{ Id = 'cyd-1.7.5'; Manifest = 'manifests\cyd-1.7.5.json'; Chip = 'ESP32'; Image = 'aurora-1.7.5-esp32-2432s028r.factory.bin' },
     @{ Id = 'p4-rev1-2.0.3'; Manifest = 'manifests\p4-rev1-2.0.3.json'; Chip = 'ESP32-P4'; Image = 'aurora-2.0.3-esp32-p4-rev1.factory.bin' },
     @{ Id = 'p4-rev3-2.0.3'; Manifest = 'manifests\p4-rev3-2.0.3.json'; Chip = 'ESP32-P4'; Image = 'aurora-2.0.3-esp32-p4-rev3.factory.bin' }
@@ -95,4 +95,6 @@ foreach ($variant in $variants) {
 Assert-Release ($LASTEXITCODE -eq 0) 'Embedded image/revision verification failed.'
 & node (Join-Path $PSScriptRoot 'test_webflasher.cjs')
 Assert-Release ($LASTEXITCODE -eq 0) 'Web Flasher selection tests failed.'
-Write-Output "PASS: CYD 1.9.7/1.7.5 and P4 2.0.3 (1.x/3.x): manifests, images, offsets, hashes and selection"
+& node (Join-Path $PSScriptRoot 'test_vendor.cjs')
+Assert-Release ($LASTEXITCODE -eq 0) 'Web Flasher vendor integrity tests failed.'
+Write-Output "PASS: CYD 1.9.9/1.7.5 and P4 2.0.3 (1.x/3.x): manifests, images, offsets, hashes and selection"

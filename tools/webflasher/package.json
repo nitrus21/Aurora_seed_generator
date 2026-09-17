@@ -1,0 +1,14 @@
+{
+  "name": "aurora-webflasher-vendor",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Pinned build tools for the self-hosted AURORA installer",
+  "scripts": {
+    "build": "node build.mjs",
+    "check": "node build.mjs --check"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.12",
+    "esp-web-tools": "10.4.0"
+  }
+}

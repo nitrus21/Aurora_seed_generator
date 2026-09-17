@@ -111,6 +111,14 @@ static void click(AuroraUI &ui,Action action) {
   }
   assert(false && "Expected button missing");
 }
+static lv_obj_t *actionButton(AuroraUI &ui,Action action) {
+  for(uint32_t i=0;i<lv_obj_get_child_cnt(ui.root_);++i) {
+    auto *child=lv_obj_get_child(ui.root_,i);
+    if(lv_obj_check_type(child,&lv_btn_class) &&
+       reinterpret_cast<uintptr_t>(lv_obj_get_user_data(child))==action) return child;
+  }
+  return nullptr;
+}
 static lv_obj_t *findLabel(lv_obj_t *root,const char *text) {
   if(lv_obj_check_type(root,&lv_label_class) && !strcmp(lv_label_get_text(root),text)) return root;
   for(uint32_t i=0;i<lv_obj_get_child_cnt(root);++i)
@@ -169,7 +177,7 @@ static void typography175(AuroraUI &ui) {
   expectFont(ui,"abandon",&aurora_font_16); expectFont(ui,"01",&aurora_font_12);
   snapshot(ui,"words-1.9.5.ppm");
   ui.show(Screen::Info);
-  expectFont(ui,"CODES QR",&aurora_font_12);
+  expectFont(ui,"CLÉ PUBLIQUE",&aurora_font_12);
   snapshot(ui,"info-initial-1.9.5.ppm"); // All actions must fit the CYD, not y=720.
   ui.show(Screen::Backup);
   expectFont(ui,"Choisissez un format (carte FAT32).",&aurora_font_10);
@@ -181,6 +189,7 @@ static void typography175(AuroraUI &ui) {
   ui.closeSession(); sdChecks=0;
   puts("PASS: CYD 1.9.5 matches 1.7.5 typography and keyboard colors, retaining current fields/actions/entropy");
 }
+#include "test_navigation.h"
 int main() {
   lv_init(); static lv_color_t buffer[320*40]; static lv_disp_draw_buf_t draw;
   lv_disp_draw_buf_init(&draw,buffer,nullptr,320*40);
@@ -242,6 +251,11 @@ int main() {
   for(bool restored:{false,true}) {
     ui.show(Screen::Setup); ui.entropyCollected_=true; assert(ui.generate());
     ui.manualRestore_=restored; ui.loadedWallet_=restored;
+    if(restored) {
+      ui.show(Screen::Mnemonic); click(ui,TO_INFO);
+      assert(ui.screen_==Screen::Info && ui.wallet_.mnemonic[0]);
+      click(ui,BACK_MNEMONIC); assert(ui.screen_==Screen::Mnemonic);
+    }
     ui.qrContent_=AuroraUI::QrContent::PrivateKey; ui.show(Screen::Qr);
     assert(!ui.secretCountdown_ && ui.visibleSecret_==AuroraUI::Access::None);
     mock.time+=61000000; ui.tick(); assert(ui.screen_==Screen::Qr);
@@ -255,6 +269,22 @@ int main() {
   assert(ui.screen_==Screen::Info && ui.fileSession_ && ui.protectedSession_);
   assert(!ui.wallet_.mnemonic[0] && !ui.wallet_.privateWif[0] && !ui.passphrase_[0] && !ui.filePassword_[0]);
   assert(ui.hasPassphrase()); snapshot(ui,"info.ppm");
+  auto *publicKey=actionButton(ui,TO_QR_ADDRESS);
+  auto *privateKey=actionButton(ui,REVEAL_PRIVATE);
+  auto *words=actionButton(ui,SHOW_WORDS);
+  auto *passphrase=actionButton(ui,SHOW_LOADED_PASSPHRASE);
+  assert(publicKey && privateKey && words && passphrase);
+  assert(lv_obj_get_style_bg_color(publicKey,LV_PART_MAIN).full==SUCCESS.full);
+  assert(lv_obj_get_style_bg_color(privateKey,LV_PART_MAIN).full==DANGER.full);
+  assert(lv_obj_get_style_bg_color(words,LV_PART_MAIN).full==DANGER.full);
+  assert(lv_obj_get_style_bg_color(passphrase,LV_PART_MAIN).full==DANGER.full);
+  assert(!lv_obj_has_state(passphrase,LV_STATE_DISABLED));
+  ui.sessionHasPassphrase_=false; ui.show(Screen::Info);
+  passphrase=actionButton(ui,SHOW_LOADED_PASSPHRASE); assert(passphrase);
+  assert(lv_obj_has_state(passphrase,LV_STATE_DISABLED));
+  assert(lv_obj_get_style_bg_color(passphrase,LV_PART_MAIN).full==PANEL.full);
+  ui.sessionHasPassphrase_=true; ui.show(Screen::Info);
+  snapshot(ui,"info-colors-1.9.9.ppm");
   const unsigned firstRead=reads;
   for(unsigned round=0;round<3;++round) {
     ui.show(Screen::Mnemonic); assert(ui.screen_==Screen::PrivatePassword);
@@ -280,9 +310,9 @@ int main() {
     // Public marker deliberately injected after successful mock derivation.
     strlcpy(ui.wallet_.mnemonic,"PUBLIC-TEST-WORDS",sizeof(ui.wallet_.mnemonic));
     strlcpy(ui.wallet_.privateWif,"PUBLIC-TEST-WIF",sizeof(ui.wallet_.privateWif));
-    if(round==0) ui.show(Screen::Info);
+    if(round==0) click(ui,TO_INFO);
     else if(round==1) { mock.time+=180000000; ui.tick(); }
-    else { click(ui,LOCK_SESSION); }
+    else { click(ui,TO_INFO); click(ui,LOCK_SESSION); }
     assert(!ui.wallet_.mnemonic[0] && !ui.wallet_.privateWif[0] && !ui.privateLoaded_ && !ui.passphrase_[0]);
     if(round!=0) {
       assert(ui.screen_==Screen::Mode && !ui.fileSession_);
@@ -303,7 +333,7 @@ int main() {
     if(mode==1) {
       assert(ui.screen_==Screen::Mnemonic && ui.privateLoaded_);
       assert(!strcmp(lv_label_get_text(ui.secretCountdown_),"03:00"));
-      click(ui,LOCK_SESSION);
+      click(ui,TO_INFO); click(ui,LOCK_SESSION);
     } else assert(ui.screen_!=Screen::Mnemonic && !ui.wallet_.mnemonic[0]);
     assert(!ui.filePassword_[0]);
     changedFile=false; cryptoTime=0;
@@ -319,14 +349,15 @@ int main() {
     cryptoTime=0;
     assert(ui.screen_==Screen::Qr && ui.privateLoaded_);
     assert(!strcmp(lv_label_get_text(ui.secretCountdown_),"01:00"));
-    if(returnEarly) click(ui,LOCK_SESSION);
+    if(returnEarly) click(ui,TO_INFO);
     else {
       mock.time+=59999000; ui.tick();
       assert(ui.screen_==Screen::Qr);
       assert(!strcmp(lv_label_get_text(ui.secretCountdown_),"00:01"));
       mock.time+=1000; ui.tick();
     }
-    assert(ui.screen_==Screen::Mode && !ui.fileSession_ && !ui.privateLoaded_);
+    assert(ui.screen_==(returnEarly?Screen::Info:Screen::Mode));
+    assert(ui.fileSession_==returnEarly && !ui.privateLoaded_);
     assert(!ui.wallet_.mnemonic[0] && !ui.wallet_.privateWif[0] && !ui.filePassword_[0]);
   }
   ui.show(Screen::Mode); ui.show(Screen::ImportPassword);
@@ -335,6 +366,10 @@ int main() {
   assert(ui.screen_==Screen::SdRequired && !ui.filePassword_[0]);
   ui.show(Screen::Mode); ui.show(Screen::Entropy); snapshot(ui,"entropy.ppm"); ui.show(Screen::Mode);
   assert(wipes>100);
+  sdReady=true;
+  strlcpy(ui.filePassword_,"PUBLIC-TEST-PASSWORD",sizeof(ui.filePassword_));
+  assert(ui.performWalletImport()); ui.show(Screen::Info);
+  testFileNavigation(ui,"PUBLIC-TEST-PASSWORD");
   // Terminal ownership walk: no LVGL operations are legal after this point.
   void *first=auroraUiAlloc(256), *second=auroraUiAlloc(512);
   assert(first && second); memset(first,0xa5,256); memset(second,0x5a,512);
@@ -343,5 +378,5 @@ int main() {
   assert(auroraUiTryFreezeAllocations()); auroraUiWipeFrozenAllocations();
   for(unsigned i=0;i<256;++i) assert(static_cast<uint8_t *>(first)[i]==0);
   for(unsigned i=0;i<512;++i) assert(static_cast<uint8_t *>(second)[i]==0);
-  puts("PASS: CYD LVGL8 password-only sessions, public-only idle state, 120s workflow / 180s words expiry, display time excludes crypto, Return locks, replaced file, SD removal, wiped UI allocations");
+  puts("PASS: CYD LVGL8 password-only sessions, public-only idle state, 120s workflow / 180s words expiry, display time excludes crypto, Return keeps public session, replaced file, SD removal, wiped UI allocations");
 }

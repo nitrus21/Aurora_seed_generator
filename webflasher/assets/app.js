@@ -7,15 +7,15 @@ const copyButton = document.querySelector("#copy-hash");
 const year = document.querySelector("#year");
 
 const releases = {
-  "cyd-1.9.7": {
+  "cyd-1.9.9": {
     target: "ESP32-2432S028R (CYD)",
-    version: "1.9.7",
+    version: "1.9.9",
     state: "DERNIÈRE VERSION",
     flash: "4 Mo",
-    hash: "3FD8388FD5662B106989FF30C7B25DEED2E55D9D399AECA2C03163EA51C8FBAC",
-    notes: "./releases/1.9.7.md",
-    changes: ["Sauvegardes .aurora : KDF à 500 000 itérations et mot de passe par consultation.", "Mots : 3 min ; clé privée : 1 min, uniquement depuis un fichier authentifié.", "RNG contrôlé, nettoyage renforcé ; polices et clavier classiques conservés."],
-    help: "Dernière version pour l’ESP32-2432S028R.",
+    hash: "34A7928985AA88D0E79F2D48EB5143A839E69106B2322DB78D2404EAB03DAD1E",
+    notes: "./releases/1.9.9.md",
+    changes: ["Sauvegarde et ouverture .aurora sur microSD, avec mot de passe redemandé pour chaque consultation privée.", "Mots : 3 min ; clé privée : 1 min ; retour au portefeuille public après consultation.", "Boutons publics en vert, actions privées en rouge ; interface compacte et clavier classique."],
+    help: "Version finale pour l’ESP32-2432S028R.",
     description: "Image ESP32-2432S028R fusionnée : flash 4 Mo, mode DIO, fréquence 40 MHz.",
     releaseDescription: "ESP32-2432S028R · Image fusionnée 4 Mo · DIO 40 MHz",
     warning: "Cette image est réservée à l’ESP32-2432S028R. Une nouvelle installation peut effacer le contenu existant de la mémoire flash."
@@ -27,7 +27,7 @@ const releases = {
     flash: "4 Mo",
     hash: "469A8912CD2A7BA3EF919467D84D6857CF60E726A27865157BD1A04653510218",
     notes: "./releases/1.7.5.md",
-    changes: ["Version 1.7.5 conservée, sans modification.", "Pour les corrections récentes, choisissez la 1.9.7."],
+    changes: ["Version 1.7.5 conservée, sans modification.", "Pour la version finale de cette carte, choisissez la 1.9.9."],
     help: "Ancienne version 1.7.5 conservée pour réinstallation volontaire.",
     description: "Image ESP32-2432S028R fusionnée : flash 4 Mo, mode DIO, fréquence 40 MHz.",
     releaseDescription: "ESP32-2432S028R · Archive 1.7.5 · Image fusionnée 4 Mo",

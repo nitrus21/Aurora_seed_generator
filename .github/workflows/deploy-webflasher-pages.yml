@@ -7,6 +7,7 @@ on:
     paths:
       - "webflasher/**"
       - "tests/release/**"
+      - "tools/webflasher/**"
       - ".github/workflows/deploy-webflasher-pages.yml"
   workflow_dispatch:
 
@@ -35,6 +36,11 @@ jobs:
       - name: Vérifier les images et les choix du Web Flasher
         shell: pwsh
         run: ./tests/release/verify.ps1 -ReleasedArtifactsOnly
+
+      - name: Vérifier le bundle local depuis les dépendances verrouillées
+        run: |
+          npm ci --prefix tools/webflasher --ignore-scripts --no-audit --no-fund
+          npm run check --prefix tools/webflasher
 
       - name: Préparer le Web Flasher
         uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4

@@ -2,7 +2,7 @@
 
 ### Plus d’espace pour vos mots. Plus de possibilités, toujours hors ligne.
 
-**Version 2.0.3 · Écran capacitif 4,3″ · Portrait 480 × 800**
+**Version distribuée 2.0.3 · Écran capacitif 4,3″ · Portrait 480 × 800**
 
 ![AURORA](../../assets/splash_320x240.png)
 
@@ -25,7 +25,7 @@ et la sauvegarde de vos portefeuilles Bitcoin à portée de main.
 
 Carte exacte : **Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3**, sans suffixe `-C`.
 Deux images distinctes sont proposées : **silicium 1.x** et **silicium 3.x**.
-La branche ESP32-2432S028R se termine en **1.9.7**, avec **1.7.5** conservée.
+La branche ESP32-2432S028R se termine en **1.9.9**, avec **1.7.5** conservée.
 Depuis la v2.0.0, les nouvelles fonctionnalités se développent sur cette carte P4.
 
 L'ouverture des fichiers et chaque consultation privée utilisent le mot de passe
@@ -68,7 +68,8 @@ entièrement sous le séparateur d'en-tête, au-dessus de quatre boutons centré
 et propose **RÉCUPÉRER UMBREL / LND**. Ce parcours déchiffre AEZEED avec
 les paramètres scrypt officiels dans une allocation PSRAM temporaire d'environ
 16 Mio, puis expose le `xprv` maître BIP32 dans un QR temporaire.
-Le retour ou 15 secondes d'affichage ferment et effacent cette session, sans décompte.
+Le bouton **FERMER** ou 15 secondes d'affichage ferment et effacent cette session,
+sans décompte. Ce parcours temporaire AEZEED ne garde pas de portefeuille ouvert.
 Il ne restaure pas les canaux Lightning.
 Tous les écrans P4 vérifient aussi que leurs informations et contrôles restent
 sous le séparateur sans le masquer ni le couper.
@@ -108,7 +109,11 @@ en mémoire. Le mot de passe et la clé de déchiffrement sont effacés après u
 Les secrets calculés et les saisies sont temporaires et effacés en sortie.
 Uniquement en consultation authentifiée d'un fichier `.aurora`, les mots ont
 un décompte de 3 minutes partagé entre les pages ; une clé privée
-a 1 minute, hors déchiffrement. **RETOUR** ou l'expiration ferme toute la session.
+a 1 minute, hors déchiffrement. Dans la source **2.0.4**, **RETOUR** efface les
+secrets et revient aux boutons du portefeuille public. Une nouvelle consultation
+redemande le mot de passe. **VERROUILLER** ou l’expiration de ces deux vues ferme
+toute la session. L’annulation de l’authentification d’export revient au choix du
+format ; les flèches et l’annulation du clavier suivent l’étape précédente.
 La passphrase reste limitée à 15 secondes, traitement compris ; la préparation
 d'export à 120 secondes. L'inactivité ferme les autres écrans après 120 secondes,
 mais n'interrompt pas les vues chronométrées avant leur propre échéance.
@@ -117,7 +122,7 @@ Création et restauration manuelle : aucun décompte, inactivité limitée à 12
 | Firmware | Lecture | Nouvelle écriture |
 | --- | --- | --- |
 | Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 — 2.0.3 | V1 et V2, mot de passe | V1, 1 120 octets |
-| ESP32-2432S028R — 1.9.7 | V1 et V2, mot de passe par consultation | V1 sans PIN, 1 120 octets |
+| ESP32-2432S028R — 1.9.9 | V1 et V2, mot de passe par consultation | V1 sans PIN, 1 120 octets |
 
 FAT32, mêmes noms et suffixes sur les deux appareils. L'en-tête de 46 octets,
 PBKDF2-HMAC-SHA-256 à 500 000 itérations à l'écriture dans 2.0.3, AES-256-GCM, le sel de
@@ -158,7 +163,7 @@ Depuis la racine du dépôt, avec PlatformIO Core 6.1.19 ou ultérieur et accès
 
 Le P4 utilise ESP-IDF 5.5.5, BSP Waveshare 1.0.1 et LVGL 9.5.0. Son environnement est distinct du SDK Arduino du CYD. Les sources partagées ne sont ni recopiées ni exportées. Les premiers téléchargements d'outils sont volumineux.
 
-Compiler les profils P4 successivement : ils partagent les dépendances gérées. Le script empêche deux compilations P4 simultanées afin qu'une installation de dépendances ne perturbe pas l'autre. Lancer également la compilation CYD séparément : les plateformes peuvent remplacer certains outils partagés de PlatformIO. Cela n'empêche pas le développement et l'utilisation des deux appareils en parallèle.
+Compiler les profils P4 successivement : ils partagent les dépendances gérées. Le script empêche deux compilations P4 simultanées afin qu'une installation de dépendances ne perturbe pas l'autre. Le CYD est une cible archivée et n’entre plus dans les compilations ou validations P4.
 
 ESP-IDF refuse les espaces dans les chemins de compilation. Le script Windows utilise le **nom court 8.3 du même dossier** : ce n'est ni un second répertoire ni une copie. Les fichiers restent tous dans le projet. Sur un système avec un chemin sans espaces, on peut utiliser directement `pio run -d targets/waveshare_p4 -e waveshare-p4` (ou `waveshare-p4-rev1`).
 
@@ -172,7 +177,6 @@ Les deux familles de silicium sont incompatibles : le profil `waveshare-p4` est 
 cmd /c tests\native\run.cmd
 python tests/crypto/run.py
 python tests/ui/run.py
-python tests/ui/run.py --cyd
 python tests/crypto/verify_p4_images.py --profile waveshare-p4
 powershell -File tests/release/verify.ps1 -ReleasedArtifactsOnly
 ```
@@ -188,9 +192,9 @@ Lancer les tests UI **après** le build P4 et les tests crypto, sans compilation
 3. Parcourir tous les écrans : clavier, suggestions, 12 à 24 mots, QR public/privé et restauration ; aucune coupure ni chevauchement.
 4. Vérifier microphones, puis refaire la collecte avec OV5647 : image, compteur réel, variations sonores, absence de données après sortie.
 5. Tester annulation, redémarrage de collecte, source muette/bloquée et erreurs I2C/CSI ; aucun accès aux secrets si l'arrêt échoue.
-6. Échanger un portefeuille **de test sans fonds** dans les deux sens entre CYD et P4 ; comparer adresse, dérivation et exports.
-7. Sur P4, créer/restaurer sans SD jusqu'au portefeuille, sans PIN ; la sauvegarde doit exiger une carte FAT32 lisible. Ouvrir des fichiers V1/V2 avec leur mot de passe, puis vérifier qu'une nouvelle consultation privée le redemande et relit le même fichier. Tester absence/retrait de carte hors écriture, substitution de fichier, carte pleine, fichier existant, mauvais mot de passe, annulation et fichier altéré : aucune révélation après échec, aucun formatage ni perte d'une sauvegarde préexistante. L'ESP32-2432S028R 1.9.7 redemande également le mot de passe pour les consultations privées. Ne pas retirer pendant une écriture.
-8. Tester le décompte des mots à 180 s, commun aux pages, et celui des clés à 60 s, hors déchiffrement. Vérifier la fermeture complète par RETOUR et à expiration, la passphrase à 15 s, l'export et l'inactivité des autres écrans à 120 s. Contrôler l'effacement au verrouillage, le nettoyage au démarrage et la stabilité mémoire avec uniquement des données publiques de test.
+6. Ouvrir sur P4 des fichiers V1/V2 de test sans fonds, y compris une sauvegarde compatible issue du CYD 1.9.9 ; comparer adresse et dérivation attendues.
+7. Sur P4, créer/restaurer sans SD jusqu'au portefeuille, sans PIN ; la sauvegarde doit exiger une carte FAT32 lisible. Ouvrir des fichiers V1/V2 avec leur mot de passe, puis vérifier qu'une nouvelle consultation privée le redemande et relit le même fichier. Tester absence/retrait de carte hors écriture, substitution de fichier, carte pleine, fichier existant, mauvais mot de passe, annulation et fichier altéré : aucune révélation après échec, aucun formatage ni perte d'une sauvegarde préexistante. Ne pas retirer pendant une écriture.
+8. Tester le décompte des mots à 180 s, commun aux pages, et celui des clés à 60 s, hors déchiffrement. Vérifier que RETOUR efface les secrets et retrouve le portefeuille public, avec nouveau mot de passe pour la consultation suivante. Vérifier la fermeture complète par VERROUILLER et à expiration, la passphrase à 15 s, l'export et l'inactivité des autres écrans à 120 s. Contrôler l'effacement au verrouillage, le nettoyage au démarrage et la stabilité mémoire avec uniquement des données publiques de test.
 9. Avec une seed AEZEED de test sans fonds, ouvrir **RÉCUPÉRER UMBREL / LND**, vérifier le résultat avec et sans passphrase, puis importer le XPRV dans Sparrow. Comparer les premières adresses des comptes BIP49, BIP84 et BIP86. Confirmer aussi qu'une mauvaise passphrase est rejetée, que le QR privé expire après 15 s sans décompte et qu'aucun canal Lightning n'est présenté comme récupéré.
 
 ## Références matérielles et pilotes
