@@ -23,11 +23,28 @@ def verify_image(data, expected):
     position = (position // 16) * 16 + 15
     assert data[position] == checksum, "Invalid image checksum"
     assert data[position + 1:position + 33] == hashlib.sha256(data[:position + 1]).digest(), "Invalid image SHA-256"
+    return position + 33
 
 profiles = {"waveshare-p4": (300, 399), "waveshare-p4-rev1": (100, 199)}
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--profile", choices=profiles)
+parser.add_argument("--factory", type=Path,
+                    help="Verify a published merged factory image instead of a local build directory")
+parser.add_argument("--version", help="Expected application version for --factory")
 arguments = parser.parse_args()
+if arguments.factory:
+    assert arguments.profile and arguments.version, "--factory requires --profile and --version"
+    revisions = profiles[arguments.profile]
+    factory = arguments.factory.read_bytes()
+    verify_image(factory[0x2000:0x8000], revisions)
+    assert factory[0x8000:0x8002] == b"\xaa\x50", "Missing partition table"
+    application = factory[0x10000:]
+    assert verify_image(application, revisions) == len(application), "Unexpected factory image tail"
+    assert struct.unpack_from("<I", application, 0x20)[0] == 0xABCD5432, "Missing ESP-IDF app descriptor"
+    actual_version = application[0x30:0x50].split(b"\0")[0].decode()
+    assert actual_version == arguments.version, (actual_version, arguments.version)
+    print(f"PASS: published {arguments.factory.name}, chip/32MB/revisions {revisions}, checksums, version and factory offsets")
+    raise SystemExit(0)
 for profile, revisions in profiles.items():
     if arguments.profile and profile != arguments.profile:
         continue

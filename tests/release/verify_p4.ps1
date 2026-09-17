@@ -27,7 +27,7 @@ foreach ($variant in $variants) {
     $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $image).Hash
     Assert-P4 ($sums.Contains("$hash  $($variant.Image)")) "SHA256SUMS absent: $($variant.Image)"
     Assert-P4 ($app.Contains($hash) -and $app.Contains($variant.Id) -and $index.Contains($variant.Id)) "Web Flasher incomplet: $($variant.Id)"
-    & python (Join-Path $PSScriptRoot '..\crypto\verify_p4_images.py') --profile $variant.Profile
+    & python (Join-Path $PSScriptRoot '..\crypto\verify_p4_images.py') --profile $variant.Profile --factory $image --version 2.0.5
     Assert-P4 ($LASTEXITCODE -eq 0) "Image P4 invalide: $($variant.Profile)"
 }
 Assert-P4 (Test-Path -LiteralPath (Join-Path $web 'releases\2.0.5.md')) 'Notes 2.0.5 absentes.'
