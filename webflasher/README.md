@@ -41,7 +41,8 @@ L’image complète CYD inclut la table de partitions requise.
 Les en-têtes P4 limitent chaque image à la famille silicium prévue :
 **ne remplacez pas rev1 par rev3, ou inversement**. Le modèle Waveshare `-C`
 n’est pas la cible. L’image 3.x est contrôlée par logiciel mais n’a pas été
-testée sur carte 3.x ; les applications CYD et P4 1.3 ont été flashées et démarrées.
+testée sur carte 3.x. L’image P4 2.0.5 silicium 1.x a été flashée, relue avec
+un SHA-256 identique et démarrée sur une carte révision 1.3.
 
 ## Vérifier le téléchargement
 

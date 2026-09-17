@@ -40,11 +40,10 @@ sont lisibles. Voir le [parcours d’utilisation](../../README.md#ouvrir-un-fich
 4. Sauvegardez sur microSD FAT32 au format `.aurora`, puis testez sa réouverture.
 5. Verrouillez l’appareil après utilisation et conservez vos sauvegardes à l’abri.
 
-L’application 2.0.3 pour silicium 1.3 a été flashée, relue et démarrée avec
-confirmation du nettoyage initial et de l’interface. L’image 3.x est compilée
-et contrôlée par logiciel ; **elle n’a pas été testée sur une carte 3.x**.
-Les deux images 2.0.5 sont compilées et contrôlées par logiciel ; aucune validation
-physique 2.0.5 n’est revendiquée ici. Ces contrôles ne valent pas certification.
+L’image 2.0.5 pour silicium 1.x a été flashée sur un P4 révision 1.3, relue
+intégralement avec un SHA-256 identique au binaire publié, puis son démarrage
+à l’écran a été confirmé. L’image 3.x est compilée et contrôlée par logiciel ;
+**elle n’a pas été testée sur une carte 3.x**. Ces contrôles ne valent pas certification.
 
 ## Un seul noyau, deux firmwares
 
