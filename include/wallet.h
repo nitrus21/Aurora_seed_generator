@@ -70,6 +70,7 @@ class WalletEngine {
                    char *out, size_t outLen);
   bool rootXprvFromSeed(const uint8_t *seed, size_t seedLength,
                         char *out, size_t outLen);
+  bool rootXpubFromXprv(const char *xprv, char *out, size_t outLen);
   WalletSelfTest selfTest();
   void wipe(WalletOutput &out);
   static bool bip39Word(const char *word);

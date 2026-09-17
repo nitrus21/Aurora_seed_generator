@@ -2,7 +2,7 @@
 
 ### Plus d’espace pour vos mots. Plus de possibilités, toujours hors ligne.
 
-**Version distribuée 2.0.3 · Écran capacitif 4,3″ · Portrait 480 × 800**
+**Version distribuée 2.0.5 · Écran capacitif 4,3″ · Portrait 480 × 800**
 
 ![AURORA](../../assets/splash_320x240.png)
 
@@ -12,7 +12,7 @@ et la sauvegarde de vos portefeuilles Bitcoin à portée de main.
 
 [Installer](https://nitrus21.github.io/Aurora_seed_generator/) ·
 [Parcours guidé](../../README.md#votre-premier-portefeuille-en-6-étapes) ·
-[Fonctions et nouveautés 2.0.3](../../webflasher/releases/2.0.3.md)
+[Fonctions et nouveautés 2.0.5](../../webflasher/releases/2.0.5.md)
 
 ## L’expérience P4
 
@@ -21,7 +21,7 @@ et la sauvegarde de vos portefeuilles Bitcoin à portée de main.
 - Informations publiques et QR en accès direct ; consultations privées par mot de passe.
 - Fichiers `.aurora` chiffrés, interopérables avec l’ESP32-2432S028R actuel.
 - Collecte tactile et microphones, caméra OV5647 facultative.
-- Récupération Umbrel/LND AEZEED vers une clé maître BIP32, sans restauration des canaux Lightning.
+- Récupération Umbrel/LND AEZEED vers une clé maître BIP32, sauvegarde `.aurora` et export Sparrow.
 
 Carte exacte : **Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3**, sans suffixe `-C`.
 Deux images distinctes sont proposées : **silicium 1.x** et **silicium 3.x**.
@@ -43,7 +43,8 @@ sont lisibles. Voir le [parcours d’utilisation](../../README.md#ouvrir-un-fich
 L’application 2.0.3 pour silicium 1.3 a été flashée, relue et démarrée avec
 confirmation du nettoyage initial et de l’interface. L’image 3.x est compilée
 et contrôlée par logiciel ; **elle n’a pas été testée sur une carte 3.x**.
-Ces contrôles ne valent pas recette complète du portefeuille ni certification.
+Les deux images 2.0.5 sont compilées et contrôlées par logiciel ; aucune validation
+physique 2.0.5 n’est revendiquée ici. Ces contrôles ne valent pas certification.
 
 ## Un seul noyau, deux firmwares
 
@@ -52,7 +53,7 @@ Le dossier racine reste le seul dépôt de travail. Il n'y a pas de copie à syn
 | Élément | Code commun / différences |
 | --- | --- |
 | BIP39, BIP32, BIP44/49/84/86, autotests | `src/wallet.cpp`, même uBitcoin épinglé et durci |
-| Fichiers chiffrés `.aurora`, exports Electrum | `src/sd_export.cpp`, lecture V1/V2 ; nouvelles écritures V1 sans PIN |
+| Fichiers chiffrés `.aurora`, exports Electrum/Sparrow | `src/sd_export.cpp`, lecture V1/V2 ; nouvelles écritures V1 sans PIN |
 | Lecture des vérificateurs V2 | `src/pin_security.cpp`, validation de compatibilité des anciens fichiers |
 | Effacement des allocations LVGL | `src/secure_lvgl_memory.c` |
 | Mélange aléatoire et aperçu HMAC indépendant | `include/entropy.h` |
@@ -67,10 +68,12 @@ entièrement sous le séparateur d'en-tête, au-dessus de quatre boutons centré
 **384 × 64 pixels** (80 % de la largeur),
 et propose **RÉCUPÉRER UMBREL / LND**. Ce parcours déchiffre AEZEED avec
 les paramètres scrypt officiels dans une allocation PSRAM temporaire d'environ
-16 Mio, puis expose le `xprv` maître BIP32 dans un QR temporaire.
-Le bouton **FERMER** ou 15 secondes d'affichage ferment et effacent cette session,
-sans décompte. Ce parcours temporaire AEZEED ne garde pas de portefeuille ouvert.
-Il ne restaure pas les canaux Lightning.
+16 Mio, puis expose le `xprv` maître BIP32 dans un QR avec décompte de 3 minutes.
+La racine peut être enregistrée dans un `.aurora` chiffré : seuls le `xpub`, le
+`xprv` et l’anniversaire LND y figurent. Les mots AEZEED et leur passphrase ne
+sont jamais sérialisés. Après réouverture, le `xpub` est public et le mot de passe
+est redemandé pour le `xprv` ou l’export Sparrow en clair. Ce parcours ne restaure
+pas les canaux Lightning.
 Tous les écrans P4 vérifient aussi que leurs informations et contrôles restent
 sous le séparateur sans le masquer ni le couper.
 Les boutons d'action standards du P4, dont
@@ -95,7 +98,7 @@ Le coprocesseur radio ESP32-C6 est maintenu en reset actif bas sur GPIO54 selon 
 
 ## Compatibilité microSD
 
-Sur **P4 2.0.3**, la création/restauration initiale fonctionne sans carte.
+Sur **P4 2.0.5**, la création/restauration initiale fonctionne sans carte.
 La microSD FAT32 doit être détectée et sa racine lisible à l'entrée de la
 sauvegarde/export, puis durant sa préparation et avant l'écriture. Sans carte,
 l'écran **microSD requise** bloque l'export, avec **RÉESSAYER** et **FERMER**.
@@ -109,7 +112,7 @@ en mémoire. Le mot de passe et la clé de déchiffrement sont effacés après u
 Les secrets calculés et les saisies sont temporaires et effacés en sortie.
 Uniquement en consultation authentifiée d'un fichier `.aurora`, les mots ont
 un décompte de 3 minutes partagé entre les pages ; une clé privée
-a 1 minute, hors déchiffrement. Dans la source **2.0.4**, **RETOUR** efface les
+a 1 minute, hors déchiffrement. Le `xprv` Umbrel dispose de 3 minutes. En **2.0.5**, **RETOUR** efface les
 secrets et revient aux boutons du portefeuille public. Une nouvelle consultation
 redemande le mot de passe. **VERROUILLER** ou l’expiration de ces deux vues ferme
 toute la session. L’annulation de l’authentification d’export revient au choix du
@@ -121,11 +124,11 @@ Création et restauration manuelle : aucun décompte, inactivité limitée à 12
 
 | Firmware | Lecture | Nouvelle écriture |
 | --- | --- | --- |
-| Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 — 2.0.3 | V1 et V2, mot de passe | V1, 1 120 octets |
+| Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 — 2.0.5 | V1 et V2, mot de passe | V1, 1 120 octets |
 | ESP32-2432S028R — 1.9.9 | V1 et V2, mot de passe par consultation | V1 sans PIN, 1 120 octets |
 
 FAT32, mêmes noms et suffixes sur les deux appareils. L'en-tête de 46 octets,
-PBKDF2-HMAC-SHA-256 à 500 000 itérations à l'écriture dans 2.0.3, AES-256-GCM, le sel de
+PBKDF2-HMAC-SHA-256 à 500 000 itérations à l'écriture dans 2.0.5, AES-256-GCM, le sel de
 16 octets, le nonce de 12 octets et le tag de 16 octets restent inchangés.
 V2 ajoute uniquement 80 octets chiffrés pour le vérificateur PIN.
 Aucun fichier existant n'est converti automatiquement.
@@ -133,16 +136,20 @@ Aucun fichier existant n'est converti automatiquement.
 Le démarrage et le verrouillage nettoient les tampons possédés par l'application,
 sans supprimer les sauvegardes de la microSD. Une coupure brutale ne permet pas
 d'exécuter un effacement ; ce nettoyage ne garantit pas l'absence de rémanence
-physique. L'export Electrum volontairement en clair reste disponible et doit
-être traité comme une sauvegarde privée non chiffrée.
+physique. Les exports Electrum et Sparrow volontairement en clair restent
+disponibles et doivent être traités comme des sauvegardes privées non chiffrées.
 
-Le mot de passe `.aurora` et son KDF ne protègent **pas** ce fichier Electrum.
+Le mot de passe `.aurora` et son KDF ne protègent **pas** ces exports en clair.
 Ni le verrouillage ni le démarrage ne suppriment les sauvegardes microSD.
 Le nettoyage ne couvre pas chaque zone RTC, registre, cache ou mémoire de
 périphérique ; une mesure sur des tampons ciblés n’est pas une preuve de purge
 physique complète.
 
-Un fichier créé sur l'un est destiné à être ouvert sur l'autre avec le même mot de passe. Même seed + même passphrase BIP39 + même dérivation = même portefeuille. La compatibilité cryptographique n'élimine pas les essais croisés de lecture/écriture sur les vrais lecteurs SD. Aucun formatage automatique, aucun écrasement volontaire d'un fichier existant. Ne jamais retirer une carte pendant une écriture.
+Les fichiers BIP39 restent destinés à être ouverts sur les deux modèles avec le
+même mot de passe. Le sous-type Umbrel/LND est propre au P4 2.0.5 et sera refusé
+proprement par les anciennes versions. Même seed + même passphrase BIP39 + même
+dérivation = même portefeuille. La compatibilité cryptographique n'élimine pas
+les essais croisés sur les vrais lecteurs SD. Aucun formatage ni écrasement automatique.
 
 ## Compilation
 

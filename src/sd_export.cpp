@@ -180,36 +180,65 @@ bool writeElectrum(AuroraFile &file, const WalletExportData &data) {
              "  \"use_encryption\": false,\n  \"seed_type\": \"bip39\"\n}\n");
 }
 
+bool writeSparrow(AuroraFile &file, const WalletExportData &data) {
+  // Sparrow accepts a BIP32 master private key directly. Keep the export
+  // intentionally simple so no parser can mistake metadata for key material.
+  return writeText(file, data.accountXprv) && writeText(file, "\n");
+}
+
+bool isUmbrelData(const WalletExportData &data) {
+  return data.addressKind == AURORA_WALLET_KIND_UMBREL &&
+         data.wordCount == AURORA_WALLET_WORDS_UMBREL &&
+         data.addressType && strcmp(data.addressType, AURORA_WALLET_TYPE_UMBREL) == 0 &&
+         data.derivationPath && strcmp(data.derivationPath, AURORA_WALLET_PATH_UMBREL) == 0;
+}
+
+bool isUmbrelPayload(const AuroraPayloadV1 &payload) {
+  return payload.addressKind == AURORA_WALLET_KIND_UMBREL &&
+         payload.wordCount == AURORA_WALLET_WORDS_UMBREL &&
+         strcmp(payload.addressType, AURORA_WALLET_TYPE_UMBREL) == 0 &&
+         strcmp(payload.derivationPath, AURORA_WALLET_PATH_UMBREL) == 0;
+}
+
 bool fillPayload(const WalletExportData &data, AuroraPayloadV1 &payload) {
   memset(&payload, 0, sizeof(payload));
   memcpy(payload.magic, PAYLOAD_MAGIC, sizeof(payload.magic));
   payload.addressKind = data.addressKind;
   payload.wordCount = data.wordCount;
-  return data.addressKind <= 3 && supportedWordCount(data.wordCount) &&
+  const bool umbrel = isUmbrelData(data);
+  return (umbrel || (data.addressKind <= 3 && supportedWordCount(data.wordCount))) &&
          copyChecked(payload.firmwareVersion, AURORA_FIRMWARE_VERSION) &&
          copyChecked(payload.addressType, data.addressType) &&
          copyChecked(payload.derivationPath, data.derivationPath) &&
-         copyChecked(payload.mnemonic, data.mnemonic) &&
+         copyChecked(payload.mnemonic, data.mnemonic, umbrel) &&
          copyChecked(payload.passphrase, data.passphrase, true) &&
          copyChecked(payload.address, data.address) &&
          copyChecked(payload.accountXpub, data.accountXpub) &&
          copyChecked(payload.accountXprv, data.accountXprv) &&
-         copyChecked(payload.privateWif, data.privateWif) &&
-         copyChecked(payload.receiveDescriptor, data.receiveDescriptor);
+         copyChecked(payload.privateWif, data.privateWif, umbrel) &&
+         copyChecked(payload.receiveDescriptor, data.receiveDescriptor, umbrel);
 }
 
 bool validPayload(const AuroraPayloadV1 &payload, bool version2 = false) {
-  return memcmp(payload.magic, version2 ? PAYLOAD_MAGIC_V2 : PAYLOAD_MAGIC, sizeof(payload.magic)) == 0 &&
-         payload.addressKind <= 3 && supportedWordCount(payload.wordCount) &&
+  if(memcmp(payload.magic, version2 ? PAYLOAD_MAGIC_V2 : PAYLOAD_MAGIC, sizeof(payload.magic)) != 0 ||
+     !terminated(payload.firmwareVersion) || !terminated(payload.addressType) ||
+     !terminated(payload.derivationPath) || !terminated(payload.mnemonic) ||
+     !terminated(payload.passphrase) || !terminated(payload.address) ||
+     !terminated(payload.accountXpub) || !terminated(payload.accountXprv) ||
+     !terminated(payload.privateWif) || !terminated(payload.receiveDescriptor)) return false;
+  const bool umbrel = isUmbrelPayload(payload);
+  return (umbrel || (payload.addressKind <= 3 && supportedWordCount(payload.wordCount))) &&
          terminated(payload.firmwareVersion) && terminated(payload.addressType) &&
          terminated(payload.derivationPath) && terminated(payload.mnemonic) &&
          terminated(payload.passphrase) && terminated(payload.address) &&
          terminated(payload.accountXpub) && terminated(payload.accountXprv) &&
          terminated(payload.privateWif) && terminated(payload.receiveDescriptor) &&
          present(payload.addressType) && present(payload.derivationPath) &&
-         present(payload.mnemonic) && present(payload.address) &&
+         (umbrel ? !present(payload.mnemonic) : present(payload.mnemonic)) && present(payload.address) &&
          present(payload.accountXpub) && present(payload.accountXprv) &&
-         present(payload.privateWif) && present(payload.receiveDescriptor);
+         (umbrel ? !present(payload.passphrase) && !present(payload.privateWif) &&
+                   !present(payload.receiveDescriptor) :
+                   present(payload.privateWif) && present(payload.receiveDescriptor));
 }
 
 bool writeAuroraWallet(AuroraFile &file, const char *password,
@@ -266,7 +295,17 @@ bool validElectrumData(const WalletExportData &data) {
   return present(data.accountXpub) && present(data.accountXprv);
 }
 
+bool validSparrowData(const WalletExportData &data) {
+  return isUmbrelData(data) && present(data.accountXprv);
+}
+
 bool validAuroraData(const WalletExportData &data) {
+  if (isUmbrelData(data)) {
+    return data.mnemonic && !data.mnemonic[0] && data.passphrase && !data.passphrase[0] &&
+           present(data.address) && present(data.accountXpub) && present(data.accountXprv) &&
+           data.privateWif && !data.privateWif[0] &&
+           data.receiveDescriptor && !data.receiveDescriptor[0];
+  }
   return data.addressKind <= 3 && supportedWordCount(data.wordCount) &&
          present(data.addressType) && present(data.derivationPath) &&
          present(data.mnemonic) && data.passphrase && present(data.address) &&
@@ -330,6 +369,7 @@ bool auroraSdReady() {
 const char *walletExportSuffix(WalletExportFormat format) {
   switch (format) {
     case WalletExportFormat::ElectrumPrivate: return "-electrum.json";
+    case WalletExportFormat::SparrowPrivate: return "-sparrow.txt";
     case WalletExportFormat::AuroraWallet: return ".aurora";
   }
   return "";
@@ -343,7 +383,15 @@ WalletExportResult writeWalletExportFile(WalletExportFormat format,
                                          size_t writtenPathLength) {
   if (writtenPath && writtenPathLength) writtenPath[0] = '\0';
   if (!validBaseName(baseName)) return WalletExportResult::InvalidName;
+  if (format != WalletExportFormat::ElectrumPrivate &&
+      format != WalletExportFormat::SparrowPrivate &&
+      format != WalletExportFormat::AuroraWallet) {
+    return WalletExportResult::UnsupportedFormat;
+  }
   if (format == WalletExportFormat::ElectrumPrivate && !validElectrumData(data)) {
+    return WalletExportResult::InvalidData;
+  }
+  if (format == WalletExportFormat::SparrowPrivate && !validSparrowData(data)) {
     return WalletExportResult::InvalidData;
   }
   if (format == WalletExportFormat::AuroraWallet) {
@@ -377,7 +425,9 @@ WalletExportResult writeWalletExportFile(WalletExportFormat format,
 
   bool ok = format == WalletExportFormat::ElectrumPrivate
                       ? writeElectrum(file, data)
-                      : writeAuroraWallet(file, filePassword, data);
+                      : (format == WalletExportFormat::SparrowPrivate
+                             ? writeSparrow(file, data)
+                             : writeAuroraWallet(file, filePassword, data));
   ok = storage.sync(file) && ok;
 #if defined(AURORA_BOARD_CYD)
   ok = file.close() && ok;

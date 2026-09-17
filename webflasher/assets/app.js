@@ -33,6 +33,32 @@ const releases = {
     releaseDescription: "ESP32-2432S028R · Archive 1.7.5 · Image fusionnée 4 Mo",
     warning: "Vous avez choisi la version 1.7.5 pour l’ESP32-2432S028R. Elle ne contient pas les protections et corrections ajoutées depuis cette version."
   },
+  "p4-rev1-2.0.5": {
+    target: "Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 · silicium 1.x",
+    version: "2.0.5",
+    state: "DERNIÈRE VERSION",
+    flash: "32 Mo",
+    hash: "6D6253867D4962AACDB012F0445444E386C519044543F41DAE20CA04517722CB",
+    notes: "./releases/2.0.5.md",
+    changes: ["Umbrel/LND : QR xprv avec décompte de 3 minutes.", "Sauvegarde .aurora chiffrée et réouverture publique du xpub.", "Export Sparrow rouge en clair ; mots AEZEED et passphrase jamais enregistrés."],
+    help: "Réservé au silicium P4 révision 1.x, notamment 1.3.",
+    description: "Image Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3, silicium 1.x fusionnée : flash 32 Mo, bootloader à 0x2000 et application à 0x10000.",
+    releaseDescription: "Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 · Silicium 1.x · 2.0.5",
+    warning: "DANGER : utilisez cette image uniquement avec un Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3, silicium 1.x. Ne la flashez jamais sur un ESP32-2432S028R ni sur le silicium 3.x."
+  },
+  "p4-rev3-2.0.5": {
+    target: "Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 · silicium 3.x",
+    version: "2.0.5",
+    state: "DERNIÈRE VERSION",
+    flash: "32 Mo",
+    hash: "2BC03AAC78FBF9583B6B4918C9A89D807A55D96B554909B21FE486C67CA77884",
+    notes: "./releases/2.0.5.md",
+    changes: ["Umbrel/LND : QR xprv avec décompte de 3 minutes.", "Sauvegarde .aurora chiffrée et réouverture publique du xpub.", "Export Sparrow rouge en clair ; mots AEZEED et passphrase jamais enregistrés."],
+    help: "Réservé au silicium P4 révision 3.x. Image contrôlée par logiciel, non testée sur carte 3.x.",
+    description: "Image Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3, silicium 3.x fusionnée : flash 32 Mo, bootloader à 0x2000 et application à 0x10000.",
+    releaseDescription: "Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 · Silicium 3.x · 2.0.5",
+    warning: "DANGER : utilisez cette image uniquement avec un Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3, silicium 3.x. Ne la flashez jamais sur un ESP32-2432S028R ni sur le silicium 1.x."
+  },
   "p4-rev1-2.0.3": {
     target: "Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 · silicium 1.x",
     version: "2.0.3",

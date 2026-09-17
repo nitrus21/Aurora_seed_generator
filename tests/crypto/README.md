@@ -28,6 +28,12 @@ Le contrôle préalable SD est également testé : carte vide acceptée sans éc
 absence de carte ou racine illisible refusées, montage/démontage équilibrés,
 aucun fichier créé lors d'un export sans carte.
 
+Le sous-type Umbrel/LND V1 est testé séparément : il n’accepte aucun mot AEZEED,
+aucune passphrase, aucun WIF ni descripteur. La relecture authentifiée restitue
+uniquement le couple BIP32 et l’anniversaire public. L’export Sparrow doit être
+exactement le `xprv` suivi d’un saut de ligne ; tout autre type de portefeuille
+est refusé pour ce format en clair.
+
 Ce n'est pas un test des contrôleurs SD physiques ni des accélérateurs cryptographiques ESP32. Les fixtures sont fictives, sans fonds ; aucune carte réelle n'est ouverte. Les échanges entre les deux lecteurs et l'autotest E00 restent à vérifier sur les appareils.
 
 ## Régressions d'effacement P4

@@ -6,12 +6,17 @@ const vm = require('node:vm');
 const web = path.resolve(__dirname, '../../webflasher');
 const html = fs.readFileSync(path.join(web, 'index.html'), 'utf8');
 const code = fs.readFileSync(path.join(web, 'assets/app.js'), 'utf8');
-const variants = [
+const allVariants = [
   ['cyd-1.9.9', '1.9.9', 'manifest.json'],
   ['cyd-1.7.5', '1.7.5', 'manifests/cyd-1.7.5.json'],
+  ['p4-rev1-2.0.5', '2.0.5', 'manifests/p4-rev1-2.0.5.json'],
+  ['p4-rev3-2.0.5', '2.0.5', 'manifests/p4-rev3-2.0.5.json'],
   ['p4-rev1-2.0.3', '2.0.3', 'manifests/p4-rev1-2.0.3.json'],
   ['p4-rev3-2.0.3', '2.0.3', 'manifests/p4-rev3-2.0.3.json'],
 ];
+const variants = process.env.AURORA_P4_ONLY === '1'
+  ? allVariants.filter(([id]) => id.startsWith('p4-'))
+  : allVariants;
 function element() {
   return { textContent: '', listeners: {}, classes: [], children: [],
     classList: {add() {}}, addEventListener(name, cb) {this.listeners[name] = cb;},
@@ -56,5 +61,5 @@ async function test(secure, serial) {
 }
 (async () => {
   for (const [secure, serial] of [[true, true], [true, false], [false, true]]) await test(secure, serial);
-  console.log('PASS: four selections, single installer, versions, warnings, hashes, notes, copy and browser compatibility');
+  console.log(`PASS: ${variants.length} selections, single installer, versions, warnings, hashes, notes, copy and browser compatibility`);
 })().catch(error => {console.error(error); process.exitCode = 1;});

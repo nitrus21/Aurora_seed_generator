@@ -303,6 +303,34 @@ int main() {
   assert(testCard.at("/no-pin.aurora").size()==HEADER_SIZE+sizeof(AuroraPayloadV1)+TAG_SIZE);
   assert(getLe32(testCard.at("/no-pin.aurora").data()+12)==KDF_ITERATIONS);
   wipeAuroraWalletData(restored);
+  const WalletExportData umbrel{
+      AURORA_WALLET_KIND_UMBREL,AURORA_WALLET_WORDS_UMBREL,
+      AURORA_WALLET_TYPE_UMBREL,AURORA_WALLET_PATH_UMBREL,
+      "","","birthday-days:4242",
+      "xpub661MyMwAqRbc-public-umbrel-fixture",
+      "xprv9s21ZrQH143K3-private-umbrel-fixture","","",nullptr};
+  uint8_t umbrelFingerprint[32]{};
+  assert(writeAuroraWalletFileVerified("umbrel",filePassword,umbrel,path,sizeof(path),umbrelFingerprint)==WalletExportResult::Ok);
+  assert(!strcmp(path,"/umbrel.aurora") && !allZero(umbrelFingerprint));
+  assert(readAuroraWalletFileChecked("umbrel",filePassword,restored,nullptr,umbrelFingerprint)==AuroraWalletReadResult::Ok);
+  assert(restored.fileVersion==1 && restored.addressKind==AURORA_WALLET_KIND_UMBREL &&
+         restored.wordCount==0 && !strcmp(restored.addressType,AURORA_WALLET_TYPE_UMBREL) &&
+         !strcmp(restored.derivationPath,"m") && !strcmp(restored.address,"birthday-days:4242") &&
+         !strcmp(restored.accountXpub,umbrel.accountXpub) &&
+         !strcmp(restored.accountXprv,umbrel.accountXprv) &&
+         !restored.mnemonic[0] && !restored.passphrase[0] &&
+         !restored.privateWif[0] && !restored.receiveDescriptor[0]);
+  wipeAuroraWalletData(restored);
+  assert(writeWalletExportFile(WalletExportFormat::SparrowPrivate,"umbrel",nullptr,umbrel,path,sizeof(path))==WalletExportResult::Ok);
+  assert(!strcmp(path,"/umbrel-sparrow.txt"));
+  const std::string expectedSparrow=std::string(umbrel.accountXprv)+"\n";
+  assert(testCard.at(path)==std::vector<uint8_t>(expectedSparrow.begin(),expectedSparrow.end()));
+  auto invalidUmbrel=umbrel; invalidUmbrel.mnemonic="AEZEED words must never be serialized";
+  assert(writeWalletExportFile(WalletExportFormat::AuroraWallet,"bad-umbrel",filePassword,invalidUmbrel,path,sizeof(path))==WalletExportResult::InvalidData);
+  assert(writeWalletExportFile(WalletExportFormat::SparrowPrivate,"bad-sparrow",nullptr,fixture,path,sizeof(path))==WalletExportResult::InvalidData);
+  assert(!testCard.count("/bad-umbrel.aurora") && !testCard.count("/bad-sparrow-sparrow.txt"));
+  secureZero(umbrelFingerprint,sizeof(umbrelFingerprint));
+  puts("PASS: Umbrel subtype stores only authenticated root BIP32 material; AEZEED words/passphrase stay absent; Sparrow export is exact plaintext xprv");
   testSyncOk = false;
   assert(writeWalletExportFile(WalletExportFormat::AuroraWallet, "failure", filePassword, fixture, path, sizeof(path)) == WalletExportResult::WriteFailed);
   assert(!testCard.count("/failure.aurora") && testCard.at("/test.aurora") == original);

@@ -48,6 +48,9 @@ bool WalletEngine::accountXprv(const WalletOutput &, const char *, char *out, si
 bool WalletEngine::rootXprvFromSeed(const uint8_t *,size_t,char *out,size_t size) {
   strlcpy(out,"xprv9s21ZrQH143K3-test-only-not-a-real-master-private-key",size); return true;
 }
+bool WalletEngine::rootXpubFromXprv(const char *,char *out,size_t size) {
+  strlcpy(out,"xpub661MyMwAqRbc-test-only-not-a-real-master-public-key",size); return true;
+}
 AezeedResult AezeedEngine::decode(const char *,const char *,AezeedDecoded &out) {
   consumeOperationDelay();
   out.birthdayDays=4242; memset(out.entropy,0x42,sizeof(out.entropy)); return AezeedResult::Ok;
@@ -56,13 +59,21 @@ void AezeedEngine::wipe(AezeedDecoded &out) { secureZero(&out,sizeof(out)); }
 void WalletEngine::wipe(WalletOutput &wallet) { secureZero(&wallet, sizeof(wallet)); }
 bool WalletEngine::bip39Word(const char *) { return true; }
 uint8_t WalletEngine::bip39Suggestions(const char *, char *, size_t, uint8_t) { return 0; }
-const char *walletExportSuffix(WalletExportFormat kind) { return kind == WalletExportFormat::AuroraWallet ? ".aurora" : ".json"; }
+const char *walletExportSuffix(WalletExportFormat kind) {
+  return kind==WalletExportFormat::AuroraWallet?".aurora":
+         (kind==WalletExportFormat::SparrowPrivate?"-sparrow.txt":"-electrum.json");
+}
 bool auroraWalletCryptoSelfTest() { return true; }
 void wipeAuroraWalletData(AuroraWalletData &data) { secureZero(&data, sizeof(data)); }
 WalletExportResult writeWalletExportFile(WalletExportFormat format, const char *, const char *, const WalletExportData &data, char *path, size_t size) {
   consumeOperationDelay();
   ++exportCalls;
   if(format==WalletExportFormat::AuroraWallet) assert(!data.pin);
+  if(format==WalletExportFormat::SparrowPrivate) {
+    assert(data.addressKind==AURORA_WALLET_KIND_UMBREL && data.wordCount==0);
+    assert(data.accountXprv && data.accountXprv[0] && data.accountXpub && data.accountXpub[0]);
+    assert(data.mnemonic && !data.mnemonic[0] && data.passphrase && !data.passphrase[0]);
+  }
   if(exportFinalizeFails) { if(size) path[0]=0; return WalletExportResult::FinalizeFailed; }
   strlcpy(path,"/fixture.aurora",size); return exportOk && sdReady?WalletExportResult::Ok:WalletExportResult::NoCard;
 }
@@ -201,6 +212,7 @@ static void assertSessionWiped(const AuroraUI &ui) {
   zero(&ui.wallet_,sizeof(ui.wallet_));
   zero(ui.passphrase_,sizeof(ui.passphrase_));
   zero(ui.filePassword_,sizeof(ui.filePassword_));
+  zero(ui.umbrelRootXprv_,sizeof(ui.umbrelRootXprv_));
   zero(ui.mixedEntropy_,sizeof(ui.mixedEntropy_));
   zero(ui.restoreWords_,sizeof(ui.restoreWords_));
   zero(ui.restoreMnemonic_,sizeof(ui.restoreMnemonic_));
@@ -597,7 +609,10 @@ static void testSensitiveLifecycle(AuroraUI &ui) {
     lifecycleTick+=1000;
     ui.show(screen);
     assert(ui.screen_==screen && ui.sensitiveStateActive_ && !ui.protectedSession_);
-    assert(!ui.secretCountdown_ && ui.visibleSecret_==AuroraUI::Access::None);
+    if(screen==Screen::UmbrelQr)
+      assert(ui.secretCountdown_ && ui.visibleSecret_==AuroraUI::Access::UmbrelXprv);
+    else
+      assert(!ui.secretCountdown_ && ui.visibleSecret_==AuroraUI::Access::None);
     // The same rule covers partially typed secrets and errors, not only a
     // successful wallet or password validation. These are public fixtures.
     if(ui.restoreWordArea_) lv_textarea_set_text(ui.restoreWordArea_,"abandon");
@@ -971,9 +986,45 @@ int main() {
   }
   assert(umbrelQrCount==1 && umbrelValueCount==1);
   snapshot(ui,"umbrel-qr.ppm");
-  assert(!ui.secretCountdown_ && ui.visibleSecret_==AuroraUI::Access::None);
-  mock.time+=15000000; ui.tick();
+  assert(ui.secretCountdown_ && ui.visibleSecret_==AuroraUI::Access::UmbrelXprv);
+  assert(!strcmp(lv_label_get_text(ui.secretCountdown_),"03:00"));
+  mock.time+=180000000; ui.tick();
   assert(ui.screen_==Screen::Mode && !ui.umbrelRootXprv_[0]);
+  // An encrypted Umbrel file reopens as a public-only session. Words and the
+  // AEZEED passphrase were never serialized; each xprv/Sparrow action asks for
+  // the exact file password and clears the private root on return.
+  ui.closeSession(); importedData={}; importedData.fileVersion=1;
+  importedData.addressKind=AURORA_WALLET_KIND_UMBREL;
+  importedData.wordCount=AURORA_WALLET_WORDS_UMBREL;
+  strlcpy(importedData.addressType,AURORA_WALLET_TYPE_UMBREL,sizeof(importedData.addressType));
+  strlcpy(importedData.derivationPath,AURORA_WALLET_PATH_UMBREL,sizeof(importedData.derivationPath));
+  strlcpy(importedData.address,"birthday-days:4242",sizeof(importedData.address));
+  strlcpy(importedData.accountXpub,"xpub661MyMwAqRbc-test-only-not-a-real-master-public-key",sizeof(importedData.accountXpub));
+  strlcpy(importedData.accountXprv,"xprv9s21ZrQH143K3-test-only-not-a-real-master-private-key",sizeof(importedData.accountXprv));
+  importOk=true; sdReady=true; resetMockFileAccess();
+  strlcpy(ui.importBaseName_,"umbrel-fixture",sizeof(ui.importBaseName_));
+  strlcpy(ui.filePassword_,"test-password-only",sizeof(ui.filePassword_));
+  runMockImport(ui);
+  assert(ui.screen_==Screen::Info && ui.umbrelWallet_ && ui.umbrelBirthdayDays_==4242);
+  assertPublicFileSession(ui); assert(!ui.umbrelRootXprv_[0]);
+  assert(lv_obj_has_state(actionButton(ui,SHOW_WORDS),LV_STATE_DISABLED));
+  assert(lv_obj_has_state(actionButton(ui,SHOW_LOADED_PASSPHRASE),LV_STATE_DISABLED));
+  click(ui,TO_QR_PUBLIC); assert(ui.screen_==Screen::Qr && !ui.privateLoaded_);
+  click(ui,TO_INFO); click(ui,UMBREL_SHOW_XPRV);
+  assert(ui.screen_==Screen::PrivatePassword); enterPrivatePassword(ui);
+  assert(ui.screen_==Screen::UmbrelQr && ui.privateLoaded_ && ui.umbrelRootXprv_[0]);
+  assert(ui.visibleSecret_==AuroraUI::Access::UmbrelXprv && ui.secretCountdown_);
+  click(ui,UMBREL_RESULT_BACK); assert(ui.screen_==Screen::Info);
+  assertPrivateStateAbsent(ui);
+  exportOk=true;
+  click(ui,TO_BACKUP); click(ui,EXPORT_SPARROW);
+  assert(ui.screen_==Screen::PrivatePassword); enterPrivatePassword(ui);
+  assert(ui.screen_==Screen::ExportWarning && ui.privateLoaded_);
+  click(ui,CONFIRM_PRIVATE); assert(ui.screen_==Screen::ExportName);
+  lv_obj_send_event(ui.keyboard_,LV_EVENT_READY,nullptr);
+  assert(ui.screen_==Screen::FileProcessing); mock.time+=101000; ui.tick();
+  assert(ui.exportSucceeded_ && ui.screen_==Screen::Info);
+  assertPrivateStateAbsent(ui);
   for(auto screen:{Screen::Setup,Screen::RestoreSetup,Screen::ImportName,
                   Screen::Passphrase,Screen::RestoreWords,Screen::RestorePassphrase,
                   Screen::RestoreSetup}) {

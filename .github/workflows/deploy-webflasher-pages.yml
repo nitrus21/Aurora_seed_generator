@@ -33,9 +33,9 @@ jobs:
       - name: Configurer GitHub Pages
         uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
 
-      - name: Vérifier les images et les choix du Web Flasher
+      - name: Vérifier la release P4 et les choix du Web Flasher
         shell: pwsh
-        run: ./tests/release/verify.ps1 -ReleasedArtifactsOnly
+        run: ./tests/release/verify_p4.ps1
 
       - name: Vérifier le bundle local depuis les dépendances verrouillées
         run: |

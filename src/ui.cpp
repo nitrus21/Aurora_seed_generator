@@ -57,7 +57,7 @@ enum Action : uint8_t { START, OPEN_WALLET, NEW_WALLET, RESTORE_WALLET, RECOVER_
                         REFRESH_AURORA_FILES, UNLOCK_WALLET,
                         TO_PASSPHRASE, TO_ENTROPY, GENERATE,
                         NEXT_VERIFY, CHECK_VERIFY, TO_INFO, TO_QR_ADDRESS,
-                        TO_QR_PUBLIC, REVEAL_PRIVATE, TO_BACKUP, EXPORT_ELECTRUM,
+                        TO_QR_PUBLIC, REVEAL_PRIVATE, TO_BACKUP, EXPORT_ELECTRUM, EXPORT_SPARROW,
                         EXPORT_AURORA, CONFIRM_PRIVATE, SAVE_EXPORT,
                         SAVE_EXPORT_PASSWORD, DO_WIPE,
                         WORD_12 = 30, WORD_15, WORD_18, WORD_21, WORD_24,
@@ -164,12 +164,6 @@ void AuroraUI::begin() {
 }
 
 void AuroraUI::tick() {
-  // AEZEED is not an authenticated .aurora file view: retain its original
-  // one-shot 15-second lifetime, without the file-view countdown.
-  if(umbrelRecovery_ && screen_==Screen::UmbrelQr &&
-      millis()-accessGrantedMs_>=SECRET_VISIBLE_MS) {
-    closeSession(); return;
-  }
   // Display time excludes decryption/rendering. It is absolute: neither touch
   // nor pagination renews it. Expiration closes the entire wallet.
   if(visibleSecret_!=Access::None &&
@@ -208,7 +202,7 @@ void AuroraUI::tick() {
     fileOperation_ = FileOperation::None;
     fileOperationDueMs_ = 0;
     qrContent_ = QrContent::Address;
-    show(umbrelRecovery_ ? Screen::UmbrelResult : Screen::Info);
+    show(fileSession_ ? Screen::Info : Screen::UmbrelResult);
     return;
   }
   if (selfTestPending_ && static_cast<int32_t>(millis() - selfTestDueMs_) >= 0) {
@@ -258,7 +252,8 @@ void AuroraUI::tick() {
       }
       if (ok) {
         access_ = requested;
-        accessGrantedMs_ = (requested==Access::Words || requested==Access::PrivateQr)
+        accessGrantedMs_ = (requested==Access::Words || requested==Access::PrivateQr ||
+                            requested==Access::UmbrelXprv)
             ? millis() : attemptStarted;
         if (!authorized(requested)) { revokeAccess(); show(Screen::Info); return; }
         show(destination);
@@ -445,8 +440,6 @@ void AuroraUI::show(Screen s) {
   if(s!=Screen::Splash && s!=Screen::Mode && s!=Screen::Wipe && s!=Screen::SecurityError &&
       visibleSecret_!=Access::None &&
       millis()-visibleSecretStartedMs_>=accessDurationMs(visibleSecret_)) s=Screen::Mode;
-  if(umbrelRecovery_ && screen_==Screen::UmbrelQr && s!=Screen::UmbrelQr &&
-      s!=Screen::SecurityError) s=Screen::Mode;
   // A blocking crypto/SD call may consume the idle deadline while tick() is
   // unable to run. Discard its result before constructing any next screen;
   // completing work is not user activity. Keep fatal security errors blocked.
@@ -520,7 +513,6 @@ void AuroraUI::show(Screen s) {
     sensitiveStateActive_ = true;
     lv_disp_trig_activity(nullptr);
   }
-  if(umbrelRecovery_ && s==Screen::UmbrelQr && screen_!=s) accessGrantedMs_=millis();
   screen_ = s; clear();
   switch (s) {
     case Screen::Splash: buildSplash(); break; case Screen::Mode: buildMode(); break;
@@ -554,10 +546,11 @@ void AuroraUI::show(Screen s) {
   }
   // Only reauthenticated .aurora consultations get the extended display
   // deadlines. Creation, manual restoration and AEZEED keep their own policy.
-  const Access displayed = fileSession_ && protectedSession_ && privateLoaded_ ?
-      (screen_==Screen::Mnemonic ? Access::Words :
-       (screen_==Screen::Qr && qrContent_==QrContent::PrivateKey ? Access::PrivateQr : Access::None)) :
-      Access::None;
+  const Access displayed = screen_==Screen::UmbrelQr ? Access::UmbrelXprv :
+      (fileSession_ && protectedSession_ && privateLoaded_ ?
+       (screen_==Screen::Mnemonic ? Access::Words :
+        (screen_==Screen::Qr && qrContent_==QrContent::PrivateKey ? Access::PrivateQr : Access::None)) :
+       Access::None);
   if(displayed!=visibleSecret_) {
     visibleSecret_=displayed;
     visibleSecretStartedMs_=displayed==Access::None ? 0 : millis();
@@ -581,6 +574,7 @@ uint32_t AuroraUI::accessDurationMs(Access access) {
   switch(access) {
     case Access::Words: return WORDS_VISIBLE_MS;
     case Access::PrivateQr: return PRIVATE_KEY_VISIBLE_MS;
+    case Access::UmbrelXprv: return UMBREL_XPRV_VISIBLE_MS;
     case Access::Export: return EXPORT_AUTH_MS;
     default: return SECRET_VISIBLE_MS;
   }
@@ -1060,6 +1054,18 @@ bool AuroraUI::recoverUmbrel() {
     strlcpy(restoreStatus_,"Impossible de dériver la clé maître BIP32.",sizeof(restoreStatus_));
     secureZero(umbrelRootXprv_,sizeof(umbrelRootXprv_)); return false;
   }
+  engine_.wipe(wallet_);
+  if(!engine_.rootXpubFromXprv(umbrelRootXprv_,wallet_.accountXpub,
+                               sizeof(wallet_.accountXpub))) {
+    umbrelResult_=AezeedResult::CryptoFailed;
+    strlcpy(restoreStatus_,"Impossible de valider la clé maître BIP32.",sizeof(restoreStatus_));
+    secureZero(umbrelRootXprv_,sizeof(umbrelRootXprv_)); return false;
+  }
+  strlcpy(wallet_.path,AURORA_WALLET_PATH_UMBREL,sizeof(wallet_.path));
+  snprintf(wallet_.address,sizeof(wallet_.address),"birthday-days:%u",
+           static_cast<unsigned>(umbrelBirthdayDays_));
+  wallet_.valid=true;
+  umbrelWallet_=true;
   secureZero(restoreWords_,sizeof(restoreWords_)); secureZero(restoreMnemonic_,sizeof(restoreMnemonic_));
   secureZero(restoreSuggestions_,sizeof(restoreSuggestions_)); secureZero(restoreStatus_,sizeof(restoreStatus_));
   return true;
@@ -1078,11 +1084,20 @@ void AuroraUI::buildUmbrelResult() {
       static_cast<unsigned>(umbrelBirthdayDays_));
   lv_obj_t *info=explanation(panel,text,&aurora_font_10);lv_label_set_long_mode(info,LV_LABEL_LONG_WRAP);
   AuroraLayout::size(info,282,116);AuroraLayout::pos(info,4,3);
-  lv_obj_t *show=button(root_,"AFFICHER LE XPRV",event,160);
-  lv_obj_set_user_data(show,(void*)UMBREL_SHOW_XPRV);AuroraLayout::pos(show,12,185);
+  lv_obj_t *show=button(root_,"AFFICHER LE XPRV",event,142);
+  lv_obj_set_user_data(show,(void*)UMBREL_SHOW_XPRV);AuroraLayout::pos(show,10,185);
   lv_obj_set_style_bg_color(show,DANGER,0);
+  lv_obj_t *save=button(root_,"ENREGISTRER",event,142);
+  lv_obj_set_user_data(save,(void*)TO_BACKUP);AuroraLayout::pos(save,168,185);
+#if defined(AURORA_BOARD_P4)
+  lv_obj_set_pos(show,15,648);lv_obj_set_size(show,218,64);
+  lv_obj_set_pos(save,247,648);lv_obj_set_size(save,218,64);
+  lv_obj_t *lock=button(root_,"EFFACER",event,180);
+  lv_obj_set_user_data(lock,(void*)LOCK_SESSION);lv_obj_set_pos(lock,131,720);lv_obj_set_size(lock,218,64);
+#else
   lv_obj_t *lock=button(root_,"EFFACER",event,116);
-  lv_obj_set_user_data(lock,(void*)LOCK_SESSION);AuroraLayout::pos(lock,192,185);
+  lv_obj_set_user_data(lock,(void*)LOCK_SESSION);AuroraLayout::pos(lock,102,216);
+#endif
 }
 
 void AuroraUI::buildUmbrelQr() {
@@ -1093,11 +1108,11 @@ void AuroraUI::buildUmbrelQr() {
     lv_obj_set_style_text_color(error,DANGER,0);lv_obj_set_pos(error,24,260);
   }
   lv_obj_t *value=label(root_,umbrelRootXprv_,&aurora_font_20);
-  lv_label_set_long_mode(value,LV_LABEL_LONG_WRAP);lv_obj_set_size(value,432,180);lv_obj_set_pos(value,24,480);
+  lv_label_set_long_mode(value,LV_LABEL_LONG_WRAP);lv_obj_set_size(value,432,140);lv_obj_set_pos(value,24,480);
   lv_obj_t *warning=explanation(root_,"Quiconque possède ce xprv peut dépenser tous les fonds.",&aurora_font_10);
   lv_label_set_long_mode(warning,LV_LABEL_LONG_WRAP);lv_obj_set_size(warning,432,46);
-  lv_obj_set_style_text_color(warning,DANGER,0);lv_obj_set_pos(warning,24,665);
-  lv_obj_t *back=button(root_,"FERMER",event,116);lv_obj_set_user_data(back,(void*)UMBREL_RESULT_BACK);
+  lv_obj_set_style_text_color(warning,DANGER,0);lv_obj_set_pos(warning,24,630);
+  lv_obj_t *back=button(root_,"RETOUR",event,116);lv_obj_set_user_data(back,(void*)UMBREL_RESULT_BACK);
   lv_obj_set_pos(back,153,720);lv_obj_set_size(back,174,64);
 #else
   if(!renderQr(root_,umbrelRootXprv_,128,6,48)) {
@@ -1109,7 +1124,7 @@ void AuroraUI::buildUmbrelQr() {
   lv_obj_t *warning=explanation(root_,"Quiconque possède ce xprv peut dépenser tous les fonds.",&aurora_font_10);
   lv_label_set_long_mode(warning,LV_LABEL_LONG_WRAP);AuroraLayout::size(warning,168,34);
   lv_obj_set_style_text_color(warning,DANGER,0);AuroraLayout::pos(warning,142,151);
-  lv_obj_t *back=button(root_,"FERMER",event,116);lv_obj_set_user_data(back,(void*)UMBREL_RESULT_BACK);
+  lv_obj_t *back=button(root_,"RETOUR",event,116);lv_obj_set_user_data(back,(void*)UMBREL_RESULT_BACK);
   AuroraLayout::pos(back,192,194);
 #endif
 }
@@ -1563,13 +1578,21 @@ void AuroraUI::buildInfo() {
   if(protectedSession_) lv_obj_set_style_pad_all(root_,0,0);
   const char *step=manualRestore_ ? "2 / 3" :
       (loadedWallet_ ? (passphrase_[0] ? "3 / 4" : "2 / 3") : "6 / 7");
-  header(protectedSession_?"Portefeuille":"Informations du portefeuille",protectedSession_?nullptr:step);
+  header(umbrelWallet_?"Portefeuille Umbrel":(protectedSession_?"Portefeuille":"Informations du portefeuille"),protectedSession_?nullptr:step);
   lv_obj_t *p=lv_obj_create(root_); AuroraLayout::pos(p,10,42); AuroraLayout::size(p,300,132); lv_obj_set_style_bg_color(p,PANEL,0); lv_obj_set_style_border_width(p,0,0); lv_obj_set_style_radius(p,7,0); lv_obj_clear_flag(p,LV_OBJ_FLAG_SCROLLABLE);
   char txt[500];
 #if defined(AURORA_BOARD_P4)
-  snprintf(txt,sizeof(txt),"Adresse\n%s\n\nChemin : %s\n\nClé publique étendue du compte\n%s",wallet_.address,wallet_.path,wallet_.accountXpub);
+  if(umbrelWallet_)
+    snprintf(txt,sizeof(txt),"Clé publique étendue maître\n%s\n\nChemin : m\n\nAnniversaire LND\nJour %u depuis Genesis",
+             wallet_.accountXpub,static_cast<unsigned>(umbrelBirthdayDays_));
+  else
+    snprintf(txt,sizeof(txt),"Adresse\n%s\n\nChemin : %s\n\nClé publique étendue du compte\n%s",wallet_.address,wallet_.path,wallet_.accountXpub);
 #else
-  snprintf(txt,sizeof(txt),"Adresse\n%s\nChemin : %s\nClé publique étendue du compte\n%s",wallet_.address,wallet_.path,wallet_.accountXpub);
+  if(umbrelWallet_)
+    snprintf(txt,sizeof(txt),"Clé publique étendue maître\n%s\nChemin : m\nAnniversaire LND : jour %u",
+             wallet_.accountXpub,static_cast<unsigned>(umbrelBirthdayDays_));
+  else
+    snprintf(txt,sizeof(txt),"Adresse\n%s\nChemin : %s\nClé publique étendue du compte\n%s",wallet_.address,wallet_.path,wallet_.accountXpub);
 #endif
   lv_obj_t *l=label(p,txt,&aurora_font_10); lv_label_set_long_mode(l,LV_LABEL_LONG_WRAP); AuroraLayout::size(l,290,124); AuroraLayout::pos(l,5,3);
 #if defined(AURORA_BOARD_P4)
@@ -1585,8 +1608,8 @@ void AuroraUI::buildInfo() {
     lv_obj_set_pos(saved,12,438); lv_obj_set_style_text_font(saved,&aurora_font_18,0);
 #endif
   }
-  lv_obj_t *q=button(root_,"CLÉ PUBLIQUE",event,95); lv_obj_set_user_data(q,(void*)TO_QR_ADDRESS); AuroraLayout::pos(q,10,181);
-  lv_obj_t *r=button(root_,"CLÉ PRIVÉE",event,100); lv_obj_set_user_data(r,(void*)REVEAL_PRIVATE); AuroraLayout::pos(r,110,181);
+  lv_obj_t *q=button(root_,"CLÉ PUBLIQUE",event,95); lv_obj_set_user_data(q,(void*)(umbrelWallet_?TO_QR_PUBLIC:TO_QR_ADDRESS)); AuroraLayout::pos(q,10,181);
+  lv_obj_t *r=button(root_,"CLÉ PRIVÉE",event,100); lv_obj_set_user_data(r,(void*)(umbrelWallet_?UMBREL_SHOW_XPRV:REVEAL_PRIVATE)); AuroraLayout::pos(r,110,181);
   lv_obj_set_style_bg_color(q,SUCCESS,0);
   if(protectedSession_) lv_obj_set_style_bg_color(r,DANGER,0);
   const char *lastText=protectedSession_?"EXPORTER":(manualRestore_?"EXPORTER":(loadedWallet_?"EFFACER":"SUIVANT"));
@@ -1621,7 +1644,8 @@ void AuroraUI::buildInfo() {
       lv_obj_set_user_data(b,(void*)actions[i]);
       if(actions[i]==SHOW_WORDS || actions[i]==SHOW_LOADED_PASSPHRASE)
         lv_obj_set_style_bg_color(b,DANGER,0);
-      if(actions[i]==SHOW_LOADED_PASSPHRASE && !hasPassphrase()) {
+      if((umbrelWallet_ && (actions[i]==SHOW_WORDS || actions[i]==SHOW_LOADED_PASSPHRASE)) ||
+         (actions[i]==SHOW_LOADED_PASSPHRASE && !hasPassphrase())) {
         lv_obj_add_state(b,LV_STATE_DISABLED);
         lv_obj_set_style_bg_color(b,PANEL,LV_STATE_DISABLED);
         lv_obj_set_style_text_color(lv_obj_get_child(b,0),MUTED,0);
@@ -1700,7 +1724,7 @@ void AuroraUI::buildQr() {
     lv_obj_set_user_data(alternate,(void*)TO_QR_PUBLIC);
     lv_obj_set_pos(alternate,24,720);lv_obj_set_size(alternate,buttonWidth,64);
     hasAlternate=true;
-  } else if(qrContent_==QrContent::AccountXpub) {
+  } else if(qrContent_==QrContent::AccountXpub && !umbrelWallet_) {
     lv_obj_t *alternate=button(root_,"ADRESSE",event,140);
     lv_obj_set_user_data(alternate,(void*)TO_QR_ADDRESS);
     lv_obj_set_pos(alternate,24,720);lv_obj_set_size(alternate,buttonWidth,64);
@@ -1743,7 +1767,7 @@ void AuroraUI::buildQr() {
   } else if (qrContent_ == QrContent::Address) {
     lv_obj_t *p=button(root_,"CLÉ ÉTENDUE",event,rightWidth);
     lv_obj_set_user_data(p,(void*)TO_QR_PUBLIC); AuroraLayout::pos(p,rightX,147);
-  } else if (qrContent_ == QrContent::AccountXpub) {
+  } else if (qrContent_ == QrContent::AccountXpub && !umbrelWallet_) {
     lv_obj_t *a=button(root_,"ADRESSE",event,rightWidth);
     lv_obj_set_user_data(a,(void*)TO_QR_ADDRESS); AuroraLayout::pos(a,rightX,147);
   }
@@ -1765,10 +1789,10 @@ void AuroraUI::buildBackup() {
 #if defined(AURORA_BOARD_P4)
   if(protectedSession_) lv_obj_set_style_bg_color(aurora,DANGER,0);
 #endif
-  lv_obj_t *electrum=button(root_,"ELECTRUM PRIVÉ NON CHIFFRÉ",event,280);
-  lv_obj_set_user_data(electrum,(void*)EXPORT_ELECTRUM); AuroraLayout::pos(electrum,20,105);
+  lv_obj_t *electrum=button(root_,umbrelWallet_?"EXPORTER POUR SPARROW - NON CHIFFRÉ":"ELECTRUM PRIVÉ NON CHIFFRÉ",event,280);
+  lv_obj_set_user_data(electrum,(void*)(umbrelWallet_?EXPORT_SPARROW:EXPORT_ELECTRUM)); AuroraLayout::pos(electrum,20,105);
   lv_obj_set_style_bg_color(electrum,DANGER,0);
-  if (wallet_.kind == AddressKind::Taproot) {
+  if (!umbrelWallet_ && wallet_.kind == AddressKind::Taproot) {
     lv_obj_add_state(electrum,LV_STATE_DISABLED);
     lv_obj_set_style_bg_color(electrum,MUTED,LV_STATE_DISABLED);
   }
@@ -1780,9 +1804,11 @@ void AuroraUI::buildBackup() {
     lv_obj_set_style_text_color(status,
         strncmp(exportStatus_,"Créé :",strlen("Créé :"))==0 ? ORANGE : DANGER,0);
   } else {
-    const char *text=wallet_.kind==AddressKind::Taproot ?
+    const char *text=umbrelWallet_ ?
+        "Aurora Wallet : xprv chiffrée.\nSparrow : xprv maître en clair." :
+        (wallet_.kind==AddressKind::Taproot ?
         "Aurora Wallet : AES-256-GCM.\nElectrum indisponible en Taproot." :
-        "Aurora Wallet est chiffré et authentifié.\nElectrum contient le xprv en clair.";
+        "Aurora Wallet est chiffré et authentifié.\nElectrum contient le xprv en clair.");
     lv_obj_t *details=explanation(root_,text,&aurora_font_10);
     lv_label_set_long_mode(details,LV_LABEL_LONG_WRAP); AuroraLayout::size(details,296,34);
     lv_obj_set_style_text_color(details,MUTED,0); AuroraLayout::pos(details,12,143);
@@ -1793,13 +1819,21 @@ void AuroraUI::buildBackup() {
 
 void AuroraUI::buildExportWarning() {
   const bool aurora=exportFormat_==WalletExportFormat::AuroraWallet;
-  header(aurora ? "Aurora Wallet chiffré" : "Electrum privé - DANGER",
+  const bool sparrow=exportFormat_==WalletExportFormat::SparrowPrivate;
+  header(aurora ? "Aurora Wallet chiffré" : (sparrow?"Sparrow privé - DANGER":"Electrum privé - DANGER"),
          manualRestore_ ? "3 / 3" : "7 / 7");
   lv_obj_t *danger=label(root_,aurora?"AES-256-GCM":"SECRETS NON CHIFFRÉS",&aurora_font_16);
   lv_obj_set_style_text_color(danger,aurora?ORANGE:DANGER,0); AuroraLayout::align(danger,LV_ALIGN_TOP_MID,0,50);
-  const char *message=aurora ?
+  const char *message=nullptr;
+  if(aurora) message=umbrelWallet_ ?
+      "La clé maître BIP32 sera chiffrée avec un mot de passe.\n"
+      "Les mots AEZEED et leur passphrase ne seront pas enregistrés." :
       "Les mots et les clés seront chiffrés avec un mot de passe.\n"
-      "Mot de passe perdu = fichier définitivement illisible." :
+      "Mot de passe perdu = fichier définitivement illisible.";
+  else if(sparrow) message=
+      "Ce fichier Sparrow contient le xprv maître en clair.\n"
+      "Toute personne qui le possède peut dépenser les bitcoins.";
+  else message=
       "Ce fichier Electrum contient le xprv du compte en clair.\n"
       "Toute personne qui le possède peut dépenser les bitcoins.";
   lv_obj_t *warning=explanation(root_,message,&aurora_font_12);
@@ -1881,7 +1915,14 @@ void AuroraUI::performWalletExport() {
     secureZero(filePassword_,sizeof(filePassword_));
     return;
   }
-  if (!engine_.accountXprv(wallet_,passphrase_,accountXprv,sizeof(accountXprv))) {
+  if (exportFormat_==WalletExportFormat::SparrowPrivate && !umbrelWallet_) {
+    strlcpy(exportStatus_,"Export Sparrow réservé à la récupération Umbrel.",sizeof(exportStatus_));
+    revokeAccess(); secureZero(filePassword_,sizeof(filePassword_)); return;
+  }
+  const bool privateKeyReady=umbrelWallet_ ?
+      (umbrelRootXprv_[0] && strlcpy(accountXprv,umbrelRootXprv_,sizeof(accountXprv))<sizeof(accountXprv)) :
+      engine_.accountXprv(wallet_,passphrase_,accountXprv,sizeof(accountXprv));
+  if (!privateKeyReady) {
     strlcpy(exportStatus_,"Échec de dérivation de la clé privée étendue.",sizeof(exportStatus_));
     secureZero(accountXprv,sizeof(accountXprv));
     revokeAccess();
@@ -1898,10 +1939,13 @@ void AuroraUI::performWalletExport() {
   }
 
   const WalletExportData data{
-      static_cast<uint8_t>(wallet_.kind), words_, addressKindName(wallet_.kind),
-      wallet_.path, wallet_.mnemonic, passphrase_, wallet_.address,
-      wallet_.accountXpub, accountXprv, wallet_.privateWif,
-      wallet_.watchDescriptor,
+      umbrelWallet_?AURORA_WALLET_KIND_UMBREL:static_cast<uint8_t>(wallet_.kind),
+      umbrelWallet_?AURORA_WALLET_WORDS_UMBREL:words_,
+      umbrelWallet_?AURORA_WALLET_TYPE_UMBREL:addressKindName(wallet_.kind),
+      umbrelWallet_?AURORA_WALLET_PATH_UMBREL:wallet_.path,
+      umbrelWallet_?"":wallet_.mnemonic, umbrelWallet_?"":passphrase_, wallet_.address,
+      wallet_.accountXpub, accountXprv, umbrelWallet_?"":wallet_.privateWif,
+      umbrelWallet_?"":wallet_.watchDescriptor,
       nullptr};
   uint8_t fileFingerprint[32]{};
   const WalletExportResult result=exportFormat_==WalletExportFormat::AuroraWallet?
@@ -1914,6 +1958,7 @@ void AuroraUI::performWalletExport() {
       if(exportFormat_==WalletExportFormat::AuroraWallet) {
         startFileSession(fileFingerprint,exportBaseName_);
         protectedSession_=loadedWallet_=true;
+        umbrelRecovery_=false;
       }
       snprintf(exportStatus_,sizeof(exportStatus_),"Créé : %s",writtenPath); break;
     case WalletExportResult::InvalidName:
@@ -1957,10 +2002,13 @@ bool AuroraUI::performWalletImport() {
   const AuroraWalletReadResult result=readAuroraWalletFileChecked(
       importBaseName_,filePassword_,imported,fileFingerprint);
   secureZero(filePassword_,sizeof(filePassword_));
+  umbrelWallet_=false;
   if(result==AuroraWalletReadResult::Ok) {
+    const bool importedUmbrel=imported.addressKind==AURORA_WALLET_KIND_UMBREL;
     const AddressKind importedKind=static_cast<AddressKind>(imported.addressKind);
     engine_.wipe(wallet_);
-    if(engine_.restore(imported.mnemonic,imported.wordCount,importedKind,
+    if((importedUmbrel && applyUmbrelWalletData(imported,false)) ||
+       (!importedUmbrel && engine_.restore(imported.mnemonic,imported.wordCount,importedKind,
                        imported.passphrase,wallet_) &&
        engine_.accountXprv(wallet_,imported.passphrase,derivedXprv,sizeof(derivedXprv)) &&
        strcmp(imported.addressType,addressKindName(importedKind))==0 &&
@@ -1969,10 +2017,13 @@ bool AuroraUI::performWalletImport() {
        strcmp(imported.accountXpub,wallet_.accountXpub)==0 &&
        strcmp(imported.accountXprv,derivedXprv)==0 &&
        strcmp(imported.privateWif,wallet_.privateWif)==0 &&
-       strcmp(imported.receiveDescriptor,wallet_.watchDescriptor)==0) {
-      strlcpy(passphrase_,imported.passphrase,sizeof(passphrase_));
-      words_=imported.wordCount;
-      kind_=importedKind;
+       strcmp(imported.receiveDescriptor,wallet_.watchDescriptor)==0)) {
+      if(!importedUmbrel) {
+        strlcpy(passphrase_,imported.passphrase,sizeof(passphrase_));
+        words_=imported.wordCount;
+        kind_=importedKind;
+        umbrelWallet_=false;
+      }
       mnemonicPage_=0;
       qrContent_=QrContent::Address;
       loadedWallet_=true;
@@ -2028,7 +2079,7 @@ AuroraUI::Access AuroraUI::accessFor(Screen screen) const {
   switch(screen) {
     case Screen::Mnemonic: case Screen::Verify: return Access::Words;
     case Screen::PassphraseReveal: return Access::Passphrase;
-    case Screen::UmbrelQr: return Access::PrivateQr;
+    case Screen::UmbrelQr: return Access::UmbrelXprv;
     case Screen::Qr: return qrContent_==QrContent::PrivateKey?Access::PrivateQr:Access::None;
     case Screen::ExportWarning: case Screen::ExportName: case Screen::ExportPassword: return Access::Export;
     case Screen::FileProcessing: return fileOperation_==FileOperation::Export?Access::Export:Access::None;
@@ -2077,11 +2128,47 @@ void AuroraUI::dropPrivateState() {
 }
 
 void AuroraUI::startFileSession(const uint8_t fingerprint[32],const char *baseName) {
-  sessionHasPassphrase_=passphrase_[0]!=0;
+  sessionHasPassphrase_=!umbrelWallet_ && passphrase_[0]!=0;
   memcpy(sessionFingerprint_,fingerprint,sizeof(sessionFingerprint_));
   strlcpy(sessionBaseName_,baseName,sizeof(sessionBaseName_));
   fileSession_=true; manualRestore_=false;
   dropPrivateState();
+}
+
+bool AuroraUI::applyUmbrelWalletData(const AuroraWalletData &data, bool keepPrivate) {
+  static constexpr char BIRTHDAY_PREFIX[]="birthday-days:";
+  char derivedXpub[128]{};
+  const char *number=data.address;
+  char *end=nullptr;
+  unsigned long birthday=0;
+  secureZero(umbrelRootXprv_,sizeof(umbrelRootXprv_));
+  bool ok=data.addressKind==AURORA_WALLET_KIND_UMBREL &&
+      data.wordCount==AURORA_WALLET_WORDS_UMBREL &&
+      strcmp(data.addressType,AURORA_WALLET_TYPE_UMBREL)==0 &&
+      strcmp(data.derivationPath,AURORA_WALLET_PATH_UMBREL)==0 &&
+      !data.mnemonic[0] && !data.passphrase[0] && !data.privateWif[0] &&
+      !data.receiveDescriptor[0] &&
+      strncmp(number,BIRTHDAY_PREFIX,sizeof(BIRTHDAY_PREFIX)-1)==0;
+  if(ok) {
+    number+=sizeof(BIRTHDAY_PREFIX)-1;
+    birthday=strtoul(number,&end,10);
+    ok=number[0] && end && !end[0] && birthday<=UINT16_MAX &&
+       engine_.rootXpubFromXprv(data.accountXprv,derivedXpub,sizeof(derivedXpub)) &&
+       strcmp(derivedXpub,data.accountXpub)==0;
+  }
+  if(ok) {
+    engine_.wipe(wallet_);
+    strlcpy(wallet_.accountXpub,data.accountXpub,sizeof(wallet_.accountXpub));
+    strlcpy(wallet_.path,AURORA_WALLET_PATH_UMBREL,sizeof(wallet_.path));
+    strlcpy(wallet_.address,data.address,sizeof(wallet_.address));
+    wallet_.valid=true;
+    umbrelBirthdayDays_=static_cast<uint16_t>(birthday);
+    umbrelWallet_=true;
+    if(keepPrivate) strlcpy(umbrelRootXprv_,data.accountXprv,sizeof(umbrelRootXprv_));
+  }
+  secureZero(derivedXpub,sizeof(derivedXpub));
+  if(!ok) secureZero(umbrelRootXprv_,sizeof(umbrelRootXprv_));
+  return ok;
 }
 
 bool AuroraUI::loadPrivateWallet() {
@@ -2092,9 +2179,11 @@ bool AuroraUI::loadPrivateWallet() {
       sessionBaseName_,filePassword_,imported,nullptr,sessionFingerprint_);
   secureZero(filePassword_,sizeof(filePassword_));
   if(result==AuroraWalletReadResult::Ok) {
+    const bool importedUmbrel=imported.addressKind==AURORA_WALLET_KIND_UMBREL;
     const AddressKind importedKind=static_cast<AddressKind>(imported.addressKind);
     engine_.wipe(wallet_);
-    ok=engine_.restore(imported.mnemonic,imported.wordCount,importedKind,
+    ok=(importedUmbrel && applyUmbrelWalletData(imported,true)) ||
+       (!importedUmbrel && engine_.restore(imported.mnemonic,imported.wordCount,importedKind,
                        imported.passphrase,wallet_) &&
        engine_.accountXprv(wallet_,imported.passphrase,derivedXprv,sizeof(derivedXprv)) &&
        strcmp(imported.addressType,addressKindName(importedKind))==0 &&
@@ -2103,8 +2192,8 @@ bool AuroraUI::loadPrivateWallet() {
        strcmp(imported.accountXpub,wallet_.accountXpub)==0 &&
        strcmp(imported.accountXprv,derivedXprv)==0 &&
        strcmp(imported.privateWif,wallet_.privateWif)==0 &&
-       strcmp(imported.receiveDescriptor,wallet_.watchDescriptor)==0;
-    if(ok) strlcpy(passphrase_,imported.passphrase,sizeof(passphrase_));
+       strcmp(imported.receiveDescriptor,wallet_.watchDescriptor)==0);
+    if(ok && !importedUmbrel) strlcpy(passphrase_,imported.passphrase,sizeof(passphrase_));
   }
   secureZero(derivedXprv,sizeof(derivedXprv));
   wipeAuroraWalletData(imported);
@@ -2166,7 +2255,7 @@ void AuroraUI::emergencyWipeSecrets() noexcept {
   revokeAccess();
   sensitiveStateActive_=protectedSession_=false;
   visibleSecret_=Access::None; visibleSecretStartedMs_=0;
-  entropyCollected_=exportSucceeded_=loadedWallet_=manualRestore_=umbrelRecovery_=false;
+  entropyCollected_=exportSucceeded_=loadedWallet_=manualRestore_=umbrelRecovery_=umbrelWallet_=false;
   entropyReadyPending_=entropyFailurePending_=false;
   generationDueMs_=entropyCompleteDueMs_=fileOperationDueMs_=0;
   fileOperation_=FileOperation::None;
@@ -2309,7 +2398,8 @@ void AuroraUI::event(lv_event_t *e) {
     }
     case UMBREL_SHOW_XPRV: g_ui->show(Screen::UmbrelQr); break;
     case UMBREL_RESULT_BACK:
-      g_ui->show(g_ui->screen_==Screen::RestoreWords?Screen::UmbrelWarning:Screen::UmbrelResult); break;
+      g_ui->show(g_ui->screen_==Screen::RestoreWords?Screen::UmbrelWarning:
+                 (g_ui->fileSession_?Screen::Info:Screen::UmbrelResult)); break;
     case RESTORE_DERIVATION_CHANGED: {
       if(!g_ui->restoreDerivationDropdown_) break;
       const uint16_t selected=lv_dropdown_get_selected(g_ui->restoreDerivationDropdown_);
@@ -2367,6 +2457,10 @@ void AuroraUI::event(lv_event_t *e) {
         g_ui->show(Screen::ExportWarning);
       }
       break;
+    case EXPORT_SPARROW:
+      g_ui->exportFormat_=WalletExportFormat::SparrowPrivate;
+      secureZero(g_ui->exportStatus_,sizeof(g_ui->exportStatus_));
+      g_ui->show(Screen::ExportWarning); break;
     case EXPORT_AURORA:
       g_ui->exportFormat_=WalletExportFormat::AuroraWallet;
       secureZero(g_ui->exportStatus_,sizeof(g_ui->exportStatus_));

@@ -5,8 +5,17 @@
 
 enum class WalletExportFormat : uint8_t {
   ElectrumPrivate,
+  SparrowPrivate,
   AuroraWallet
 };
+
+// Umbrel/LND recovery files deliberately reuse the authenticated Aurora V1
+// container but carry only the BIP32 root pair. AEZEED words and passphrases
+// are never serialized. Older firmware rejects this reserved subtype safely.
+constexpr uint8_t AURORA_WALLET_KIND_UMBREL = 0xff;
+constexpr uint8_t AURORA_WALLET_WORDS_UMBREL = 0;
+constexpr char AURORA_WALLET_TYPE_UMBREL[] = "umbrel-lnd-bip32";
+constexpr char AURORA_WALLET_PATH_UMBREL[] = "m";
 
 enum class WalletExportResult : uint8_t {
   Ok,

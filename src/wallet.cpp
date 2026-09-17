@@ -478,6 +478,22 @@ cleanup:
   return ok;
 }
 
+bool WalletEngine::rootXpubFromXprv(const char *xprv, char *out, size_t outLen) {
+  if (out && outLen) out[0] = '\0';
+  if (!xprv || !out || outLen < 112 || strlen(xprv) != 111) return false;
+  char canonical[128]{};
+  bool ok = false;
+  {
+    HDPrivateKey root(xprv);
+    ok = static_cast<bool>(root) && root.depth == 0 && root.childNumber == 0 &&
+         root.xprv(canonical, sizeof(canonical)) != 0 &&
+         strcmp(canonical, xprv) == 0 && root.xpub(out, outLen) != 0;
+  }
+  secureZero(canonical, sizeof(canonical));
+  if (!ok) secureZero(out, outLen);
+  return ok;
+}
+
 bool WalletEngine::taprootAddress(const PublicKey &internalKey, char *out, size_t outLength) {
   uint8_t x[32] = {};
   uint8_t tweak[32] = {};

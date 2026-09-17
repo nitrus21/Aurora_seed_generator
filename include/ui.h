@@ -60,7 +60,7 @@ class AuroraUI {
   void buildSdRequired();
   Screen afterSd_ = Screen::Mode;
   void wipeSession(); void closeSession();
-  enum class Access : uint8_t { None, Words, Passphrase, PrivateQr, Export };
+  enum class Access : uint8_t { None, Words, Passphrase, PrivateQr, UmbrelXprv, Export };
   Access accessFor(Screen screen) const;
   bool authorized(Access access) const;
   static uint32_t accessDurationMs(Access access);
@@ -75,6 +75,7 @@ class AuroraUI {
   void dropPrivateState();
   void startFileSession(const uint8_t fingerprint[32], const char *baseName);
   bool loadPrivateWallet();
+  bool applyUmbrelWalletData(const AuroraWalletData &data, bool keepPrivate);
   void submitPrivatePassword();
   // Public identity only: no password, PIN verifier, capsule or file key.
   uint8_t sessionFingerprint_[32]{};
@@ -116,6 +117,7 @@ class AuroraUI {
   static constexpr uint32_t SECRET_VISIBLE_MS = 15000;
   static constexpr uint32_t WORDS_VISIBLE_MS = 180000;
   static constexpr uint32_t PRIVATE_KEY_VISIBLE_MS = 60000;
+  static constexpr uint32_t UMBREL_XPRV_VISIBLE_MS = 180000;
   static constexpr uint32_t SESSION_IDLE_MS = 120000;
   static constexpr uint32_t EXPORT_AUTH_MS = 120000;
   // Authenticated .aurora views only: one deadline shared by every word page.
@@ -165,6 +167,7 @@ class AuroraUI {
   bool loadedWallet_ = false;
   bool manualRestore_ = false;
   bool umbrelRecovery_ = false;
+  bool umbrelWallet_ = false;
   uint8_t restoreWordIndex_ = 0;
   uint8_t restoreSuggestionCount_ = 0;
   uint8_t verifyActiveIndex_ = 0;

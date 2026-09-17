@@ -14,6 +14,8 @@ CATALOG = {
     'cyd-1.7.5': ('manifests/cyd-1.7.5.json', '1.7.5', 0, 0x1000, None),
     'p4-rev1-2.0.3': ('manifests/p4-rev1-2.0.3.json', '2.0.3', 18, 0x2000, (100, 199)),
     'p4-rev3-2.0.3': ('manifests/p4-rev3-2.0.3.json', '2.0.3', 18, 0x2000, (300, 399)),
+    'p4-rev1-2.0.5': ('manifests/p4-rev1-2.0.5.json', '2.0.5', 18, 0x2000, (100, 199)),
+    'p4-rev3-2.0.5': ('manifests/p4-rev3-2.0.5.json', '2.0.5', 18, 0x2000, (300, 399)),
 }
 
 
@@ -98,6 +100,7 @@ def main():
         ('1.7.5', 'CYD', ['aurora-1.7.5-esp32-2432s028r.factory.bin']),
         ('1.9.9', 'CYD', ['aurora-1.9.9-esp32-2432s028r.factory.bin']),
         ('2.0.3', 'P4', [f'aurora-2.0.3-esp32-p4-rev{r}.factory.bin' for r in (1, 3)]),
+        ('2.0.5', 'P4', [f'aurora-2.0.5-esp32-p4-rev{r}.factory.bin' for r in (1, 3)]),
     ):
         path = ROOT / f'tmp/release-candidates/AURORA-v{version}-{device}.zip'
         if not path.exists():

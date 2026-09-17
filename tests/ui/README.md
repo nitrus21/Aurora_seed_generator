@@ -56,7 +56,10 @@ AES-GCM/PBKDF2 et la liaison exacte au fichier.
 - La validation du mot de passe d’export et de sa confirmation planifie directement
   l’écriture, sans écran PIN. Les nouveaux fichiers sont sans PIN (V1 exact).
   L’export Electrum explicitement autorisé reste disponible.
-- AEZEED sans PIN : le QR temporaire se ferme avec effacement après 15 secondes.
+- AEZEED sans PIN : QR `xprv` avec décompte de 3 minutes. Le sous-type Umbrel
+  `.aurora` conserve seulement la racine BIP32 et l’anniversaire LND ; mots et
+  passphrase restent désactivés. Le mot de passe est redemandé pour le `xprv`
+  et l’export Sparrow en clair, puis la copie privée est effacée au retour.
 - Verrouillage/démarrage/nettoyage d’urgence : contrôle des tampons applicatifs et
   remplacement des trois images d’affichage simulées. La synchronisation réelle
   de l’écran nécessite toujours une recette matérielle.
