@@ -37,7 +37,8 @@ enum class WalletSelfTest : uint8_t {
   Mnemonic21 = 54,
   Mnemonic24 = 55,
   AuroraWalletCrypto = 60,
-  AezeedRootKey = 61
+  AezeedRootKey = 61,
+  AezeedPublicDerivation = 62
 };
 
 struct WalletOutput {
@@ -71,6 +72,22 @@ class WalletEngine {
   bool rootXprvFromSeed(const uint8_t *seed, size_t seedLength,
                         char *out, size_t outLen);
   bool rootXpubFromXprv(const char *xprv, char *out, size_t outLen);
+  // Derive only public display data from a transient BIP32 root. The root and
+  // every derived private object stay local to this call and are destroyed
+  // before it returns; no WIF, descriptor or credential is retained in out.
+  bool publicWalletFromRootXprv(const char *xprv, AddressKind kind,
+                                WalletOutput &out);
+  // Build public-only account data from a transient BIP39 phrase. No mnemonic,
+  // WIF, descriptor or passphrase is copied into the returned structure.
+  bool publicWalletFromMnemonic(const char *mnemonic, uint8_t words,
+                                const char *passphrase, AddressKind kind,
+                                WalletOutput &out);
+  // Derive a receive child (branch 0) from an account-level public key only.
+  // This deliberately accepts no private key and is limited to the first 20
+  // receive indices exposed by the P4 interface.
+  bool publicChildFromAccountXpub(const char *accountXpub, AddressKind kind,
+                                  uint8_t index, char *address, size_t addressLen,
+                                  char *publicKey, size_t publicKeyLen);
   WalletSelfTest selfTest();
   void wipe(WalletOutput &out);
   static bool bip39Word(const char *word);

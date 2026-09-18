@@ -69,7 +69,8 @@ static void testFileNavigation(AuroraUI &ui, const char *password) {
     strlcpy(ui.wallet_.mnemonic,"PUBLIC-NAV-WORDS",sizeof(ui.wallet_.mnemonic));
     strlcpy(ui.wallet_.privateWif,"PUBLIC-NAV-WIF",sizeof(ui.wallet_.privateWif));
     strlcpy(ui.wallet_.privateDescriptor,"PUBLIC-NAV-DESCRIPTOR",sizeof(ui.wallet_.privateDescriptor));
-    // Public data must survive leaving the private view exactly, not just flags.
+    // Legacy sessions preserve their public data in place. P4 sessions rebuild
+    // the selected public child from the authenticated account xpub cache.
     strlcpy(ui.wallet_.address,"public-navigation-address",sizeof(ui.wallet_.address));
     strlcpy(ui.wallet_.accountXpub,"public-navigation-xpub",sizeof(ui.wallet_.accountXpub));
     strlcpy(ui.wallet_.path,"m/84'/0'/0'/0/0",sizeof(ui.wallet_.path));
@@ -80,16 +81,24 @@ static void testFileNavigation(AuroraUI &ui, const char *password) {
     if(action==SHOW_LOADED_PASSPHRASE) snapshot(ui,"navigation-passphrase.ppm");
     tap(TO_INFO); assert(ui.screen_==Screen::Info); publicOnly();
     assert(ui.requestedAccess_==Access::None);
+#if defined(AURORA_BOARD_P4)
+    assert(!strcmp(ui.wallet_.address,ui.bip39Public_[ui.bip39Scope_].address));
+    assert(!strcmp(ui.wallet_.accountXpub,
+                   ui.bip39Public_[ui.bip39Scope_].accountXpub));
+    assert(!strcmp(ui.wallet_.path,ui.bip39Public_[ui.bip39Scope_].path));
+    assertDisplayReplaced(ui);
+#else
     assert(!strcmp(ui.wallet_.address,"public-navigation-address"));
     assert(!strcmp(ui.wallet_.accountXpub,"public-navigation-xpub"));
     assert(!strcmp(ui.wallet_.path,"m/84'/0'/0'/0/0"));
-#if defined(AURORA_BOARD_P4)
-    assertDisplayReplaced(ui);
 #endif
     snapshot(ui,"navigation-return-info.ppm");
   }
   // Public QR needs no password and returns to the same dashboard.
   tap(TO_QR_ADDRESS); assert(ui.screen_==Screen::Qr); publicOnly();
+#if defined(AURORA_BOARD_P4)
+  tap(TO_QR_FIRST_PUBLIC); assert(ui.screen_==Screen::Qr); publicOnly();
+#endif
   tap(TO_QR_PUBLIC); assert(ui.screen_==Screen::Qr); publicOnly();
   tap(TO_INFO); assert(ui.screen_==Screen::Info); publicOnly();
 

@@ -329,6 +329,7 @@ ScriptType extendedKeyType(AddressKind kind) {
 }
 
 bool populateWallet(const HDPrivateKey &master, AddressKind kind, WalletOutput &out);
+bool populatePublicWallet(const HDPrivateKey &master, AddressKind kind, WalletOutput &out);
 }
 
 WalletEngine::WalletEngine() {}
@@ -494,6 +495,107 @@ bool WalletEngine::rootXpubFromXprv(const char *xprv, char *out, size_t outLen) 
   return ok;
 }
 
+bool WalletEngine::publicWalletFromRootXprv(const char *xprv, AddressKind kind,
+                                            WalletOutput &out) {
+  wipe(out);
+  if (!xprv || strlen(xprv) != 111 ||
+      static_cast<uint8_t>(kind) > static_cast<uint8_t>(AddressKind::Taproot)) {
+    return false;
+  }
+  char canonical[128]{};
+  bool ok = false;
+  {
+    HDPrivateKey root(xprv);
+    ok = static_cast<bool>(root) && root.depth == 0 && root.childNumber == 0 &&
+         root.xprv(canonical, sizeof(canonical)) != 0 &&
+         strcmp(canonical, xprv) == 0 && populatePublicWallet(root, kind, out);
+  }
+  secureZero(canonical, sizeof(canonical));
+  if (ok) {
+    out.kind = kind;
+    out.valid = true;
+  } else {
+    wipe(out);
+  }
+  return ok;
+}
+
+bool WalletEngine::publicWalletFromMnemonic(const char *mnemonic, uint8_t words,
+                                            const char *passphrase,
+                                            AddressKind kind,
+                                            WalletOutput &out) {
+  wipe(out);
+  if (!mnemonic || !validateMnemonicChecksum(mnemonic, words) ||
+      !isAsciiPassphrase(passphrase) ||
+      static_cast<uint8_t>(kind) > static_cast<uint8_t>(AddressKind::Taproot)) {
+    return false;
+  }
+  HDPrivateKey master;
+  const bool ok = masterFromMnemonic(mnemonic, passphrase, master) &&
+                  populatePublicWallet(master, kind, out);
+  if (ok) {
+    out.kind = kind;
+    out.valid = true;
+  } else {
+    wipe(out);
+  }
+  return ok;
+}
+
+bool WalletEngine::publicChildFromAccountXpub(const char *accountXpub,
+                                              AddressKind kind, uint8_t index,
+                                              char *address, size_t addressLen,
+                                              char *publicKey,
+                                              size_t publicKeyLen) {
+  if (address && addressLen) address[0] = '\0';
+  if (publicKey && publicKeyLen) publicKey[0] = '\0';
+  if (!accountXpub || strlen(accountXpub) != 111 || index > 19 ||
+      !address || addressLen < 43 || !publicKey || publicKeyLen < 67 ||
+      static_cast<uint8_t>(kind) > static_cast<uint8_t>(AddressKind::Taproot)) {
+    return false;
+  }
+
+  uint8_t publicSec[33]{};
+  char canonical[128]{};
+  bool ok = false;
+  {
+    HDPublicKey account(accountXpub);
+    const ScriptType expectedType = extendedKeyType(kind);
+    if (!account || account.depth != 3 || account.childNumber != 0x80000000UL ||
+        account.network != &Mainnet || account.type != expectedType ||
+        account.xpub(canonical, sizeof(canonical)) == 0 ||
+        strcmp(canonical, accountXpub) != 0) {
+      goto cleanup;
+    }
+
+    uint32_t path[2] = {0, index};
+    HDPublicKey child = account.derive(path, 2);
+    if (!child || child.depth != 5 || child.childNumber != index ||
+        child.sec(publicSec, sizeof(publicSec)) != sizeof(publicSec) ||
+        !bytesToHex(publicSec, sizeof(publicSec), publicKey, publicKeyLen)) {
+      goto cleanup;
+    }
+    if (kind == AddressKind::Legacy) {
+      ok = child.legacyAddress(address, addressLen, &Mainnet) != 0;
+    } else if (kind == AddressKind::NestedSegwit) {
+      ok = child.nestedSegwitAddress(address, addressLen, &Mainnet) != 0;
+    } else if (kind == AddressKind::NativeSegwit) {
+      ok = child.segwitAddress(address, addressLen, &Mainnet) != 0;
+    } else {
+      ok = taprootAddress(child, address, addressLen);
+    }
+  }
+
+cleanup:
+  secureZero(publicSec, sizeof(publicSec));
+  secureZero(canonical, sizeof(canonical));
+  if (!ok) {
+    secureZero(address, addressLen);
+    secureZero(publicKey, publicKeyLen);
+  }
+  return ok;
+}
+
 bool WalletEngine::taprootAddress(const PublicKey &internalKey, char *out, size_t outLength) {
   uint8_t x[32] = {};
   uint8_t tweak[32] = {};
@@ -530,6 +632,55 @@ cleanup:
 }
 
 namespace {
+bool populatePublicWallet(const HDPrivateKey &master, AddressKind kind, WalletOutput &out) {
+  uint8_t publicSec[33]{};
+  bool ok = false;
+  HDPrivateKey child = master.derive(purposePath(kind));
+  HDPrivateKey account = master.derive(accountPath(kind));
+  if (!child || !account) goto cleanup;
+
+  {
+    PublicKey publicKey = child.publicKey();
+    if (!publicKey || publicKey.sec(publicSec, sizeof(publicSec)) != sizeof(publicSec) ||
+        !bytesToHex(publicSec, sizeof(publicSec), out.publicKey, sizeof(out.publicKey))) {
+      goto cleanup;
+    }
+  }
+  account.type = UNKNOWN_TYPE;
+  {
+    HDPublicKey standard = account.xpub();
+    if (!standard || standard.xpub(out.accountStandardXpub,
+                                   sizeof(out.accountStandardXpub)) == 0) {
+      goto cleanup;
+    }
+  }
+  account.type = extendedKeyType(kind);
+  {
+    HDPublicKey selected = account.xpub();
+    if (!selected || selected.xpub(out.accountXpub, sizeof(out.accountXpub)) == 0) {
+      goto cleanup;
+    }
+  }
+  if (strlcpy(out.path, purposePath(kind), sizeof(out.path)) >= sizeof(out.path)) {
+    goto cleanup;
+  }
+  if (kind == AddressKind::Legacy) {
+    if (child.legacyAddress(out.address, sizeof(out.address)) == 0) goto cleanup;
+  } else if (kind == AddressKind::NestedSegwit) {
+    if (child.nestedSegwitAddress(out.address, sizeof(out.address)) == 0) goto cleanup;
+  } else if (kind == AddressKind::NativeSegwit) {
+    if (child.segwitAddress(out.address, sizeof(out.address)) == 0) goto cleanup;
+  } else if (!WalletEngine::taprootAddress(child.publicKey(), out.address,
+                                            sizeof(out.address))) {
+    goto cleanup;
+  }
+  ok = true;
+
+cleanup:
+  secureZero(publicSec, sizeof(publicSec));
+  return ok;
+}
+
 bool populateWallet(const HDPrivateKey &master, AddressKind kind, WalletOutput &out) {
   uint8_t publicSec[33] = {};
   uint8_t fingerprint[4] = {};
@@ -650,6 +801,26 @@ WalletSelfTest WalletEngine::selfTest() {
   static constexpr char AEZEED_ROOT_XPRV[] =
       "xprv9s21ZrQH143K32s72NGwMHKpvriWu4nK2n9rFmzqKe3sLuFBpG4pMkhDG3QU"
       "VzLj5QdS8oJpAscZ9YYsuDKwDZPyuSDdaycVTjEoLi6d6zm";
+  struct AezeedPublicVector {
+    AddressKind kind; const char *path; const char *address;
+    const char *publicKey; const char *accountXpub;
+  };
+  static constexpr AezeedPublicVector AEZEED_PUBLIC_VECTORS[] = {
+      {AddressKind::NestedSegwit,"m/49'/0'/0'/0/0",
+       "3Bmhn8iNCk26F1iWR164aj2Qdkii88cXaw",
+       "031e6bb97b06bdfb1ce1e3263437ea2d60edf6b1abeb8e5883437c4ba76f63724c",
+       "ypub6WePcpGgCDA6aKWMDFeC9fwqd4eFnfGJEeMobu1da7qBHqBQVfsLZFFP5r4r"
+       "7GoLTahUwacdWMb7xDSwjbdJPRHNfQkQtz5ATz3vdyCJS4Q"},
+      {AddressKind::NativeSegwit,"m/84'/0'/0'/0/0",
+       "bc1qkhdemh9jxcn2xez07vlgtkkx7gnc09xja4rs5q",
+       "03f2063129e83c3ed95579a78d1722d127451267f8546dea6956672b1453be9ea0",
+       "zpub6rvAjzd17jGRn3wabvAL5BfxB9iXCwnG9JHxy5DTYGoJ9BCAX6yBHhat46VX"
+       "DKxEvkf8TuHG1yjJyQEupw9g9VPxUtdvsPmqi6ADsQfjhpM"},
+      {AddressKind::Taproot,"m/86'/0'/0'/0/0",
+       "bc1pxyyd8talnncyl2wj07cy86pdtuf2tt6d4f7rc0dvhvhkzq544azqv5s4lz",
+       "020c3c151d85378d146b38a21e19ca00d9e157bbb31391b57687dc3aa452653d0c",
+       "xpub6DCTNxoGADG5ivyWCvbLP7kVboTkn8U531UsUKZ8Tc6WGYVHYJe6FruaUAGd"
+       "S3Lt98G9MvbKQA47SVyPuXK64jrDJN2AEosB9chCKt8tLaX"}};
   struct Vector {
     AddressKind kind;
     const char *address;
@@ -685,10 +856,13 @@ WalletSelfTest WalletEngine::selfTest() {
 
   HDPrivateKey master;
   WalletOutput output{};
+  WalletOutput publicOnly{};
   uint8_t zeroEntropy[32] = {};
   uint8_t testSeed[64] = {};
   char descriptor[64] = {};
   char accountXprv[128] = {};
+  char publicChildAddress[96] = {};
+  char publicChildKey[80] = {};
   char suggestions[3][BIP39_WORD_CAPACITY] = {};
   WalletSelfTest result = WalletSelfTest::Ok;
   if (!masterFromMnemonic(MNEMONIC, "", master)) {
@@ -706,6 +880,27 @@ WalletSelfTest WalletEngine::selfTest() {
       strcmp(accountXprv,AEZEED_ROOT_XPRV)!=0) {
     result=WalletSelfTest::AezeedRootKey;
     goto cleanup;
+  }
+  for(const AezeedPublicVector &vector:AEZEED_PUBLIC_VECTORS) {
+    if (!publicWalletFromRootXprv(accountXprv,vector.kind,output) ||
+        strcmp(output.address,vector.address)!=0 ||
+        strcmp(output.publicKey,vector.publicKey)!=0 ||
+        strcmp(output.accountXpub,vector.accountXpub)!=0 ||
+        strcmp(output.path,vector.path)!=0 ||
+        !publicChildFromAccountXpub(output.accountXpub,vector.kind,0,
+                                    publicChildAddress,sizeof(publicChildAddress),
+                                    publicChildKey,sizeof(publicChildKey)) ||
+        strcmp(publicChildAddress,vector.address)!=0 ||
+        strcmp(publicChildKey,vector.publicKey)!=0 ||
+        output.mnemonic[0] || output.privateWif[0] || output.privateDescriptor[0] ||
+        output.accountDescriptor[0] || output.watchDescriptor[0] ||
+        output.changeDescriptor[0] || output.multipathDescriptor[0]) {
+      result=WalletSelfTest::AezeedPublicDerivation;
+      goto cleanup;
+    }
+    secureZero(publicChildAddress,sizeof(publicChildAddress));
+    secureZero(publicChildKey,sizeof(publicChildKey));
+    wipe(output);
   }
   secureZero(accountXprv,sizeof(accountXprv));
   if (!bip39Word("abandon") || bip39Word("aband") ||
@@ -729,6 +924,16 @@ WalletSelfTest WalletEngine::selfTest() {
     if (strcmp(output.address, vector.address) != 0) {
       result = vector.addressError; goto cleanup;
     }
+    if (!publicWalletFromMnemonic(MNEMONIC,12,"",vector.kind,publicOnly) ||
+        strcmp(publicOnly.address,output.address)!=0 ||
+        strcmp(publicOnly.publicKey,output.publicKey)!=0 ||
+        strcmp(publicOnly.accountXpub,output.accountXpub)!=0 ||
+        strcmp(publicOnly.path,output.path)!=0 || publicOnly.mnemonic[0] ||
+        publicOnly.privateWif[0] || publicOnly.privateDescriptor[0] ||
+        publicOnly.accountDescriptor[0] || publicOnly.watchDescriptor[0]) {
+      result=vector.buildError;goto cleanup;
+    }
+    wipe(publicOnly);
     {
       PrivateKey importedWif;
       char importedAddress[sizeof(output.address)] = {};
@@ -794,10 +999,13 @@ WalletSelfTest WalletEngine::selfTest() {
 cleanup:
   mnemonic_clear();
   wipe(output);
+  wipe(publicOnly);
   secureZero(zeroEntropy, sizeof(zeroEntropy));
   secureZero(testSeed, sizeof(testSeed));
   secureZero(descriptor, sizeof(descriptor));
   secureZero(accountXprv, sizeof(accountXprv));
+  secureZero(publicChildAddress, sizeof(publicChildAddress));
+  secureZero(publicChildKey, sizeof(publicChildKey));
   secureZero(suggestions, sizeof(suggestions));
   return result;
 }

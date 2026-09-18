@@ -30,7 +30,7 @@ class AuroraUI {
     SdRequired
   };
   enum class FileOperation : uint8_t { None, Export, Import, PrivateRead };
-  enum class QrContent : uint8_t { Address, AccountXpub, PrivateKey };
+  enum class QrContent : uint8_t { Address, FirstPublicKey, AccountXpub, PrivateKey };
   void show(Screen screen);
   void clear();
   lv_obj_t *header(const char *title, const char *step = nullptr, bool showBrand = true);
@@ -44,6 +44,13 @@ class AuroraUI {
   bool restoreEnteredWallet(); bool rederiveManualWallet(AddressKind kind);
   void buildUmbrelWarning(); void buildUmbrelPassphrase(); void buildUmbrelProcessing();
   void buildUmbrelResult(); void buildUmbrelQr(); bool recoverUmbrel();
+  bool deriveUmbrelPublicAccounts(const char *rootXprv);
+  bool deriveSelectedUmbrelPublicChild();
+  void selectUmbrelScope(uint8_t index); void buildUmbrelScopeSelector();
+  bool deriveBip39PublicAccounts(const char *mnemonic, uint8_t words,
+                                 const char *passphrase, AddressKind initialKind);
+  bool deriveSelectedBip39PublicChild();
+  void selectBip39Scope(uint8_t index);
   void buildSetup(); void buildPassphrase(); void buildEntropy();
   void updateEntropyPreview(uint32_t token);
   void buildGenerating(); void buildFileProcessing();
@@ -159,6 +166,8 @@ class AuroraUI {
   lv_obj_t *restoreWordArea_ = nullptr;
   lv_obj_t *restoreSuggestionButtons_[3]{};
   lv_obj_t *restoreDerivationDropdown_ = nullptr;
+  lv_obj_t *umbrelScopeDropdown_ = nullptr;
+  lv_obj_t *umbrelIndexDropdown_ = nullptr;
   lv_obj_t *filePasswordArea_ = nullptr;
   lv_obj_t *filePasswordConfirmArea_ = nullptr;
   QrContent qrContent_ = QrContent::Address;
@@ -168,6 +177,19 @@ class AuroraUI {
   bool manualRestore_ = false;
   bool umbrelRecovery_ = false;
   bool umbrelWallet_ = false;
+  struct UmbrelPublicAccount {
+    char address[96];
+    char publicKey[80];
+    char accountXpub[128];
+    char path[32];
+    AddressKind kind;
+  } umbrelPublic_[3]{};
+  uint8_t umbrelScope_ = 1; // BIP84 is the initial view, never the only scope.
+  uint8_t umbrelAddressIndex_ = 0;
+  UmbrelPublicAccount bip39Public_[4]{};
+  bool bip39PublicReady_ = false;
+  uint8_t bip39Scope_ = static_cast<uint8_t>(AddressKind::NativeSegwit);
+  uint8_t bip39AddressIndex_ = 0;
   uint8_t restoreWordIndex_ = 0;
   uint8_t restoreSuggestionCount_ = 0;
   uint8_t verifyActiveIndex_ = 0;

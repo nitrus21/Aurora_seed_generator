@@ -168,6 +168,27 @@ int main() {
     assert(AezeedEngine::decode(words,"wrong",decoded)==AezeedResult::InvalidPassphrase);
     const AezeedDecoded empty{};
     assert(!memcmp(&decoded,&empty,sizeof(decoded)));
+
+    // Independently generated with Node's scrypt and the public AEZ v5
+    // reference-compatible implementation. LND now creates internal version
+    // 1 seeds (KeyDerivationVersionTaproot), while external AEZEED remains 0.
+    constexpr const char *taprootWords =
+        "able garment pave cook junk lab toe major great husband sun letter left vivid "
+        "abandon remain empower process success suggest drink lock fitness kitten";
+    constexpr uint8_t taprootEntropy[16] = {
+        0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07,
+        0x08,0x09,0x0a,0x0b,0x0c,0x0d,0x0e,0x0f};
+    assert(AezeedEngine::decode(taprootWords,"",decoded)==AezeedResult::Ok);
+    assert(decoded.internalVersion==1 && decoded.birthdayDays==6000);
+    assert(!memcmp(decoded.entropy,taprootEntropy,sizeof(taprootEntropy)));
+    AezeedEngine::wipe(decoded);
+    assert(!memcmp(&decoded,&empty,sizeof(decoded)));
+
+    constexpr const char *unknownInternalVersionWords =
+        "ability cotton because large auto push hospital faculty suspect cluster behind group "
+        "chapter word birth jazz own twist success suggest drink you session purpose";
+    assert(AezeedEngine::decode(unknownInternalVersionWords,"",decoded)==AezeedResult::UnsupportedVersion);
+    assert(!memcmp(&decoded,&empty,sizeof(decoded)));
   }
   assert(testCard.empty() && auroraSdReady() && testCard.empty());
   testCardReady=false; assert(!auroraSdReady());

@@ -22,9 +22,10 @@ struct AezeedDecoded {
 
 class AezeedEngine {
  public:
-  // Decodes an LND aezeed (24 English words). An empty passphrase uses the
-  // aezeed-defined default "aezeed" value. The scrypt parameters are the
-  // official N=32768, r=8, p=1 and are deliberately not weakened.
+  // Decodes an LND aezeed (24 English words), including the legacy key
+  // derivation version 0 and the Taproot/BIP86 version 1. An empty passphrase
+  // uses the aezeed-defined default "aezeed" value. The scrypt parameters are
+  // the official N=32768, r=8, p=1 and are deliberately not weakened.
   static AezeedResult decode(const char *mnemonic, const char *passphrase,
                              AezeedDecoded &out);
   static void wipe(AezeedDecoded &out);

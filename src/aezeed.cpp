@@ -26,6 +26,9 @@ constexpr size_t AEZEED_BYTES = 33;
 constexpr size_t CIPHERTEXT_BYTES = 23;
 constexpr size_t AEZEED_SALT_OFFSET = 24;
 constexpr size_t AEZEED_CHECKSUM_OFFSET = 29;
+constexpr uint8_t AEZEED_EXTERNAL_VERSION = 0;
+constexpr uint8_t AEZEED_INTERNAL_VERSION_LEGACY = 0;
+constexpr uint8_t AEZEED_INTERNAL_VERSION_TAPROOT = 1;
 constexpr uint32_t SCRYPT_N = 32768;
 constexpr size_t SCRYPT_R = 8;
 // Exact ROMix with a factor-2 time/memory tradeoff: store every even V state
@@ -300,12 +303,12 @@ ScryptResult scryptAezeed(const uint8_t *password,size_t passwordLength,const ui
 AezeedResult AezeedEngine::decode(const char *mnemonic,const char *passphrase,AezeedDecoded &out) {
   wipe(out);uint8_t encoded[AEZEED_BYTES]{},key[32]{},plain[CIPHERTEXT_BYTES]{};AezState state{};
   AezeedResult result=mnemonicBytes(mnemonic,encoded);if(result!=AezeedResult::Ok)goto cleanup;
-  if(encoded[0]!=0){result=AezeedResult::UnsupportedVersion;goto cleanup;}
+  if(encoded[0]!=AEZEED_EXTERNAL_VERSION){result=AezeedResult::UnsupportedVersion;goto cleanup;}
   {const uint32_t expected=(static_cast<uint32_t>(encoded[29])<<24)|(static_cast<uint32_t>(encoded[30])<<16)|(static_cast<uint32_t>(encoded[31])<<8)|encoded[32];if(crc32c(encoded,AEZEED_CHECKSUM_OFFSET)!=expected){result=AezeedResult::InvalidChecksum;goto cleanup;}}
   {const char *effective=(passphrase&&passphrase[0])?passphrase:"aezeed";const size_t length=strlen(effective);if(length>63){result=AezeedResult::InvalidFormat;goto cleanup;}const ScryptResult scryptResult=scryptAezeed(reinterpret_cast<const uint8_t *>(effective),length,encoded+AEZEED_SALT_OFFSET,key);if(scryptResult!=ScryptResult::Ok){result=scryptResult==ScryptResult::MemoryFailed?AezeedResult::MemoryFailed:AezeedResult::CryptoFailed;goto cleanup;}}
   {uint8_t ad[6]={encoded[0],encoded[24],encoded[25],encoded[26],encoded[27],encoded[28]},delta[16];initAez(state,key);aezHash(state,ad,delta);aezTinyDecrypt(state,delta,encoded+1,plain);secureZero(delta,sizeof(delta));secureZero(ad,sizeof(ad));}
   {uint8_t invalid=plain[19]|plain[20]|plain[21]|plain[22];if(invalid){result=AezeedResult::InvalidPassphrase;goto cleanup;}}
-  if(plain[0]!=0){result=AezeedResult::UnsupportedVersion;goto cleanup;}
+  if(plain[0]!=AEZEED_INTERNAL_VERSION_LEGACY&&plain[0]!=AEZEED_INTERNAL_VERSION_TAPROOT){result=AezeedResult::UnsupportedVersion;goto cleanup;}
   out.internalVersion=plain[0];out.birthdayDays=static_cast<uint16_t>((plain[1]<<8)|plain[2]);memcpy(out.entropy,plain+3,16);result=AezeedResult::Ok;
 cleanup:
   secureZero(encoded,sizeof(encoded));secureZero(key,sizeof(key));secureZero(plain,sizeof(plain));secureZero(&state,sizeof(state));if(result!=AezeedResult::Ok)wipe(out);return result;

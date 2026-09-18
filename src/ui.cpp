@@ -52,12 +52,22 @@ const char *addressKindName(AddressKind kind) {
   return "unknown";
 }
 
+unsigned umbrelPurpose(AddressKind kind) {
+  return kind==AddressKind::Legacy?44:
+         (kind==AddressKind::NestedSegwit?49:(kind==AddressKind::Taproot?86:84));
+}
+
+const char *umbrelAddressName(AddressKind kind) {
+  return kind==AddressKind::NestedSegwit?"Nested SegWit":
+         (kind==AddressKind::Taproot?"Taproot":"Native SegWit");
+}
+
 enum Action : uint8_t { START, OPEN_WALLET, NEW_WALLET, RESTORE_WALLET, RECOVER_UMBREL,
                         TO_IMPORT_PASSWORD,
                         REFRESH_AURORA_FILES, UNLOCK_WALLET,
                         TO_PASSPHRASE, TO_ENTROPY, GENERATE,
                         NEXT_VERIFY, CHECK_VERIFY, TO_INFO, TO_QR_ADDRESS,
-                        TO_QR_PUBLIC, REVEAL_PRIVATE, TO_BACKUP, EXPORT_ELECTRUM, EXPORT_SPARROW,
+                        TO_QR_FIRST_PUBLIC, TO_QR_PUBLIC, REVEAL_PRIVATE, TO_BACKUP, EXPORT_ELECTRUM, EXPORT_SPARROW,
                         EXPORT_AURORA, CONFIRM_PRIVATE, SAVE_EXPORT,
                         SAVE_EXPORT_PASSWORD, DO_WIPE,
                         WORD_12 = 30, WORD_15, WORD_18, WORD_21, WORD_24,
@@ -77,7 +87,9 @@ enum Action : uint8_t { START, OPEN_WALLET, NEW_WALLET, RESTORE_WALLET, RECOVER_
                         LOCK_SESSION = 113,
                         SHOW_WORDS, RETRY_SD,
                         UMBREL_CONTINUE = 120, UMBREL_DECODE, UMBREL_SHOW_XPRV,
-                        UMBREL_RESULT_BACK, PRIVATE_PASSWORD_CHECK, PRIVATE_PASSWORD_CANCEL,
+                        UMBREL_RESULT_BACK, UMBREL_SCOPE_49, UMBREL_SCOPE_84, UMBREL_SCOPE_86,
+                        UMBREL_QR_SCOPE_CHANGED, UMBREL_QR_INDEX_CHANGED,
+                        PRIVATE_PASSWORD_CHECK, PRIVATE_PASSWORD_CANCEL,
                         BACK_EXPORT_WARNING };
 
 void styleRoot(lv_obj_t *o) {
@@ -350,6 +362,7 @@ void AuroraUI::clear() {
   secureZero(entropyPreviewText_, sizeof(entropyPreviewText_));
   passArea_ = entropyBar_ = entropyStatus_ = entropyPreview_ = entropyCount_ = keyboard_ = exportNameArea_ =
       importFileDropdown_ = restoreWordArea_ = restoreDerivationDropdown_ =
+      umbrelScopeDropdown_ = umbrelIndexDropdown_ =
       filePasswordArea_ = filePasswordConfirmArea_ = nullptr;
   memset(verifyArea_, 0, sizeof(verifyArea_));
   memset(verifySuggestionButtons_, 0, sizeof(verifySuggestionButtons_));
@@ -1027,6 +1040,154 @@ void AuroraUI::buildUmbrelProcessing() {
   lv_obj_set_style_text_color(hint,MUTED,0); AuroraLayout::align(hint,LV_ALIGN_CENTER,0,47);
 }
 
+bool AuroraUI::deriveUmbrelPublicAccounts(const char *rootXprv) {
+  static constexpr AddressKind KINDS[3]={AddressKind::NestedSegwit,
+                                        AddressKind::NativeSegwit,
+                                        AddressKind::Taproot};
+  secureZero(umbrelPublic_,sizeof(umbrelPublic_));
+  WalletOutput derived{};
+  bool ok=true;
+  for(uint8_t i=0;i<3 && ok;++i) {
+    ok=engine_.publicWalletFromRootXprv(rootXprv,KINDS[i],derived) &&
+       strlcpy(umbrelPublic_[i].address,derived.address,
+               sizeof(umbrelPublic_[i].address))<sizeof(umbrelPublic_[i].address) &&
+       strlcpy(umbrelPublic_[i].publicKey,derived.publicKey,
+               sizeof(umbrelPublic_[i].publicKey))<sizeof(umbrelPublic_[i].publicKey) &&
+       strlcpy(umbrelPublic_[i].accountXpub,derived.accountXpub,
+               sizeof(umbrelPublic_[i].accountXpub))<sizeof(umbrelPublic_[i].accountXpub) &&
+       strlcpy(umbrelPublic_[i].path,derived.path,
+               sizeof(umbrelPublic_[i].path))<sizeof(umbrelPublic_[i].path);
+    umbrelPublic_[i].kind=KINDS[i];
+    engine_.wipe(derived);
+  }
+  if(!ok) {
+    engine_.wipe(derived);secureZero(umbrelPublic_,sizeof(umbrelPublic_));
+    engine_.wipe(wallet_);return false;
+  }
+  umbrelAddressIndex_=0;
+  selectUmbrelScope(1);
+  return wallet_.valid;
+}
+
+bool AuroraUI::deriveSelectedUmbrelPublicChild() {
+  if(umbrelScope_>=3 || umbrelAddressIndex_>19 ||
+     !umbrelPublic_[umbrelScope_].accountXpub[0]) return false;
+  char address[sizeof(wallet_.address)]{};
+  char publicKey[sizeof(wallet_.publicKey)]{};
+  const AddressKind kind=umbrelPublic_[umbrelScope_].kind;
+  bool ok=engine_.publicChildFromAccountXpub(
+      umbrelPublic_[umbrelScope_].accountXpub,kind,umbrelAddressIndex_,
+      address,sizeof(address),publicKey,sizeof(publicKey));
+  if(ok) {
+    const int pathLength=snprintf(wallet_.path,sizeof(wallet_.path),
+                                  "m/%u'/0'/0'/0/%u",umbrelPurpose(kind),
+                                  static_cast<unsigned>(umbrelAddressIndex_));
+    ok=pathLength>0 && static_cast<size_t>(pathLength)<sizeof(wallet_.path) &&
+       strlcpy(wallet_.address,address,sizeof(wallet_.address))<sizeof(wallet_.address) &&
+       strlcpy(wallet_.publicKey,publicKey,sizeof(wallet_.publicKey))<sizeof(wallet_.publicKey);
+  }
+  secureZero(address,sizeof(address));secureZero(publicKey,sizeof(publicKey));
+  if(!ok) {
+    secureZero(wallet_.address,sizeof(wallet_.address));
+    secureZero(wallet_.publicKey,sizeof(wallet_.publicKey));
+    secureZero(wallet_.path,sizeof(wallet_.path));
+    wallet_.valid=false;
+  }
+  return ok;
+}
+
+void AuroraUI::selectUmbrelScope(uint8_t index) {
+  if(index>=3 || !umbrelPublic_[index].address[0] ||
+     !umbrelPublic_[index].publicKey[0] || !umbrelPublic_[index].accountXpub[0]) return;
+  engine_.wipe(wallet_);
+  umbrelScope_=index;
+  strlcpy(wallet_.accountXpub,umbrelPublic_[index].accountXpub,sizeof(wallet_.accountXpub));
+  wallet_.kind=umbrelPublic_[index].kind;wallet_.valid=true;
+  deriveSelectedUmbrelPublicChild();
+}
+
+bool AuroraUI::deriveBip39PublicAccounts(const char *mnemonic, uint8_t words,
+                                         const char *passphrase,
+                                         AddressKind initialKind) {
+  secureZero(bip39Public_,sizeof(bip39Public_));
+  bip39PublicReady_=false;
+  WalletOutput derived{};
+  bool ok=static_cast<uint8_t>(initialKind)<4;
+  for(uint8_t i=0;i<4 && ok;++i) {
+    const AddressKind accountKind=static_cast<AddressKind>(i);
+    ok=engine_.publicWalletFromMnemonic(mnemonic,words,passphrase,accountKind,derived) &&
+       strlcpy(bip39Public_[i].address,derived.address,
+               sizeof(bip39Public_[i].address))<sizeof(bip39Public_[i].address) &&
+       strlcpy(bip39Public_[i].publicKey,derived.publicKey,
+               sizeof(bip39Public_[i].publicKey))<sizeof(bip39Public_[i].publicKey) &&
+       strlcpy(bip39Public_[i].accountXpub,derived.accountXpub,
+               sizeof(bip39Public_[i].accountXpub))<sizeof(bip39Public_[i].accountXpub) &&
+       strlcpy(bip39Public_[i].path,derived.path,
+               sizeof(bip39Public_[i].path))<sizeof(bip39Public_[i].path);
+    bip39Public_[i].kind=accountKind;
+    engine_.wipe(derived);
+  }
+  if(!ok) {
+    engine_.wipe(derived);secureZero(bip39Public_,sizeof(bip39Public_));
+    engine_.wipe(wallet_);return false;
+  }
+  bip39PublicReady_=true;bip39AddressIndex_=0;
+  selectBip39Scope(static_cast<uint8_t>(initialKind));
+  return wallet_.valid;
+}
+
+bool AuroraUI::deriveSelectedBip39PublicChild() {
+  if(!bip39PublicReady_ || bip39Scope_>=4 || bip39AddressIndex_>19 ||
+     !bip39Public_[bip39Scope_].accountXpub[0]) return false;
+  char address[sizeof(wallet_.address)]{};
+  char publicKey[sizeof(wallet_.publicKey)]{};
+  const AddressKind accountKind=bip39Public_[bip39Scope_].kind;
+  bool ok=engine_.publicChildFromAccountXpub(
+      bip39Public_[bip39Scope_].accountXpub,accountKind,bip39AddressIndex_,
+      address,sizeof(address),publicKey,sizeof(publicKey));
+  if(ok) {
+    const int pathLength=snprintf(wallet_.path,sizeof(wallet_.path),
+        "m/%u'/0'/0'/0/%u",umbrelPurpose(accountKind),
+        static_cast<unsigned>(bip39AddressIndex_));
+    ok=pathLength>0 && static_cast<size_t>(pathLength)<sizeof(wallet_.path) &&
+       strlcpy(wallet_.address,address,sizeof(wallet_.address))<sizeof(wallet_.address) &&
+       strlcpy(wallet_.publicKey,publicKey,sizeof(wallet_.publicKey))<sizeof(wallet_.publicKey);
+  }
+  secureZero(address,sizeof(address));secureZero(publicKey,sizeof(publicKey));
+  if(!ok) {
+    secureZero(wallet_.address,sizeof(wallet_.address));
+    secureZero(wallet_.publicKey,sizeof(wallet_.publicKey));
+    secureZero(wallet_.path,sizeof(wallet_.path));wallet_.valid=false;
+  }
+  return ok;
+}
+
+void AuroraUI::selectBip39Scope(uint8_t index) {
+  if(!bip39PublicReady_ || index>=4 || !bip39Public_[index].address[0] ||
+     !bip39Public_[index].publicKey[0] || !bip39Public_[index].accountXpub[0]) return;
+  engine_.wipe(wallet_);bip39Scope_=index;
+  strlcpy(wallet_.accountXpub,bip39Public_[index].accountXpub,sizeof(wallet_.accountXpub));
+  wallet_.kind=bip39Public_[index].kind;wallet_.valid=true;
+  deriveSelectedBip39PublicChild();
+}
+
+void AuroraUI::buildUmbrelScopeSelector() {
+#if defined(AURORA_BOARD_P4)
+  static constexpr const char *NAMES[3]={"BIP49","BIP84","BIP86"};
+  static constexpr Action ACTIONS[3]={UMBREL_SCOPE_49,UMBREL_SCOPE_84,UMBREL_SCOPE_86};
+  for(uint8_t i=0;i<3;++i) {
+    lv_obj_t *choice=button(root_,NAMES[i],event,96);
+    lv_obj_set_pos(choice,15+i*153,126);lv_obj_set_size(choice,144,48);
+    lv_obj_set_user_data(choice,(void*)ACTIONS[i]);
+    if(i!=umbrelScope_) {
+      lv_obj_set_style_bg_color(choice,PANEL,0);
+      lv_obj_set_style_border_color(choice,ORANGE,0);lv_obj_set_style_border_width(choice,1,0);
+      lv_obj_set_style_text_color(lv_obj_get_child(choice,0),lv_color_white(),0);
+    }
+  }
+#endif
+}
+
 bool AuroraUI::recoverUmbrel() {
   AezeedDecoded decoded{};
   umbrelResult_=AezeedEngine::decode(restoreMnemonic_,passphrase_,decoded);
@@ -1054,17 +1215,11 @@ bool AuroraUI::recoverUmbrel() {
     strlcpy(restoreStatus_,"Impossible de dériver la clé maître BIP32.",sizeof(restoreStatus_));
     secureZero(umbrelRootXprv_,sizeof(umbrelRootXprv_)); return false;
   }
-  engine_.wipe(wallet_);
-  if(!engine_.rootXpubFromXprv(umbrelRootXprv_,wallet_.accountXpub,
-                               sizeof(wallet_.accountXpub))) {
+  if(!deriveUmbrelPublicAccounts(umbrelRootXprv_)) {
     umbrelResult_=AezeedResult::CryptoFailed;
-    strlcpy(restoreStatus_,"Impossible de valider la clé maître BIP32.",sizeof(restoreStatus_));
+    strlcpy(restoreStatus_,"Impossible de dériver les comptes publics LND.",sizeof(restoreStatus_));
     secureZero(umbrelRootXprv_,sizeof(umbrelRootXprv_)); return false;
   }
-  strlcpy(wallet_.path,AURORA_WALLET_PATH_UMBREL,sizeof(wallet_.path));
-  snprintf(wallet_.address,sizeof(wallet_.address),"birthday-days:%u",
-           static_cast<unsigned>(umbrelBirthdayDays_));
-  wallet_.valid=true;
   umbrelWallet_=true;
   secureZero(restoreWords_,sizeof(restoreWords_)); secureZero(restoreMnemonic_,sizeof(restoreMnemonic_));
   secureZero(restoreSuggestions_,sizeof(restoreSuggestions_)); secureZero(restoreStatus_,sizeof(restoreStatus_));
@@ -1073,6 +1228,34 @@ bool AuroraUI::recoverUmbrel() {
 
 void AuroraUI::buildUmbrelResult() {
   header("Clé Umbrel prête");
+#if defined(AURORA_BOARD_P4)
+  buildUmbrelScopeSelector();
+  lv_obj_t *panel=lv_obj_create(root_);lv_obj_set_pos(panel,15,190);lv_obj_set_size(panel,450,430);
+  lv_obj_set_style_bg_color(panel,PANEL,0);lv_obj_set_style_border_color(panel,ORANGE,0);
+  lv_obj_set_style_border_width(panel,1,0);lv_obj_set_style_radius(panel,7,0);
+  lv_obj_clear_flag(panel,LV_OBJ_FLAG_SCROLLABLE);
+  char text[800];snprintf(text,sizeof(text),
+      "Adresse de réception n°%u — BIP%u %s\n%s\n\nChemin\n%s\n\n"
+      "Clé publique dérivée\n%s\n\n"
+      "Clé publique étendue du compte\n%s\n\n"
+      "Anniversaire LND : jour %u depuis Genesis",
+      static_cast<unsigned>(umbrelAddressIndex_),umbrelPurpose(wallet_.kind),
+      umbrelAddressName(wallet_.kind),
+      wallet_.address,wallet_.path,wallet_.publicKey,wallet_.accountXpub,
+      static_cast<unsigned>(umbrelBirthdayDays_));
+  lv_obj_t *info=label(panel,text,&aurora_font_18);lv_label_set_long_mode(info,LV_LABEL_LONG_WRAP);
+  lv_obj_set_pos(info,12,14);lv_obj_set_size(info,426,400);
+  lv_obj_t *pub=button(root_,"CLÉ PUBLIQUE",event,143);
+  lv_obj_set_user_data(pub,(void*)TO_QR_ADDRESS);lv_obj_set_pos(pub,15,648);lv_obj_set_size(pub,143,64);
+  lv_obj_set_style_bg_color(pub,SUCCESS,0);
+  lv_obj_t *show=button(root_,"CLÉ PRIVÉE",event,150);
+  lv_obj_set_user_data(show,(void*)UMBREL_SHOW_XPRV);lv_obj_set_pos(show,165,648);lv_obj_set_size(show,150,64);
+  lv_obj_set_style_bg_color(show,DANGER,0);
+  lv_obj_t *save=button(root_,"ENREGISTRER",event,143);
+  lv_obj_set_user_data(save,(void*)TO_BACKUP);lv_obj_set_pos(save,322,648);lv_obj_set_size(save,143,64);
+  lv_obj_t *lock=button(root_,"EFFACER",event,180);
+  lv_obj_set_user_data(lock,(void*)LOCK_SESSION);lv_obj_set_pos(lock,131,720);lv_obj_set_size(lock,218,64);
+#else
   lv_obj_t *panel=lv_obj_create(root_); AuroraLayout::pos(panel,12,43); AuroraLayout::size(panel,296,126);
   lv_obj_set_style_bg_color(panel,PANEL,0); lv_obj_set_style_border_color(panel,ORANGE,0);
   lv_obj_set_style_border_width(panel,1,0); lv_obj_set_style_radius(panel,7,0);
@@ -1089,12 +1272,6 @@ void AuroraUI::buildUmbrelResult() {
   lv_obj_set_style_bg_color(show,DANGER,0);
   lv_obj_t *save=button(root_,"ENREGISTRER",event,142);
   lv_obj_set_user_data(save,(void*)TO_BACKUP);AuroraLayout::pos(save,168,185);
-#if defined(AURORA_BOARD_P4)
-  lv_obj_set_pos(show,15,648);lv_obj_set_size(show,218,64);
-  lv_obj_set_pos(save,247,648);lv_obj_set_size(save,218,64);
-  lv_obj_t *lock=button(root_,"EFFACER",event,180);
-  lv_obj_set_user_data(lock,(void*)LOCK_SESSION);lv_obj_set_pos(lock,131,720);lv_obj_set_size(lock,218,64);
-#else
   lv_obj_t *lock=button(root_,"EFFACER",event,116);
   lv_obj_set_user_data(lock,(void*)LOCK_SESSION);AuroraLayout::pos(lock,102,216);
 #endif
@@ -1580,35 +1757,47 @@ void AuroraUI::buildInfo() {
       (loadedWallet_ ? (passphrase_[0] ? "3 / 4" : "2 / 3") : "6 / 7");
   header(umbrelWallet_?"Portefeuille Umbrel":(protectedSession_?"Portefeuille":"Informations du portefeuille"),protectedSession_?nullptr:step);
   lv_obj_t *p=lv_obj_create(root_); AuroraLayout::pos(p,10,42); AuroraLayout::size(p,300,132); lv_obj_set_style_bg_color(p,PANEL,0); lv_obj_set_style_border_width(p,0,0); lv_obj_set_style_radius(p,7,0); lv_obj_clear_flag(p,LV_OBJ_FLAG_SCROLLABLE);
-  char txt[500];
+  char txt[800];
 #if defined(AURORA_BOARD_P4)
   if(umbrelWallet_)
-    snprintf(txt,sizeof(txt),"Clé publique étendue maître\n%s\n\nChemin : m\n\nAnniversaire LND\nJour %u depuis Genesis",
-             wallet_.accountXpub,static_cast<unsigned>(umbrelBirthdayDays_));
+    snprintf(txt,sizeof(txt),"Adresse de réception n°%u — BIP%u %s\n%s\n\nChemin\n%s\n\n"
+             "Clé publique dérivée\n%s\n\n"
+             "Clé publique étendue du compte\n%s\n\nAnniversaire LND : jour %u",
+             static_cast<unsigned>(umbrelAddressIndex_),umbrelPurpose(wallet_.kind),
+             umbrelAddressName(wallet_.kind),
+             wallet_.address,wallet_.path,wallet_.publicKey,wallet_.accountXpub,
+             static_cast<unsigned>(umbrelBirthdayDays_));
   else
     snprintf(txt,sizeof(txt),"Adresse\n%s\n\nChemin : %s\n\nClé publique étendue du compte\n%s",wallet_.address,wallet_.path,wallet_.accountXpub);
 #else
   if(umbrelWallet_)
-    snprintf(txt,sizeof(txt),"Clé publique étendue maître\n%s\nChemin : m\nAnniversaire LND : jour %u",
-             wallet_.accountXpub,static_cast<unsigned>(umbrelBirthdayDays_));
+    snprintf(txt,sizeof(txt),"Adresse\n%s\nClé publique\n%s\nClé étendue\n%s\nAnniversaire : jour %u",
+             wallet_.address,wallet_.publicKey,wallet_.accountXpub,
+             static_cast<unsigned>(umbrelBirthdayDays_));
   else
     snprintf(txt,sizeof(txt),"Adresse\n%s\nChemin : %s\nClé publique étendue du compte\n%s",wallet_.address,wallet_.path,wallet_.accountXpub);
 #endif
   lv_obj_t *l=label(p,txt,&aurora_font_10); lv_label_set_long_mode(l,LV_LABEL_LONG_WRAP); AuroraLayout::size(l,290,124); AuroraLayout::pos(l,5,3);
 #if defined(AURORA_BOARD_P4)
   lv_obj_set_style_pad_all(p,0,0);
-  lv_obj_set_pos(p,15,140); lv_obj_set_size(p,450,protectedSession_?484:550);
-  lv_obj_set_pos(l,12,16); lv_obj_set_size(l,426,protectedSession_?410:518);
+  if(umbrelWallet_) {
+    buildUmbrelScopeSelector();
+    lv_obj_set_pos(p,15,190);lv_obj_set_size(p,450,430);
+    lv_obj_set_pos(l,12,14);lv_obj_set_size(l,426,396);
+  } else {
+    lv_obj_set_pos(p,15,140); lv_obj_set_size(p,450,protectedSession_?484:550);
+    lv_obj_set_pos(l,12,16); lv_obj_set_size(l,426,protectedSession_?410:518);
+  }
   lv_obj_set_style_text_font(l,&aurora_font_18,0);
 #endif
   if(protectedSession_ && exportSucceeded_ && exportStatus_[0]) {
     lv_obj_t *saved=label(p,exportStatus_,&aurora_font_10);
     lv_obj_set_style_text_color(saved,SUCCESS,0); AuroraLayout::pos(saved,5,110);
 #if defined(AURORA_BOARD_P4)
-    lv_obj_set_pos(saved,12,438); lv_obj_set_style_text_font(saved,&aurora_font_18,0);
+    lv_obj_set_pos(saved,12,umbrelWallet_?382:438); lv_obj_set_style_text_font(saved,&aurora_font_18,0);
 #endif
   }
-  lv_obj_t *q=button(root_,"CLÉ PUBLIQUE",event,95); lv_obj_set_user_data(q,(void*)(umbrelWallet_?TO_QR_PUBLIC:TO_QR_ADDRESS)); AuroraLayout::pos(q,10,181);
+  lv_obj_t *q=button(root_,"CLÉ PUBLIQUE",event,95); lv_obj_set_user_data(q,(void*)TO_QR_ADDRESS); AuroraLayout::pos(q,10,181);
   lv_obj_t *r=button(root_,"CLÉ PRIVÉE",event,100); lv_obj_set_user_data(r,(void*)(umbrelWallet_?UMBREL_SHOW_XPRV:REVEAL_PRIVATE)); AuroraLayout::pos(r,110,181);
   lv_obj_set_style_bg_color(q,SUCCESS,0);
   if(protectedSession_) lv_obj_set_style_bg_color(r,DANGER,0);
@@ -1679,10 +1868,29 @@ bool AuroraUI::renderQr(lv_obj_t *parent,const char *data,int size,int x,int y) 
 void AuroraUI::buildQr() {
   const bool restoreView=manualRestore_;
   const bool privateKey = qrContent_ == QrContent::PrivateKey;
-  const char *title = privateKey ? "Clé privée - DANGER" :
-                      (qrContent_ == QrContent::AccountXpub ? "Clé publique étendue" : "Code QR de l'adresse");
+  const bool firstPublicKey = qrContent_ == QrContent::FirstPublicKey;
+#if defined(AURORA_BOARD_P4)
+  const bool bip39FilePublic=fileSession_ && bip39PublicReady_ && !umbrelWallet_;
+#else
+  const bool bip39FilePublic=false;
+#endif
+  const bool indexedPublic=!privateKey && (umbrelWallet_ || bip39FilePublic);
+  char publicTitle[48]{};
+  const char *title=nullptr;
+  if(privateKey) title="Clé privée - DANGER";
+  else if(indexedPublic) {
+    const char *category=firstPublicKey?"Clé publique":
+        (qrContent_==QrContent::AccountXpub?"Clé étendue":"Adresse");
+    snprintf(publicTitle,sizeof(publicTitle),"%s BIP%u",category,
+             umbrelPurpose(wallet_.kind));
+    title=publicTitle;
+  } else {
+    title=firstPublicKey?"Clé publique":
+        (qrContent_==QrContent::AccountXpub?"Clé publique étendue":"Première adresse");
+  }
   const char *data = privateKey ? wallet_.privateWif :
-                     (qrContent_ == QrContent::AccountXpub ? wallet_.accountXpub : wallet_.address);
+                     (firstPublicKey ? wallet_.publicKey :
+                      (qrContent_ == QrContent::AccountXpub ? wallet_.accountXpub : wallet_.address));
   lv_obj_t *titleLabel=header(title); if(privateKey) lv_obj_set_style_text_color(titleLabel,DANGER,0);
 
 #if defined(AURORA_BOARD_P4)
@@ -1701,15 +1909,53 @@ void AuroraUI::buildQr() {
     lv_obj_add_event_cb(restoreDerivationDropdown_,event,LV_EVENT_VALUE_CHANGED,nullptr);
   }
 
-  const int qrTop=restoreView?190:130;
-  if(!renderQr(root_,data,224,48,restoreView?57:39)) {
+  if(indexedPublic) {
+    static constexpr char BIP39_SCOPES[] =
+        "BIP44 - Legacy\nBIP49 - Nested SegWit\nBIP84 - Native SegWit\nBIP86 - Taproot";
+    static constexpr char UMBREL_SCOPES[] =
+        "BIP49 - Nested SegWit\nBIP84 - Native SegWit\nBIP86 - Taproot";
+    static constexpr char UMBREL_INDICES[] =
+        "0\n1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n16\n17\n18\n19";
+    lv_obj_t *scopeLabel=label(root_,"DÉRIVATION",&aurora_font_18);
+    lv_obj_set_style_text_color(scopeLabel,MUTED,0);lv_obj_set_pos(scopeLabel,15,120);
+    lv_obj_t *indexLabel=label(root_,"NUMÉRO",&aurora_font_18);
+    lv_obj_set_style_text_color(indexLabel,MUTED,0);lv_obj_set_pos(indexLabel,326,120);
+
+    umbrelScopeDropdown_=lv_dropdown_create(root_);
+    lv_obj_set_pos(umbrelScopeDropdown_,15,143);lv_obj_set_size(umbrelScopeDropdown_,300,50);
+    lv_obj_set_style_text_font(umbrelScopeDropdown_,&aurora_font_18,0);
+    lv_dropdown_set_options(umbrelScopeDropdown_,umbrelWallet_?UMBREL_SCOPES:BIP39_SCOPES);
+    lv_dropdown_set_selected(umbrelScopeDropdown_,
+                             umbrelWallet_?umbrelScope_:bip39Scope_);
+    lv_obj_set_user_data(umbrelScopeDropdown_,(void*)UMBREL_QR_SCOPE_CHANGED);
+    lv_obj_add_event_cb(umbrelScopeDropdown_,event,LV_EVENT_VALUE_CHANGED,nullptr);
+
+    umbrelIndexDropdown_=lv_dropdown_create(root_);
+    lv_obj_set_pos(umbrelIndexDropdown_,326,143);lv_obj_set_size(umbrelIndexDropdown_,139,50);
+    lv_obj_set_style_text_font(umbrelIndexDropdown_,&aurora_font_18,0);
+    lv_dropdown_set_options(umbrelIndexDropdown_,UMBREL_INDICES);
+    lv_dropdown_set_selected(umbrelIndexDropdown_,
+                             umbrelWallet_?umbrelAddressIndex_:bip39AddressIndex_);
+    lv_obj_set_user_data(umbrelIndexDropdown_,(void*)UMBREL_QR_INDEX_CHANGED);
+    lv_obj_add_event_cb(umbrelIndexDropdown_,event,LV_EVENT_VALUE_CHANGED,nullptr);
+
+    char shownPath[32]{};
+    if(qrContent_==QrContent::AccountXpub)
+      snprintf(shownPath,sizeof(shownPath),"m/%u'/0'/0'",umbrelPurpose(wallet_.kind));
+    else strlcpy(shownPath,wallet_.path,sizeof(shownPath));
+    lv_obj_t *pathLabel=label(root_,shownPath,&aurora_font_18);
+    lv_obj_set_style_text_color(pathLabel,ORANGE,0);lv_obj_set_pos(pathLabel,24,204);
+  }
+
+  const int qrTop=restoreView?190:(indexedPublic?240:130);
+  if(!renderQr(root_,data,224,48,restoreView?57:(indexedPublic?72:39))) {
     lv_obj_t *error=label(root_,"QR impossible",&aurora_font_20);
     lv_obj_set_style_text_color(error,DANGER,0);lv_obj_set_pos(error,24,qrTop+130);
   }
   lv_obj_t *value=label(root_,data,&aurora_font_20);
   lv_label_set_long_mode(value,LV_LABEL_LONG_WRAP);
-  lv_obj_set_pos(value,24,restoreView?540:480);
-  lv_obj_set_size(value,432,restoreView?160:190);
+  lv_obj_set_pos(value,24,restoreView?540:(indexedPublic?590:480));
+  lv_obj_set_size(value,432,restoreView?160:(indexedPublic?110:190));
 
   const int buttonWidth=210;
   bool hasAlternate=false;
@@ -1720,18 +1966,26 @@ void AuroraUI::buildQr() {
     lv_obj_set_style_bg_color(alternate,privateKey?SUCCESS:(protectedSession_?DANGER:ORANGE),0);
     hasAlternate=true;
   } else if(qrContent_==QrContent::Address) {
+    lv_obj_t *alternate=button(root_,indexedPublic?"CLÉ PUBLIQUE":"CLÉ ÉTENDUE",event,140);
+    lv_obj_set_user_data(alternate,(void*)(indexedPublic?TO_QR_FIRST_PUBLIC:TO_QR_PUBLIC));
+    lv_obj_set_pos(alternate,24,720);lv_obj_set_size(alternate,buttonWidth,64);
+    if(indexedPublic) lv_obj_set_style_bg_color(alternate,SUCCESS,0);
+    hasAlternate=true;
+  } else if(qrContent_==QrContent::FirstPublicKey && indexedPublic) {
     lv_obj_t *alternate=button(root_,"CLÉ ÉTENDUE",event,140);
     lv_obj_set_user_data(alternate,(void*)TO_QR_PUBLIC);
     lv_obj_set_pos(alternate,24,720);lv_obj_set_size(alternate,buttonWidth,64);
+    lv_obj_set_style_bg_color(alternate,SUCCESS,0);
     hasAlternate=true;
-  } else if(qrContent_==QrContent::AccountXpub && !umbrelWallet_) {
+  } else if(qrContent_==QrContent::AccountXpub) {
     lv_obj_t *alternate=button(root_,"ADRESSE",event,140);
     lv_obj_set_user_data(alternate,(void*)TO_QR_ADDRESS);
     lv_obj_set_pos(alternate,24,720);lv_obj_set_size(alternate,buttonWidth,64);
+    if(indexedPublic) lv_obj_set_style_bg_color(alternate,SUCCESS,0);
     hasAlternate=true;
   }
   lv_obj_t *back=button(root_,restoreView?"INFORMATIONS":"RETOUR",event,140);
-  lv_obj_set_user_data(back,(void*)TO_INFO);
+  lv_obj_set_user_data(back,(void*)((umbrelWallet_&&!fileSession_&&umbrelRecovery_)?UMBREL_RESULT_BACK:TO_INFO));
   lv_obj_set_pos(back,hasAlternate?246:135,720);lv_obj_set_size(back,buttonWidth,64);
 #else
   if(restoreView) {
@@ -1765,14 +2019,17 @@ void AuroraUI::buildQr() {
     if(!privateKey) lv_obj_set_style_bg_color(alternate,ORANGE,0);
     else lv_obj_set_style_bg_color(alternate,DANGER,0);
   } else if (qrContent_ == QrContent::Address) {
+    lv_obj_t *p=button(root_,umbrelWallet_?"CLÉ PUBLIQUE":"CLÉ ÉTENDUE",event,rightWidth);
+    lv_obj_set_user_data(p,(void*)(umbrelWallet_?TO_QR_FIRST_PUBLIC:TO_QR_PUBLIC)); AuroraLayout::pos(p,rightX,147);
+  } else if (qrContent_ == QrContent::FirstPublicKey && umbrelWallet_) {
     lv_obj_t *p=button(root_,"CLÉ ÉTENDUE",event,rightWidth);
     lv_obj_set_user_data(p,(void*)TO_QR_PUBLIC); AuroraLayout::pos(p,rightX,147);
-  } else if (qrContent_ == QrContent::AccountXpub && !umbrelWallet_) {
+  } else if (qrContent_ == QrContent::AccountXpub) {
     lv_obj_t *a=button(root_,"ADRESSE",event,rightWidth);
     lv_obj_set_user_data(a,(void*)TO_QR_ADDRESS); AuroraLayout::pos(a,rightX,147);
   }
   lv_obj_t *b=button(root_,restoreView?"INFORMATIONS":"RETOUR",event,rightWidth);
-  lv_obj_set_user_data(b,(void*)TO_INFO); AuroraLayout::pos(b,rightX,190);
+  lv_obj_set_user_data(b,(void*)((umbrelWallet_&&!fileSession_&&umbrelRecovery_)?UMBREL_RESULT_BACK:TO_INFO)); AuroraLayout::pos(b,rightX,190);
 #endif
 }
 
@@ -1907,6 +2164,8 @@ void AuroraUI::performWalletExport() {
     return;
   }
   char accountXprv[128] = {};
+  char umbrelRootXpub[128] = {};
+  char umbrelBirthday[96] = {};
   char writtenPath[56] = {};
   if (exportFormat_==WalletExportFormat::ElectrumPrivate &&
       wallet_.kind == AddressKind::Taproot) {
@@ -1929,9 +2188,29 @@ void AuroraUI::performWalletExport() {
     secureZero(filePassword_,sizeof(filePassword_));
     return;
   }
+  const char *exportAddress=wallet_.address;
+  const char *exportXpub=wallet_.accountXpub;
+  if(umbrelWallet_) {
+    const int birthdayLength=snprintf(umbrelBirthday,sizeof(umbrelBirthday),
+        "birthday-days:%u",static_cast<unsigned>(umbrelBirthdayDays_));
+    if(birthdayLength<=0 || static_cast<size_t>(birthdayLength)>=sizeof(umbrelBirthday) ||
+       !engine_.rootXpubFromXprv(accountXprv,umbrelRootXpub,sizeof(umbrelRootXpub))) {
+      strlcpy(exportStatus_,"Échec de validation de la clé maître Umbrel.",sizeof(exportStatus_));
+      secureZero(accountXprv,sizeof(accountXprv));
+      secureZero(umbrelRootXpub,sizeof(umbrelRootXpub));
+      secureZero(umbrelBirthday,sizeof(umbrelBirthday));
+      revokeAccess();secureZero(filePassword_,sizeof(filePassword_));return;
+    }
+    // Preserve the established encrypted Umbrel wire format. Public BIP84
+    // display data is deterministically rebuilt after authentication.
+    exportAddress=umbrelBirthday;
+    exportXpub=umbrelRootXpub;
+  }
   if(!authorized(Access::Export) || (sensitiveStateActive_ &&
       lv_disp_get_inactive_time(nullptr)>=SESSION_IDLE_MS)) {
     secureZero(accountXprv,sizeof(accountXprv));
+    secureZero(umbrelRootXpub,sizeof(umbrelRootXpub));
+    secureZero(umbrelBirthday,sizeof(umbrelBirthday));
     revokeAccess();
     secureZero(filePassword_,sizeof(filePassword_));
     strlcpy(exportStatus_,"Autorisation expirée : aucun fichier écrit.",sizeof(exportStatus_));
@@ -1943,8 +2222,8 @@ void AuroraUI::performWalletExport() {
       umbrelWallet_?AURORA_WALLET_WORDS_UMBREL:words_,
       umbrelWallet_?AURORA_WALLET_TYPE_UMBREL:addressKindName(wallet_.kind),
       umbrelWallet_?AURORA_WALLET_PATH_UMBREL:wallet_.path,
-      umbrelWallet_?"":wallet_.mnemonic, umbrelWallet_?"":passphrase_, wallet_.address,
-      wallet_.accountXpub, accountXprv, umbrelWallet_?"":wallet_.privateWif,
+      umbrelWallet_?"":wallet_.mnemonic, umbrelWallet_?"":passphrase_, exportAddress,
+      exportXpub, accountXprv, umbrelWallet_?"":wallet_.privateWif,
       umbrelWallet_?"":wallet_.watchDescriptor,
       nullptr};
   uint8_t fileFingerprint[32]{};
@@ -1952,13 +2231,27 @@ void AuroraUI::performWalletExport() {
       writeAuroraWalletFileVerified(exportBaseName_,filePassword_,data,writtenPath,sizeof(writtenPath),fileFingerprint):
       writeWalletExportFile(exportFormat_,exportBaseName_,filePassword_,data,writtenPath,sizeof(writtenPath));
   secureZero(accountXprv,sizeof(accountXprv));
+  secureZero(umbrelRootXpub,sizeof(umbrelRootXpub));
+  secureZero(umbrelBirthday,sizeof(umbrelBirthday));
   switch(result) {
     case WalletExportResult::Ok:
       exportSucceeded_=true;
       if(exportFormat_==WalletExportFormat::AuroraWallet) {
-        startFileSession(fileFingerprint,exportBaseName_);
-        protectedSession_=loadedWallet_=true;
-        umbrelRecovery_=false;
+#if defined(AURORA_BOARD_P4)
+        const AddressKind savedKind=wallet_.kind;
+        const bool publicReady=umbrelWallet_ ||
+            deriveBip39PublicAccounts(wallet_.mnemonic,words_,passphrase_,savedKind);
+#else
+        const bool publicReady=true;
+#endif
+        if(publicReady) {
+          startFileSession(fileFingerprint,exportBaseName_);
+          protectedSession_=loadedWallet_=true;
+          umbrelRecovery_=false;
+        } else {
+          engine_.wipe(wallet_);dropPrivateState();
+          protectedSession_=loadedWallet_=false;
+        }
       }
       snprintf(exportStatus_,sizeof(exportStatus_),"Créé : %s",writtenPath); break;
     case WalletExportResult::InvalidName:
@@ -2003,11 +2296,13 @@ bool AuroraUI::performWalletImport() {
       importBaseName_,filePassword_,imported,fileFingerprint);
   secureZero(filePassword_,sizeof(filePassword_));
   umbrelWallet_=false;
+  secureZero(bip39Public_,sizeof(bip39Public_));
+  bip39PublicReady_=false;bip39AddressIndex_=0;
   if(result==AuroraWalletReadResult::Ok) {
     const bool importedUmbrel=imported.addressKind==AURORA_WALLET_KIND_UMBREL;
     const AddressKind importedKind=static_cast<AddressKind>(imported.addressKind);
     engine_.wipe(wallet_);
-    if((importedUmbrel && applyUmbrelWalletData(imported,false)) ||
+    bool valid=(importedUmbrel && applyUmbrelWalletData(imported,false)) ||
        (!importedUmbrel && engine_.restore(imported.mnemonic,imported.wordCount,importedKind,
                        imported.passphrase,wallet_) &&
        engine_.accountXprv(wallet_,imported.passphrase,derivedXprv,sizeof(derivedXprv)) &&
@@ -2017,13 +2312,18 @@ bool AuroraUI::performWalletImport() {
        strcmp(imported.accountXpub,wallet_.accountXpub)==0 &&
        strcmp(imported.accountXprv,derivedXprv)==0 &&
        strcmp(imported.privateWif,wallet_.privateWif)==0 &&
-       strcmp(imported.receiveDescriptor,wallet_.watchDescriptor)==0)) {
-      if(!importedUmbrel) {
+       strcmp(imported.receiveDescriptor,wallet_.watchDescriptor)==0);
+    if(valid && !importedUmbrel) {
         strlcpy(passphrase_,imported.passphrase,sizeof(passphrase_));
         words_=imported.wordCount;
         kind_=importedKind;
         umbrelWallet_=false;
-      }
+#if defined(AURORA_BOARD_P4)
+        valid=deriveBip39PublicAccounts(imported.mnemonic,imported.wordCount,
+                                        imported.passphrase,importedKind);
+#endif
+    }
+    if(valid) {
       mnemonicPage_=0;
       qrContent_=QrContent::Address;
       loadedWallet_=true;
@@ -2067,6 +2367,8 @@ bool AuroraUI::performWalletImport() {
   if(!ok) {
     engine_.wipe(wallet_);
     dropPrivateState();
+    secureZero(bip39Public_,sizeof(bip39Public_));
+    bip39PublicReady_=false;
     secureZero(sessionFingerprint_,sizeof(sessionFingerprint_));
     secureZero(sessionBaseName_,sizeof(sessionBaseName_));
     fileSession_=sessionHasPassphrase_=false;
@@ -2125,6 +2427,9 @@ void AuroraUI::dropPrivateState() {
   secureZero(umbrelRootXprv_,sizeof(umbrelRootXprv_));
   entropy_.wipeSecretsWithoutHardware();
   privateLoaded_=false;
+#if defined(AURORA_BOARD_P4)
+  if(fileSession_ && bip39PublicReady_) selectBip39Scope(bip39Scope_);
+#endif
 }
 
 void AuroraUI::startFileSession(const uint8_t fingerprint[32],const char *baseName) {
@@ -2154,20 +2459,19 @@ bool AuroraUI::applyUmbrelWalletData(const AuroraWalletData &data, bool keepPriv
     birthday=strtoul(number,&end,10);
     ok=number[0] && end && !end[0] && birthday<=UINT16_MAX &&
        engine_.rootXpubFromXprv(data.accountXprv,derivedXpub,sizeof(derivedXpub)) &&
-       strcmp(derivedXpub,data.accountXpub)==0;
+       strcmp(derivedXpub,data.accountXpub)==0 &&
+       deriveUmbrelPublicAccounts(data.accountXprv);
   }
   if(ok) {
-    engine_.wipe(wallet_);
-    strlcpy(wallet_.accountXpub,data.accountXpub,sizeof(wallet_.accountXpub));
-    strlcpy(wallet_.path,AURORA_WALLET_PATH_UMBREL,sizeof(wallet_.path));
-    strlcpy(wallet_.address,data.address,sizeof(wallet_.address));
-    wallet_.valid=true;
     umbrelBirthdayDays_=static_cast<uint16_t>(birthday);
     umbrelWallet_=true;
     if(keepPrivate) strlcpy(umbrelRootXprv_,data.accountXprv,sizeof(umbrelRootXprv_));
   }
   secureZero(derivedXpub,sizeof(derivedXpub));
-  if(!ok) secureZero(umbrelRootXprv_,sizeof(umbrelRootXprv_));
+  if(!ok) {
+    engine_.wipe(wallet_);
+    secureZero(umbrelRootXprv_,sizeof(umbrelRootXprv_));
+  }
   return ok;
 }
 
@@ -2239,6 +2543,8 @@ void AuroraUI::emergencyWipeSecrets() noexcept {
   secureZero(restoreMnemonic_,sizeof(restoreMnemonic_));
   secureZero(restoreStatus_,sizeof(restoreStatus_));
   secureZero(umbrelRootXprv_,sizeof(umbrelRootXprv_));
+  secureZero(umbrelPublic_,sizeof(umbrelPublic_));
+  secureZero(bip39Public_,sizeof(bip39Public_));
   secureZero(exportStatus_,sizeof(exportStatus_));
   secureZero(importStatus_,sizeof(importStatus_));
   secureZero(passwordStatus_,sizeof(passwordStatus_));
@@ -2265,6 +2571,11 @@ void AuroraUI::emergencyWipeSecrets() noexcept {
   afterSd_=Screen::Mode;
   afterAuthentication_=Screen::Info;
   umbrelBirthdayDays_=0;
+  umbrelScope_=1;
+  umbrelAddressIndex_=0;
+  bip39PublicReady_=false;
+  bip39Scope_=static_cast<uint8_t>(AddressKind::NativeSegwit);
+  bip39AddressIndex_=0;
   restoreWordIndex_=restoreSuggestionCount_=verifyActiveIndex_=verifySuggestionCount_=mnemonicPage_=0;
   auroraFileCount_=0;
 }
@@ -2311,7 +2622,8 @@ void AuroraUI::event(lv_event_t *e) {
   uintptr_t a=(uintptr_t)lv_obj_get_user_data(target);
   if(lv_event_get_code(e)==LV_EVENT_READY || lv_event_get_code(e)==LV_EVENT_CANCEL)
     a=(uintptr_t)lv_event_get_user_data(e);
-  switch((Action)a){
+  const Action selectedAction=static_cast<Action>(a);
+  switch(selectedAction){
     case START: if(!g_ui->selfTestPending_) g_ui->show(Screen::Mode); break;
     case OPEN_WALLET:
       g_ui->wipeSession();
@@ -2400,6 +2712,42 @@ void AuroraUI::event(lv_event_t *e) {
     case UMBREL_RESULT_BACK:
       g_ui->show(g_ui->screen_==Screen::RestoreWords?Screen::UmbrelWarning:
                  (g_ui->fileSession_?Screen::Info:Screen::UmbrelResult)); break;
+    case UMBREL_SCOPE_49: case UMBREL_SCOPE_84: case UMBREL_SCOPE_86: {
+      const uint8_t index=selectedAction==UMBREL_SCOPE_49?0:
+          (selectedAction==UMBREL_SCOPE_86?2:1);
+      g_ui->selectUmbrelScope(index);
+      g_ui->show(g_ui->screen_==Screen::Info?Screen::Info:Screen::UmbrelResult);
+      break;
+    }
+    case UMBREL_QR_SCOPE_CHANGED: {
+      if(!g_ui->umbrelScopeDropdown_) break;
+      const uint16_t selected=lv_dropdown_get_selected(g_ui->umbrelScopeDropdown_);
+      const uint16_t count=g_ui->umbrelWallet_?3:4;
+      if(selected<count) {
+        if(g_ui->umbrelWallet_)
+          g_ui->selectUmbrelScope(static_cast<uint8_t>(selected));
+        else
+          g_ui->selectBip39Scope(static_cast<uint8_t>(selected));
+        if(g_ui->wallet_.valid) g_ui->show(Screen::Qr);
+      }
+      break;
+    }
+    case UMBREL_QR_INDEX_CHANGED: {
+      if(!g_ui->umbrelIndexDropdown_) break;
+      const uint16_t selected=lv_dropdown_get_selected(g_ui->umbrelIndexDropdown_);
+      if(selected<20) {
+        bool ok=false;
+        if(g_ui->umbrelWallet_) {
+          g_ui->umbrelAddressIndex_=static_cast<uint8_t>(selected);
+          ok=g_ui->deriveSelectedUmbrelPublicChild();
+        } else {
+          g_ui->bip39AddressIndex_=static_cast<uint8_t>(selected);
+          ok=g_ui->deriveSelectedBip39PublicChild();
+        }
+        if(ok) g_ui->show(Screen::Qr);
+      }
+      break;
+    }
     case RESTORE_DERIVATION_CHANGED: {
       if(!g_ui->restoreDerivationDropdown_) break;
       const uint16_t selected=lv_dropdown_get_selected(g_ui->restoreDerivationDropdown_);
@@ -2444,6 +2792,7 @@ void AuroraUI::event(lv_event_t *e) {
       break;
     case TO_INFO: g_ui->qrContent_=QrContent::Address; g_ui->show(Screen::Info); break;
     case TO_QR_ADDRESS: g_ui->qrContent_=QrContent::Address; g_ui->show(Screen::Qr); break;
+    case TO_QR_FIRST_PUBLIC: g_ui->qrContent_=QrContent::FirstPublicKey; g_ui->show(Screen::Qr); break;
     case TO_QR_PUBLIC: g_ui->qrContent_=QrContent::AccountXpub; g_ui->show(Screen::Qr); break;
     case REVEAL_PRIVATE: g_ui->qrContent_=QrContent::PrivateKey; g_ui->show(Screen::Qr); break;
     case TO_BACKUP: g_ui->show(Screen::Backup); break;
