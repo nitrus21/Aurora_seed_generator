@@ -1112,21 +1112,19 @@ bool AuroraUI::deriveBip39PublicAccounts(const char *mnemonic, uint8_t words,
   secureZero(bip39Public_,sizeof(bip39Public_));
   bip39PublicReady_=false;
   WalletOutput derived{};
-  bool ok=static_cast<uint8_t>(initialKind)<4;
-  for(uint8_t i=0;i<4 && ok;++i) {
-    const AddressKind accountKind=static_cast<AddressKind>(i);
-    ok=engine_.publicWalletFromMnemonic(mnemonic,words,passphrase,accountKind,derived) &&
-       strlcpy(bip39Public_[i].address,derived.address,
-               sizeof(bip39Public_[i].address))<sizeof(bip39Public_[i].address) &&
-       strlcpy(bip39Public_[i].publicKey,derived.publicKey,
-               sizeof(bip39Public_[i].publicKey))<sizeof(bip39Public_[i].publicKey) &&
-       strlcpy(bip39Public_[i].accountXpub,derived.accountXpub,
-               sizeof(bip39Public_[i].accountXpub))<sizeof(bip39Public_[i].accountXpub) &&
-       strlcpy(bip39Public_[i].path,derived.path,
-               sizeof(bip39Public_[i].path))<sizeof(bip39Public_[i].path);
-    bip39Public_[i].kind=accountKind;
-    engine_.wipe(derived);
-  }
+  const uint8_t index=static_cast<uint8_t>(initialKind);
+  bool ok=index<4 &&
+      engine_.publicWalletFromMnemonic(mnemonic,words,passphrase,initialKind,derived) &&
+      strlcpy(bip39Public_[index].address,derived.address,
+              sizeof(bip39Public_[index].address))<sizeof(bip39Public_[index].address) &&
+      strlcpy(bip39Public_[index].publicKey,derived.publicKey,
+              sizeof(bip39Public_[index].publicKey))<sizeof(bip39Public_[index].publicKey) &&
+      strlcpy(bip39Public_[index].accountXpub,derived.accountXpub,
+              sizeof(bip39Public_[index].accountXpub))<sizeof(bip39Public_[index].accountXpub) &&
+      strlcpy(bip39Public_[index].path,derived.path,
+              sizeof(bip39Public_[index].path))<sizeof(bip39Public_[index].path);
+  if(index<4) bip39Public_[index].kind=initialKind;
+  engine_.wipe(derived);
   if(!ok) {
     engine_.wipe(derived);secureZero(bip39Public_,sizeof(bip39Public_));
     engine_.wipe(wallet_);return false;
@@ -1910,34 +1908,43 @@ void AuroraUI::buildQr() {
   }
 
   if(indexedPublic) {
-    static constexpr char BIP39_SCOPES[] =
-        "BIP44 - Legacy\nBIP49 - Nested SegWit\nBIP84 - Native SegWit\nBIP86 - Taproot";
     static constexpr char UMBREL_SCOPES[] =
         "BIP49 - Nested SegWit\nBIP84 - Native SegWit\nBIP86 - Taproot";
     static constexpr char UMBREL_INDICES[] =
         "0\n1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n16\n17\n18\n19";
-    lv_obj_t *scopeLabel=label(root_,"DÉRIVATION",&aurora_font_18);
+    const bool indexSelectable=qrContent_!=QrContent::AccountXpub;
+    lv_obj_t *scopeLabel=label(root_,umbrelWallet_?"TYPE":"TYPE ENREGISTRÉ",&aurora_font_18);
     lv_obj_set_style_text_color(scopeLabel,MUTED,0);lv_obj_set_pos(scopeLabel,15,120);
-    lv_obj_t *indexLabel=label(root_,"NUMÉRO",&aurora_font_18);
-    lv_obj_set_style_text_color(indexLabel,MUTED,0);lv_obj_set_pos(indexLabel,326,120);
 
-    umbrelScopeDropdown_=lv_dropdown_create(root_);
-    lv_obj_set_pos(umbrelScopeDropdown_,15,143);lv_obj_set_size(umbrelScopeDropdown_,300,50);
-    lv_obj_set_style_text_font(umbrelScopeDropdown_,&aurora_font_18,0);
-    lv_dropdown_set_options(umbrelScopeDropdown_,umbrelWallet_?UMBREL_SCOPES:BIP39_SCOPES);
-    lv_dropdown_set_selected(umbrelScopeDropdown_,
-                             umbrelWallet_?umbrelScope_:bip39Scope_);
-    lv_obj_set_user_data(umbrelScopeDropdown_,(void*)UMBREL_QR_SCOPE_CHANGED);
-    lv_obj_add_event_cb(umbrelScopeDropdown_,event,LV_EVENT_VALUE_CHANGED,nullptr);
+    if(umbrelWallet_) {
+      umbrelScopeDropdown_=lv_dropdown_create(root_);
+      lv_obj_set_pos(umbrelScopeDropdown_,15,143);
+      lv_obj_set_size(umbrelScopeDropdown_,indexSelectable?300:450,50);
+      lv_obj_set_style_text_font(umbrelScopeDropdown_,&aurora_font_18,0);
+      lv_dropdown_set_options(umbrelScopeDropdown_,UMBREL_SCOPES);
+      lv_dropdown_set_selected(umbrelScopeDropdown_,umbrelScope_);
+      lv_obj_set_user_data(umbrelScopeDropdown_,(void*)UMBREL_QR_SCOPE_CHANGED);
+      lv_obj_add_event_cb(umbrelScopeDropdown_,event,LV_EVENT_VALUE_CHANGED,nullptr);
+    } else {
+      char fixedType[48]{};
+      snprintf(fixedType,sizeof(fixedType),"BIP%u - %s",
+               umbrelPurpose(wallet_.kind),umbrelAddressName(wallet_.kind));
+      lv_obj_t *typeValue=label(root_,fixedType,&aurora_font_18);
+      lv_obj_set_pos(typeValue,15,155);
+    }
 
-    umbrelIndexDropdown_=lv_dropdown_create(root_);
-    lv_obj_set_pos(umbrelIndexDropdown_,326,143);lv_obj_set_size(umbrelIndexDropdown_,139,50);
-    lv_obj_set_style_text_font(umbrelIndexDropdown_,&aurora_font_18,0);
-    lv_dropdown_set_options(umbrelIndexDropdown_,UMBREL_INDICES);
-    lv_dropdown_set_selected(umbrelIndexDropdown_,
-                             umbrelWallet_?umbrelAddressIndex_:bip39AddressIndex_);
-    lv_obj_set_user_data(umbrelIndexDropdown_,(void*)UMBREL_QR_INDEX_CHANGED);
-    lv_obj_add_event_cb(umbrelIndexDropdown_,event,LV_EVENT_VALUE_CHANGED,nullptr);
+    if(indexSelectable) {
+      lv_obj_t *indexLabel=label(root_,"NUMÉRO",&aurora_font_18);
+      lv_obj_set_style_text_color(indexLabel,MUTED,0);lv_obj_set_pos(indexLabel,326,120);
+      umbrelIndexDropdown_=lv_dropdown_create(root_);
+      lv_obj_set_pos(umbrelIndexDropdown_,326,143);lv_obj_set_size(umbrelIndexDropdown_,139,50);
+      lv_obj_set_style_text_font(umbrelIndexDropdown_,&aurora_font_18,0);
+      lv_dropdown_set_options(umbrelIndexDropdown_,UMBREL_INDICES);
+      lv_dropdown_set_selected(umbrelIndexDropdown_,
+                               umbrelWallet_?umbrelAddressIndex_:bip39AddressIndex_);
+      lv_obj_set_user_data(umbrelIndexDropdown_,(void*)UMBREL_QR_INDEX_CHANGED);
+      lv_obj_add_event_cb(umbrelIndexDropdown_,event,LV_EVENT_VALUE_CHANGED,nullptr);
+    }
 
     char shownPath[32]{};
     if(qrContent_==QrContent::AccountXpub)
@@ -2722,12 +2729,8 @@ void AuroraUI::event(lv_event_t *e) {
     case UMBREL_QR_SCOPE_CHANGED: {
       if(!g_ui->umbrelScopeDropdown_) break;
       const uint16_t selected=lv_dropdown_get_selected(g_ui->umbrelScopeDropdown_);
-      const uint16_t count=g_ui->umbrelWallet_?3:4;
-      if(selected<count) {
-        if(g_ui->umbrelWallet_)
-          g_ui->selectUmbrelScope(static_cast<uint8_t>(selected));
-        else
-          g_ui->selectBip39Scope(static_cast<uint8_t>(selected));
+      if(g_ui->umbrelWallet_ && selected<3) {
+        g_ui->selectUmbrelScope(static_cast<uint8_t>(selected));
         if(g_ui->wallet_.valid) g_ui->show(Screen::Qr);
       }
       break;

@@ -480,20 +480,35 @@ static void testPasswordFileSessions(AuroraUI &ui) {
     }
     // Public metadata stays accessible without a secret or a PIN form.
     click(ui,TO_QR_ADDRESS); assert(ui.screen_==Screen::Qr); assertPublicFileSession(ui);
-    assert(ui.bip39PublicReady_ && ui.umbrelScopeDropdown_ && ui.umbrelIndexDropdown_);
-    assert(lv_dropdown_get_option_count(ui.umbrelScopeDropdown_)==4);
+    assert(ui.bip39PublicReady_ && !ui.umbrelScopeDropdown_ && ui.umbrelIndexDropdown_);
     assert(lv_dropdown_get_option_count(ui.umbrelIndexDropdown_)==20);
+    const AddressKind storedKind=ui.wallet_.kind;
+    char storedAccountXpub[sizeof(ui.wallet_.accountXpub)]{};
+    strlcpy(storedAccountXpub,ui.wallet_.accountXpub,sizeof(storedAccountXpub));
+    for(uint8_t i=0;i<4;++i) {
+      if(i==static_cast<uint8_t>(storedKind)) assert(ui.bip39Public_[i].accountXpub[0]);
+      else assert(!ui.bip39Public_[i].accountXpub[0]);
+    }
     const unsigned publicReads=sessionReadCalls;
     lv_dropdown_set_selected(ui.umbrelIndexDropdown_,19);
     lv_obj_send_event(ui.umbrelIndexDropdown_,LV_EVENT_VALUE_CHANGED,nullptr);
-    assert(ui.bip39AddressIndex_==19 && !strcmp(ui.wallet_.path,"m/84'/0'/0'/0/19"));
-    lv_dropdown_set_selected(ui.umbrelScopeDropdown_,0);
-    lv_obj_send_event(ui.umbrelScopeDropdown_,LV_EVENT_VALUE_CHANGED,nullptr);
-    assert(ui.wallet_.kind==AddressKind::Legacy &&
-           !strcmp(ui.wallet_.path,"m/44'/0'/0'/0/19") &&
+    assert(ui.bip39AddressIndex_==19 && ui.wallet_.kind==storedKind &&
+           !strcmp(ui.wallet_.path,"m/84'/0'/0'/0/19") &&
+           !strcmp(ui.wallet_.accountXpub,storedAccountXpub) &&
            sessionReadCalls==publicReads);
     assertPublicFileSession(ui);
     snapshot(ui,"bip39-public-derivation.ppm");
+    click(ui,TO_QR_FIRST_PUBLIC);
+    assert(ui.qrContent_==AuroraUI::QrContent::FirstPublicKey &&
+           !ui.umbrelScopeDropdown_ && ui.umbrelIndexDropdown_ &&
+           lv_dropdown_get_selected(ui.umbrelIndexDropdown_)==19);
+    click(ui,TO_QR_PUBLIC);
+    assert(ui.qrContent_==AuroraUI::QrContent::AccountXpub &&
+           !ui.umbrelScopeDropdown_ && !ui.umbrelIndexDropdown_ &&
+           ui.wallet_.kind==storedKind &&
+           !strcmp(ui.wallet_.accountXpub,storedAccountXpub));
+    lv_obj_update_layout(ui.root_);
+    snapshot(ui,"bip39-account-xpub.ppm");
     click(ui,TO_INFO);
     click(ui,SHOW_WORDS); assert(ui.screen_==Screen::PrivatePassword);
     assertPublicFileSession(ui); snapshot(ui,"private-password.ppm");
@@ -1119,6 +1134,7 @@ int main() {
   }
   snapshot(ui,"umbrel-public-key.png");
   click(ui,TO_QR_PUBLIC); assert(ui.qrContent_==AuroraUI::QrContent::AccountXpub);
+  assert(ui.umbrelScopeDropdown_ && !ui.umbrelIndexDropdown_);
   snapshot(ui,"umbrel-account-xpub.png");
   click(ui,UMBREL_RESULT_BACK); assert(ui.screen_==Screen::UmbrelResult);
   click(ui,UMBREL_SHOW_XPRV); assert(ui.screen_==Screen::UmbrelQr);
@@ -1189,6 +1205,7 @@ int main() {
   assertPublicFileSession(ui);assert(!ui.umbrelRootXprv_[0]);
   click(ui,TO_QR_FIRST_PUBLIC); assert(ui.qrContent_==AuroraUI::QrContent::FirstPublicKey && !ui.privateLoaded_);
   click(ui,TO_QR_PUBLIC); assert(ui.qrContent_==AuroraUI::QrContent::AccountXpub && !ui.privateLoaded_);
+  assert(ui.umbrelScopeDropdown_ && !ui.umbrelIndexDropdown_);
   click(ui,TO_INFO); click(ui,UMBREL_SHOW_XPRV);
   assert(ui.screen_==Screen::PrivatePassword); enterPrivatePassword(ui);
   assert(ui.screen_==Screen::UmbrelQr && ui.privateLoaded_ && ui.umbrelRootXprv_[0]);
