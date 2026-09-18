@@ -1,5 +1,12 @@
 # Third-party notices
 
+## AURORA artwork
+
+The source artwork in `assets/bitcoin_logo_source.png` and
+`assets/splash_source.png`, together with the derived device image
+`assets/splash_320x240.png`, was supplied by the AURORA project owner for this
+project and is distributed under the repository's MIT license.
+
 The AEZEED decoder in `src/aezeed.cpp` contains adapted portions of the
 following projects. These notices apply to those portions; the rest of AURORA
 remains under the repository's MIT license.

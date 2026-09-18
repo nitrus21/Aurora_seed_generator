@@ -24,7 +24,7 @@ for name, file in targets.items():
     results[name] = {"file": file.relative_to(root).as_posix(), "bytes": len(data),
                      "sha256": hashlib.sha256(data).hexdigest(), "applicationDiagnosticMarkers": 0}
     print("PASS:", name, results[name]["sha256"], "no application diagnostic strings")
-report = root / "tmp/security-followup-2026-09-16/firmware-logging.json"
+report = root / "tmp/evidence/firmware-logging.json"
 report.parent.mkdir(parents=True, exist_ok=True)
 report.write_text(json.dumps({"dateUTC": datetime.now(timezone.utc).isoformat(),
     "scope": "Local unpublished builds; no physical serial capture; SDK/ROM logs not covered",

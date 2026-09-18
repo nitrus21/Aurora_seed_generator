@@ -7,7 +7,8 @@ binaire de test. Il contrôle les appels des sources applicatives et le maintien
 des autotests. Les suites UI vérifient séparément les parcours et erreurs.
 Après compilation des trois profils, `python tests/logging/verify_images.py`
 vérifie l'absence des chaînes de diagnostic dans les images locales et produit
-une preuve privée sous `tmp/`. Il ne remplace pas les binaires publiés.
+une preuve destinée au dépôt privé de développement. Il ne remplace pas les
+binaires publiés.
 
 `include/aurora_log.h` désactive les huit messages applicatifs de démarrage,
 codes d'autotest et durées lorsque `AURORA_DEBUG` est absent ou égal à `0`.

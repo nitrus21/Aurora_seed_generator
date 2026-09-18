@@ -229,6 +229,9 @@ une certification. Consultez le
 - [Tests d’interface](tests/ui/README.md) · [Tests crypto](tests/crypto/README.md)
 - [Licence MIT](LICENSE)
 
+Les bancs de tests hôte sont principalement conçus pour Windows avec MSVC.
+Les contrôles de publication et du Web Flasher restent exécutés sur GitHub Actions.
+
 <div align="center">
 
 **AURORA — Comprendre vos sauvegardes. Garder la main sur vos clés.**

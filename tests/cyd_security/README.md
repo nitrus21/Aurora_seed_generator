@@ -7,7 +7,8 @@ Après compilation du CYD et installation des dépendances natives indiquées da
 python tests/cyd_security/run.py
 ```
 
-Ce banc ne flashe rien. Les preuves et copies de binaires restent dans `tmp/`.
+Ce banc ne flashe rien. Les preuves et copies de binaires restent privées et ne
+sont jamais intégrées au dépôt public.
 Il vérifie le binaire Xtensa lié (absence de sauvegarde de crash et de session
 PIN), les appels d’effacement SHA via les pools de constantes ELF, dont les
 112 octets du bloc SHA-256 regroupé avant retour, la table de

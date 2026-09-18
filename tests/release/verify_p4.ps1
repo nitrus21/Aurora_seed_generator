@@ -9,7 +9,7 @@ $root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $web = Join-Path $root 'webflasher'
 $versionHeader = Get-Content -Raw -LiteralPath (Join-Path $root 'include\version.h')
 $versionMatch = [regex]::Match($versionHeader, 'AURORA_P4_FIRMWARE_VERSION\s+"(\d+\.\d+\.\d+)"')
-Assert-P4 ($versionMatch.Success -and $versionMatch.Groups[1].Value -eq '2.0.5') 'P4 source version mismatch.'
+Assert-P4 ($versionMatch.Success -and ([version]$versionMatch.Groups[1].Value -ge [version]'2.0.5')) 'P4 source is older than the newest published image.'
 
 $app = Get-Content -Raw -LiteralPath (Join-Path $web 'assets\app.js')
 $index = Get-Content -Raw -LiteralPath (Join-Path $web 'index.html')

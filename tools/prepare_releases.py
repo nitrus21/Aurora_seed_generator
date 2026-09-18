@@ -25,17 +25,20 @@ def main():
         'aurora-1.9.9-esp32-2432s028r.factory.bin': '34A7928985AA88D0E79F2D48EB5143A839E69106B2322DB78D2404EAB03DAD1E',
         'aurora-2.0.3-esp32-p4-rev1.factory.bin': 'C4DC3D3A0178402CCFB1F9A5B16246C346A0BDD4AAB5DFEA4FE8CC84E1261594',
         'aurora-2.0.3-esp32-p4-rev3.factory.bin': '72B909397C61C5731DFDA801C6BB2F503941152811FB13E740AB83CB97CCA6B7',
+        'aurora-2.0.5-esp32-p4-rev1.factory.bin': '6D6253867D4962AACDB012F0445444E386C519044543F41DAE20CA04517722CB',
+        'aurora-2.0.5-esp32-p4-rev3.factory.bin': '2BC03AAC78FBF9583B6B4918C9A89D807A55D96B554909B21FE486C67CA77884',
     }
     for name, checksum in expected.items():
         if digest(FIRMWARE / name) != checksum:
             raise RuntimeError(f'Image differs from validated release candidate: {name}')
-    names = sorted(p.name for p in FIRMWARE.glob('*.bin'))
+    names = sorted(p.name for p in FIRMWARE.glob('*.factory.bin'))
     (FIRMWARE / 'SHA256SUMS.txt').write_text(
         ''.join(f'{digest(FIRMWARE / name)}  {name}\n' for name in names), encoding='ascii', newline='\n')
     for version, device, images in (
         ('1.7.5', 'CYD', ['aurora-1.7.5-esp32-2432s028r.factory.bin']),
         ('1.9.9', 'CYD', ['aurora-1.9.9-esp32-2432s028r.factory.bin']),
         ('2.0.3', 'P4', [f'aurora-2.0.3-esp32-p4-rev{r}.factory.bin' for r in (1, 3)]),
+        ('2.0.5', 'P4', [f'aurora-2.0.5-esp32-p4-rev{r}.factory.bin' for r in (1, 3)]),
     ):
         checksums = ''.join(f'{digest(FIRMWARE / name)}  {name}\n' for name in images)
         notes = (WEB / f'releases/{version}.md').read_bytes()

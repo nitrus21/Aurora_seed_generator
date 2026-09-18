@@ -2,7 +2,8 @@
 
 Ce guide décrit les dépendances du projet et la procédure de revue avant une
 publication. Il ne constitue pas un rapport de vulnérabilités ni une déclaration
-d'absence de CVE. Les preuves et analyses détaillées restent locales sous `tmp/`.
+d'absence de CVE. Les preuves et analyses détaillées appartiennent au dépôt privé
+de développement et ne sont jamais publiées avec la distribution.
 
 ## Sources de référence
 

@@ -19,9 +19,8 @@ if ($ReleasedArtifactsOnly) {
     Assert-Release $versionMatch.Success 'A final CYD firmware version is required. Use -ReleasedArtifactsOnly to verify preserved release binaries on a development branch.'
     $version = $versionMatch.Groups[1].Value
     $p4VersionMatch = [regex]::Match($versionHeader, 'AURORA_P4_FIRMWARE_VERSION\s+"(\d+\.\d+\.\d+)"')
-    Assert-Release ($p4VersionMatch.Success -and $p4VersionMatch.Groups[1].Value -eq '2.0.5') 'P4 source version mismatch.'
+    Assert-Release ($p4VersionMatch.Success -and ([version]$p4VersionMatch.Groups[1].Value -ge [version]'2.0.5')) 'P4 source is older than the newest published image.'
 }
-$layout = Get-Content -Raw -LiteralPath (Join-Path $firmwareRoot 'flash-layout.json') | ConvertFrom-Json
 $factoryName = "aurora-$version-esp32-2432s028r.factory.bin"
 
 Assert-Release ($manifest.version -eq $version) 'Manifest/source version mismatch.'
@@ -29,28 +28,8 @@ Assert-Release ($manifest.builds.Count -eq 1) 'Expected one ESP32 build.'
 $build = $manifest.builds[0]
 Assert-Release ($build.chipFamily -eq 'ESP32' -and $build.parts.Count -eq 1) 'Unexpected build layout.'
 Assert-Release ($build.parts[0].path -eq "firmware/$factoryName" -and $build.parts[0].offset -eq 0) 'Incorrect installer image.'
-Assert-Release ($layout.webFlasherImage.file -eq $factoryName -and $layout.webFlasherImage.offsetDecimal -eq 0) 'Incorrect factory layout.'
-Assert-Release ($layout.flashMode -eq 'dio' -and $layout.flashFrequency -eq '40m' -and $layout.flashSize -eq '4MB') 'Unexpected flash settings.'
-
 $factoryPath = Join-Path $firmwareRoot $factoryName
 $factory = [System.IO.File]::ReadAllBytes($factoryPath)
-$expectedOffsets = @{ 'bootloader.bin' = 0x1000; 'partitions.bin' = 0x8000; 'boot_app0.bin' = 0xE000; 'firmware.bin' = 0x10000 }
-Assert-Release ($layout.parts.Count -eq $expectedOffsets.Count) 'Unexpected part count.'
-$seenParts = @{}
-$sha = [System.Security.Cryptography.SHA256]::Create()
-try {
-    foreach ($part in $layout.parts) {
-        Assert-Release ($expectedOffsets.ContainsKey($part.file) -and -not $seenParts.ContainsKey($part.file)) 'Unknown or duplicate flash part.'
-        $seenParts[$part.file] = $true
-        $offset = [int] $part.offsetDecimal
-        Assert-Release ($offset -eq $expectedOffsets[$part.file] -and $offset -eq [Convert]::ToInt32($part.offset, 16)) 'Incorrect part offset.'
-        $partPath = Join-Path $firmwareRoot $part.file
-        $length = [int] (Get-Item -LiteralPath $partPath).Length
-        Assert-Release ($offset + $length -le $factory.Length) 'Truncated factory image.'
-        $sliceHash = [BitConverter]::ToString($sha.ComputeHash($factory, $offset, $length)).Replace('-', '')
-        Assert-Release ($sliceHash -eq (Get-FileHash -Algorithm SHA256 -LiteralPath $partPath).Hash) "Factory part mismatch: $($part.file)"
-    }
-} finally { $sha.Dispose() }
 
 $checksums = @{}
 foreach ($line in (Get-Content -LiteralPath (Join-Path $firmwareRoot 'SHA256SUMS.txt'))) {
@@ -63,6 +42,7 @@ foreach ($line in (Get-Content -LiteralPath (Join-Path $firmwareRoot 'SHA256SUMS
     Assert-Release ($actualHash -eq $checksums[$name]) "Checksum mismatch: $name"
 }
 foreach ($binary in (Get-ChildItem -LiteralPath $firmwareRoot -Filter '*.bin' -File)) {
+    Assert-Release ($binary.Name.EndsWith('.factory.bin')) "Raw build output must not be published: $($binary.Name)"
     Assert-Release ($checksums.ContainsKey($binary.Name)) "Missing checksum: $($binary.Name)"
 }
 

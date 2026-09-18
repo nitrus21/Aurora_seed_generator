@@ -55,9 +55,9 @@ for profile in ("CYD", "P4"):
              "/I" + str(root / "include"), "/I" + str(lib)]
     for args in (
         [cl, *flags, "/TC", "/c", "/Gy", "/FI" + str(root / "tests/rng/stubs/compiler_compat.h"), str(source),
-         str(root / "tests/rng/unused_base58.c"), *[str(lib / (n + ".c")) for n in crypto_names]],
+         str(root / "tests/rng/base58_unreachable_stubs.c"), *[str(lib / (n + ".c")) for n in crypto_names]],
         [cl, *flags, "/std:c++17", "/EHsc", str(root / "tests/rng/test_rng.cpp"),
-         str(root / "src/hardware_rng.cpp"), "rand.obj", "unused_base58.obj", *[n + ".obj" for n in crypto_names],
+         str(root / "src/hardware_rng.cpp"), "rand.obj", "base58_unreachable_stubs.obj", *[n + ".obj" for n in crypto_names],
          "/Ferng.exe", "/link", "/OPT:REF"],
         [str(out / "rng.exe")]):
         result = subprocess.run(args, cwd=out, env=env, capture_output=True, text=True, timeout=120)

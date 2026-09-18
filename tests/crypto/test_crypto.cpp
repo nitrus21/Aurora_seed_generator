@@ -153,8 +153,10 @@ int main() {
     uint8_t zeroBlock[16]{},roundBlock[16]{};uint32_t q[8]{},zeroKey[8]{};
     loadBlock(q,zeroBlock);aesRound(q,zeroKey);storeBlock(roundBlock,q);
     for(uint8_t byte:roundBlock)assert(byte==0x63);
-    // Production-parameter vector (N=32768), generated independently with
-    // libscrypt plus the public-domain AEZ v5 reference implementation.
+    // Public synthetic test vectors, generated independently; they must never
+    // be imported into a wallet or used to hold funds. Production-parameter
+    // vector (N=32768), generated with libscrypt plus the public-domain AEZ v5
+    // reference implementation.
     constexpr const char *words =
         "above judge emerge veteran reform crunch system all snap please shoulder vault "
         "hurt city quarter cover enlist swear success suggest drink wagon enrich body";

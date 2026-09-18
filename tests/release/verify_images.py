@@ -65,7 +65,7 @@ def main():
     assert set(page.options) == set(CATALOG) and len(page.options) == len(CATALOG)
     assert set(page.installers) == set(CATALOG)
     assert {p.relative_to(WEB).as_posix() for p in WEB.rglob('*.json')} == {v[0] for v in CATALOG.values()} | {
-        'firmware/flash-layout.json', 'assets/vendor/esp-web-tools/integrity.json'}
+        'assets/vendor/esp-web-tools/integrity.json'}
     names = set()
     for release, (manifest, version, chip, boot, revisions) in CATALOG.items():
         assert page.installers[release] == manifest
