@@ -27,6 +27,8 @@ def main():
         'aurora-2.0.3-esp32-p4-rev3.factory.bin': '72B909397C61C5731DFDA801C6BB2F503941152811FB13E740AB83CB97CCA6B7',
         'aurora-2.0.5-esp32-p4-rev1.factory.bin': '6D6253867D4962AACDB012F0445444E386C519044543F41DAE20CA04517722CB',
         'aurora-2.0.5-esp32-p4-rev3.factory.bin': '2BC03AAC78FBF9583B6B4918C9A89D807A55D96B554909B21FE486C67CA77884',
+        'aurora-2.0.9-esp32-p4-rev1.factory.bin': 'F4F10C4D9D9204C949FCF544EFD1469F9225814C1C17B57B48AAC6E971C7B384',
+        'aurora-2.0.9-esp32-p4-rev3.factory.bin': '128CB229102C4FCD45416574C2DF08B954EE1DE4DF1311FA8D3A67AE1CA94F4D',
     }
     for name, checksum in expected.items():
         if digest(FIRMWARE / name) != checksum:
@@ -39,6 +41,7 @@ def main():
         ('1.9.9', 'CYD', ['aurora-1.9.9-esp32-2432s028r.factory.bin']),
         ('2.0.3', 'P4', [f'aurora-2.0.3-esp32-p4-rev{r}.factory.bin' for r in (1, 3)]),
         ('2.0.5', 'P4', [f'aurora-2.0.5-esp32-p4-rev{r}.factory.bin' for r in (1, 3)]),
+        ('2.0.9', 'P4', [f'aurora-2.0.9-esp32-p4-rev{r}.factory.bin' for r in (1, 3)]),
     ):
         checksums = ''.join(f'{digest(FIRMWARE / name)}  {name}\n' for name in images)
         notes = (WEB / f'releases/{version}.md').read_bytes()

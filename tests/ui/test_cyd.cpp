@@ -25,6 +25,11 @@ bool WalletEngine::create(uint8_t,AddressKind,const char *,const uint8_t *,Walle
 bool WalletEngine::restore(const char *,uint8_t,AddressKind,const char *,WalletOutput &) { return true; }
 bool WalletEngine::accountXprv(const WalletOutput &,const char *,char *out,size_t) { out[0]=0; return true; }
 bool WalletEngine::rootXprvFromSeed(const uint8_t *,size_t,char *,size_t) { return false; }
+bool WalletEngine::rootXpubFromXprv(const char *,char *,size_t) { return false; }
+bool WalletEngine::publicWalletFromRootXprv(const char *,AddressKind,WalletOutput &) { return false; }
+bool WalletEngine::publicWalletFromMnemonic(const char *,uint8_t,const char *,AddressKind,WalletOutput &) { return false; }
+bool WalletEngine::publicChildFromAccountXpub(const char *,AddressKind,uint8_t,
+                                              char *,size_t,char *,size_t) { return false; }
 AezeedResult AezeedEngine::decode(const char *,const char *,AezeedDecoded &) { return AezeedResult::MemoryFailed; }
 void AezeedEngine::wipe(AezeedDecoded &out) { secureZero(&out,sizeof(out)); }
 void WalletEngine::wipe(WalletOutput &wallet) { secureZero(&wallet,sizeof(wallet)); }

@@ -1,0 +1,11 @@
+{
+  "name": "AURORA — Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 — silicium 3.x",
+  "version": "2.0.9",
+  "new_install_prompt_erase": true,
+  "new_install_improv_wait_time": 0,
+  "builds": [{
+    "chipFamily": "ESP32-P4",
+    "improv": false,
+    "parts": [{ "path": "../firmware/aurora-2.0.9-esp32-p4-rev3.factory.bin", "offset": 0 }]
+  }]
+}

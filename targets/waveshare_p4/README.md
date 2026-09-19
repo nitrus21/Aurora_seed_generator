@@ -2,7 +2,7 @@
 
 ### Plus d’espace pour vos mots. Plus de possibilités, toujours hors ligne.
 
-**Version distribuée 2.0.5 · Écran capacitif 4,3″ · Portrait 480 × 800**
+**Version distribuée 2.0.9 · Écran capacitif 4,3″ · Portrait 480 × 800**
 
 ![AURORA](../../assets/splash_320x240.png)
 
@@ -12,7 +12,7 @@ et la sauvegarde de vos portefeuilles Bitcoin à portée de main.
 
 [Installer](https://nitrus21.github.io/Aurora_seed_generator/) ·
 [Parcours guidé](../../README.md#votre-premier-portefeuille-en-6-étapes) ·
-[Fonctions et nouveautés 2.0.5](../../webflasher/releases/2.0.5.md)
+[Fonctions et nouveautés 2.0.9](../../webflasher/releases/2.0.9.md)
 
 ## L’expérience P4
 
@@ -40,10 +40,10 @@ sont lisibles. Voir le [parcours d’utilisation](../../README.md#ouvrir-un-fich
 4. Sauvegardez sur microSD FAT32 au format `.aurora`, puis testez sa réouverture.
 5. Verrouillez l’appareil après utilisation et conservez vos sauvegardes à l’abri.
 
-L’image 2.0.5 pour silicium 1.x a été flashée sur un P4 révision 1.3, relue
-intégralement avec un SHA-256 identique au binaire publié, puis son démarrage
-à l’écran a été confirmé. L’image 3.x est compilée et contrôlée par logiciel ;
-**elle n’a pas été testée sur une carte 3.x**. Ces contrôles ne valent pas certification.
+Le profil 1.x a été validé sur un P4 révision 1.3 avec la 2.0.5. Les images
+2.0.9 ont été recompilées et contrôlées par logiciel mais doivent encore suivre
+une nouvelle recette sur matériel. L’image 3.x n’a pas été testée sur une carte
+3.x. Ces contrôles ne valent pas certification.
 
 ## Un seul noyau, deux firmwares
 
@@ -97,7 +97,7 @@ Le coprocesseur radio ESP32-C6 est maintenu en reset actif bas sur GPIO54 selon 
 
 ## Compatibilité microSD
 
-Sur **P4 2.0.5**, la création/restauration initiale fonctionne sans carte.
+Sur **P4 2.0.9**, la création/restauration initiale fonctionne sans carte.
 La microSD FAT32 doit être détectée et sa racine lisible à l'entrée de la
 sauvegarde/export, puis durant sa préparation et avant l'écriture. Sans carte,
 l'écran **microSD requise** bloque l'export, avec **RÉESSAYER** et **FERMER**.
@@ -111,7 +111,7 @@ en mémoire. Le mot de passe et la clé de déchiffrement sont effacés après u
 Les secrets calculés et les saisies sont temporaires et effacés en sortie.
 Uniquement en consultation authentifiée d'un fichier `.aurora`, les mots ont
 un décompte de 3 minutes partagé entre les pages ; une clé privée
-a 1 minute, hors déchiffrement. Le `xprv` Umbrel dispose de 3 minutes. En **2.0.5**, **RETOUR** efface les
+a 1 minute, hors déchiffrement. Le `xprv` Umbrel dispose de 3 minutes. En **2.0.9**, **RETOUR** efface les
 secrets et revient aux boutons du portefeuille public. Une nouvelle consultation
 redemande le mot de passe. **VERROUILLER** ou l’expiration de ces deux vues ferme
 toute la session. L’annulation de l’authentification d’export revient au choix du
@@ -123,11 +123,11 @@ Création et restauration manuelle : aucun décompte, inactivité limitée à 12
 
 | Firmware | Lecture | Nouvelle écriture |
 | --- | --- | --- |
-| Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 — 2.0.5 | V1 et V2, mot de passe | V1, 1 120 octets |
+| Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 — 2.0.9 | V1 et V2, mot de passe | V1, 1 120 octets |
 | ESP32-2432S028R — 1.9.9 | V1 et V2, mot de passe par consultation | V1 sans PIN, 1 120 octets |
 
 FAT32, mêmes noms et suffixes sur les deux appareils. L'en-tête de 46 octets,
-PBKDF2-HMAC-SHA-256 à 500 000 itérations à l'écriture dans 2.0.5, AES-256-GCM, le sel de
+PBKDF2-HMAC-SHA-256 à 500 000 itérations à l'écriture dans 2.0.9, AES-256-GCM, le sel de
 16 octets, le nonce de 12 octets et le tag de 16 octets restent inchangés.
 V2 ajoute uniquement 80 octets chiffrés pour le vérificateur PIN.
 Aucun fichier existant n'est converti automatiquement.
@@ -145,7 +145,7 @@ périphérique ; une mesure sur des tampons ciblés n’est pas une preuve de pu
 physique complète.
 
 Les fichiers BIP39 restent destinés à être ouverts sur les deux modèles avec le
-même mot de passe. Le sous-type Umbrel/LND est propre au P4 2.0.5 et sera refusé
+même mot de passe. Le sous-type Umbrel/LND est pris en charge par le P4 2.0.9 et sera refusé
 proprement par les anciennes versions. Même seed + même passphrase BIP39 + même
 dérivation = même portefeuille. La compatibilité cryptographique n'élimine pas
 les essais croisés sur les vrais lecteurs SD. Aucun formatage ni écrasement automatique.

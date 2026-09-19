@@ -45,7 +45,7 @@ sauvegarde chiffrée sur microSD. Pas de compte à ouvrir, pas de cloud à confi
 | Carte exacte | Expérience | Version à installer |
 | --- | --- | --- |
 | **ESP32-2432S028R — Cheap Yellow Display (CYD)** | Tactile résistif 2,8″, 320 × 240 ; interface compacte et clavier classique. | **1.9.9**, version finale ; **1.7.5** conservée. |
-| **Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3** | Tactile capacitif 4,3″, 480 × 800 portrait ; 12 mots par page, grands QR et clavier sombre. | **2.0.5**, image adaptée au silicium **1.x** ou **3.x**. |
+| **Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3** | Tactile capacitif 4,3″, 480 × 800 portrait ; 12 mots par page, grands QR et clavier sombre. | **2.0.9**, image adaptée au silicium **1.x** ou **3.x**. |
 
 La **1.9.9 clôt la branche ESP32-2432S028R**. Depuis la version 2.0.0, les nouvelles
 fonctionnalités se développent sur la **Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3**.
@@ -114,7 +114,7 @@ d’observer les adresses de son compte.
 Insérez une microSD FAT32 et choisissez **Aurora Wallet**. Nommez le fichier
 et choisissez un mot de passe long, unique et imprévisible. Le fichier `.aurora`
 est chiffré avec AES-256-GCM. Le CYD 1.9.9 utilise **120 000 itérations
-PBKDF2-HMAC-SHA-256** pour les nouvelles sauvegardes ; le P4 2.0.5 en utilise
+PBKDF2-HMAC-SHA-256** pour les nouvelles sauvegardes ; le P4 2.0.9 en utilise
 **500 000**. Choisissez toujours un mot de passe long, unique et imprévisible.
 
 Vérifiez l’ouverture de votre sauvegarde avant de compter sur elle. Conservez
@@ -164,7 +164,7 @@ Verrouiller ne supprime pas les fichiers microSD.
 puis produit une clé maître privée **BIP32 `xprv`** utilisable dans Sparrow.
 Le QR et le texte restent affichés au maximum **3 minutes**, avec décompte.
 
-La 2.0.5 peut enregistrer cette récupération dans un fichier `.aurora` protégé
+La 2.0.9 peut enregistrer cette récupération dans un fichier `.aurora` protégé
 par mot de passe. Le fichier conserve uniquement la racine BIP32 (`xpub` et
 `xprv`) et l’anniversaire LND : **les mots AEZEED et leur passphrase ne sont pas
 enregistrés**. Après ouverture, le `xpub` est public ; chaque affichage du `xprv`

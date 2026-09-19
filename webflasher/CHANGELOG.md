@@ -5,7 +5,8 @@
 | [1.7.5](releases/1.7.5.md) | ESP32-2432S028R — Cheap Yellow Display | Version historique conservée. |
 | [1.9.9](releases/1.9.9.md) | ESP32-2432S028R — Cheap Yellow Display | Version finale de cette carte. |
 | [2.0.3](releases/2.0.3.md) | Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 | Version P4, images silicium 1.x et 3.x. |
-| [2.0.5](releases/2.0.5.md) | Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 | Dernière version P4, sauvegarde Umbrel et export Sparrow. |
+| [2.0.5](releases/2.0.5.md) | Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 | Sauvegarde Umbrel et export Sparrow. |
+| [2.0.9](releases/2.0.9.md) | Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 | Dernière version P4, navigation publique multi-comptes et dérivations verrouillées. |
 
 ## ESP32-2432S028R : 1.7.5 → 1.9.9
 
@@ -22,6 +23,14 @@
 
 La branche ESP32-2432S028R est terminée en **1.9.9**. Les futures fonctionnalités
 sont développées pour la Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3.
+
+## Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 : 2.0.9
+
+- Toutes les fonctions de la 2.0.5.
+- Comptes publics BIP44/49/84/86 et vingt premières adresses après parcours BIP39.
+- Comptes publics BIP49/84/86 et vingt premières adresses après récupération Umbrel/LND.
+- Dérivation publique depuis les clés étendues de compte, sans clé privée.
+- Les fichiers ouverts restent limités au type de dérivation qu’ils contiennent.
 
 ## Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 : 2.0.5
 
