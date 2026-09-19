@@ -54,7 +54,8 @@ Le modèle Waveshare avec suffixe `-C` n’est pas la cible de ces images.
 
 [Guide ESP32-2432S028R](targets/cyd/README.md) ·
 [Guide Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3](targets/waveshare_p4/README.md) ·
-[Différences entre versions](webflasher/CHANGELOG.md)
+[Différences entre versions](webflasher/CHANGELOG.md) ·
+[Vérifier une release signée](RELEASE_SIGNATURES.md)
 
 ## Prêt à commencer
 

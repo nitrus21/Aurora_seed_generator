@@ -55,7 +55,9 @@ Get-FileHash -Algorithm SHA256 .\aurora-1.9.9-esp32-2432s028r.factory.bin
 ```
 
 Sous Linux : `sha256sum fichier.factory.bin`. Sous macOS :
-`shasum -a 256 fichier.factory.bin`. Un hash identique ne certifie pas le firmware.
+`shasum -a 256 fichier.factory.bin`. Pour les releases signées, vérifiez d'abord
+la signature du manifeste avec le [guide dédié](../RELEASE_SIGNATURES.md). Un hash
+identique sans signature ni référence de confiance ne certifie pas le firmware.
 
 ## Après l’installation
 
