@@ -1,4 +1,21 @@
 *.bin binary
+# Reproducible firmware inputs must have identical bytes on every host.
+*.c text eol=lf
+*.cc text eol=lf
+*.cpp text eol=lf
+*.h text eol=lf
+*.hpp text eol=lf
+*.cmake text eol=lf
+CMakeLists.txt text eol=lf
+*.ini text eol=lf
+*.defaults text eol=lf
+*.csv text eol=lf
+*.lock text eol=lf
+*.py text eol=lf
 # Byte-stable SRI/build references on Windows and Linux checkouts.
 webflasher/assets/vendor/** text eol=lf -whitespace
 tools/webflasher/package-lock.json text eol=lf
+# Private text evidence manifests must keep byte-identical hashes on every host.
+private/security/evidence/**/*.txt text eol=lf
+private/security/evidence/**/*.sha256 text eol=lf
+private/security/evidence/**/*.md text eol=lf

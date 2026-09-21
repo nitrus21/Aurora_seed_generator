@@ -3,6 +3,7 @@ from pathlib import Path
 import hashlib
 from html.parser import HTMLParser
 import json
+import re
 import struct
 import zipfile
 
@@ -18,6 +19,8 @@ CATALOG = {
     'p4-rev3-2.0.5': ('manifests/p4-rev3-2.0.5.json', '2.0.5', 18, 0x2000, (300, 399)),
     'p4-rev1-2.0.9': ('manifests/p4-rev1-2.0.9.json', '2.0.9', 18, 0x2000, (100, 199)),
     'p4-rev3-2.0.9': ('manifests/p4-rev3-2.0.9.json', '2.0.9', 18, 0x2000, (300, 399)),
+    'p4-rev1-2.0.11': ('manifests/p4-rev1-2.0.11.json', '2.0.11', 18, 0x2000, (100, 199)),
+    'p4-rev3-2.0.11': ('manifests/p4-rev3-2.0.11.json', '2.0.11', 18, 0x2000, (300, 399)),
 }
 
 
@@ -61,7 +64,9 @@ class Page(HTMLParser):
 def main():
     # Withdrawn releases must not remain downloadable through direct site URLs.
     for withdrawn in ('1.9.2', '1.9.3', '1.9.4', '1.9.5', '1.9.6', '1.9.7', '1.9.8', '2.0.0', '2.0.1', '2.0.2'):
-        assert not list(WEB.rglob(f'*{withdrawn}*')), f'Withdrawn release still present: {withdrawn}'
+        version = re.compile(rf'(?<!\d){re.escape(withdrawn)}(?!\d)')
+        assert not [path for path in WEB.rglob('*') if version.search(path.name)], \
+            f'Withdrawn release still present: {withdrawn}'
     page = Page()
     page.feed((WEB / 'index.html').read_text(encoding='utf-8'))
     assert set(page.options) == set(CATALOG) and len(page.options) == len(CATALOG)

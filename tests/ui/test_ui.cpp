@@ -285,6 +285,17 @@ static lv_obj_t *actionButton(AuroraUI &ui, Action action) {
   }
   return nullptr;
 }
+static const char *actionButtonText(AuroraUI &ui,Action action) {
+  lv_obj_t *button=actionButton(ui,action);assert(button && lv_obj_get_child_cnt(button));
+  lv_obj_t *text=lv_obj_get_child(button,0);assert(lv_obj_check_type(text,&lv_label_class));
+  return lv_label_get_text(text);
+}
+static bool hasLabelSubstring(lv_obj_t *root,const char *needle) {
+  if(lv_obj_check_type(root,&lv_label_class) && strstr(lv_label_get_text(root),needle)) return true;
+  for(uint32_t i=0;i<lv_obj_get_child_cnt(root);++i)
+    if(hasLabelSubstring(lv_obj_get_child(root,i),needle)) return true;
+  return false;
+}
 static void assertSessionWiped(const AuroraUI &ui) {
   const auto zero=[](const void *data,size_t size) {
     const auto *bytes=static_cast<const uint8_t *>(data);
@@ -498,15 +509,13 @@ static void testPasswordFileSessions(AuroraUI &ui) {
            sessionReadCalls==publicReads);
     assertPublicFileSession(ui);
     snapshot(ui,"bip39-public-derivation.ppm");
-    click(ui,TO_QR_FIRST_PUBLIC);
-    assert(ui.qrContent_==AuroraUI::QrContent::FirstPublicKey &&
-           !ui.umbrelScopeDropdown_ && ui.umbrelIndexDropdown_ &&
-           lv_dropdown_get_selected(ui.umbrelIndexDropdown_)==19);
+    assert(!actionButton(ui,TO_QR_FIRST_PUBLIC) && actionButton(ui,TO_QR_PUBLIC));
     click(ui,TO_QR_PUBLIC);
     assert(ui.qrContent_==AuroraUI::QrContent::AccountXpub &&
            !ui.umbrelScopeDropdown_ && !ui.umbrelIndexDropdown_ &&
            ui.wallet_.kind==storedKind &&
            !strcmp(ui.wallet_.accountXpub,storedAccountXpub));
+    assert(hasLabelSubstring(ui.root_,"Clé étendue Native SegWit"));
     lv_obj_update_layout(ui.root_);
     snapshot(ui,"bip39-account-xpub.ppm");
     click(ui,TO_INFO);
@@ -718,7 +727,7 @@ static void testSensitiveLifecycle(AuroraUI &ui) {
   unsigned workflows=0;
   for(unsigned i=0;i<=static_cast<unsigned>(Screen::SdRequired);++i) {
     const auto screen=static_cast<Screen>(i);
-    if(screen==Screen::Splash || screen==Screen::Mode || screen==Screen::Wipe ||
+    if(screen==Screen::Splash || screen==Screen::Mode || screen==Screen::About || screen==Screen::Wipe ||
         screen==Screen::SecurityError) continue;
     ui.closeSession(); ui.tick(); fixture(ui);
     lifecycleTick+=1000;
@@ -747,7 +756,7 @@ static void testSensitiveLifecycle(AuroraUI &ui) {
     ui.tick(); assert(!ui.sensorStopPending_);
     ++workflows;
   }
-  assert(workflows==static_cast<unsigned>(Screen::SdRequired)+1-4);
+  assert(workflows==static_cast<unsigned>(Screen::SdRequired)+1-5);
 
   // Returning to a setup or error page is not a new session and may not renew
   // the original deadline. Genuine LVGL user activity does renew inactivity.
@@ -925,23 +934,61 @@ int main() {
   assert(splashImages==1 && splashTitles==2 && splashVersions==1);
   snapshot(ui, "splash.ppm");
   ui.show(Screen::Mode); snapshot(ui,"mode-portrait.ppm");
-  unsigned modeButtons=0, modeLogos=0;
+  unsigned modeButtons=0, modeLogos=0, aboutButtons=0;
   for(uint32_t i=0;i<lv_obj_get_child_cnt(ui.root_);++i) {
     auto *child=lv_obj_get_child(ui.root_,i);
     if(lv_obj_check_type(child,&lv_button_class)) {
-      assert(lv_obj_get_width(child)==384 && lv_obj_get_height(child)==64);
-      assert(lv_obj_get_x(child)==48 && lv_obj_get_y(child)==316+88*modeButtons);
-      ++modeButtons;
+      const auto action=reinterpret_cast<uintptr_t>(lv_obj_get_user_data(child));
+      if(action==SHOW_ABOUT) {
+        assert(lv_obj_get_x(child)==412 && lv_obj_get_y(child)==18);
+        assert(lv_obj_get_width(child)==52 && lv_obj_get_height(child)==52);
+        ++aboutButtons;
+      } else {
+        assert(lv_obj_get_width(child)==384 && lv_obj_get_height(child)==64);
+        assert(lv_obj_get_x(child)==48 && lv_obj_get_y(child)==316+88*modeButtons);
+        ++modeButtons;
+      }
     } else if(lv_obj_check_type(child,&lv_image_class)) {
       assert(lv_obj_get_x(child)==184 && lv_obj_get_y(child)==136);
       assert(lv_obj_get_width(child)==112 && lv_obj_get_height(child)==160);
       ++modeLogos;
     }
   }
-  assert(modeButtons==4 && modeLogos==1);
+  assert(modeButtons==4 && modeLogos==1 && aboutButtons==1);
   // A fifth 64-pixel row would still end at y=732, leaving a bottom margin.
   assert(316+4*88+64<=732);
   assertHeaderSeparation(ui);
+  click(ui,SHOW_ABOUT); assert(ui.screen_==Screen::About && !ui.sensitiveStateActive_);
+  lv_obj_update_layout(ui.root_);
+  const char expectedSha[]=
+      "000102030405060708090A0B0C0D0E0F1011\n"
+      "12131415161718191A1B1C1D1E1F";
+  bool aboutDescription=false,aboutProtection=false,aboutVersion=false,aboutTarget=false,aboutSha=false;
+  bool obsoleteWarning=false;
+  for(uint32_t i=0;i<lv_obj_get_child_cnt(ui.root_);++i) {
+    auto *child=lv_obj_get_child(ui.root_,i);
+    if(lv_obj_check_type(child,&lv_label_class)) {
+      const char *text=lv_label_get_text(child);
+      aboutDescription|=strstr(text,"vos portefeuilles sans réseau.")!=nullptr;
+      aboutProtection|=strstr(text,"Secrets effacés à la fermeture")!=nullptr &&
+                       strstr(text,"et au démarrage")!=nullptr;
+      aboutVersion|=strstr(text,"Version installée : AURORA v" AURORA_P4_FIRMWARE_VERSION)!=nullptr;
+      aboutTarget|=strstr(text,"Cible : ESP32-P4 rev1.x")!=nullptr;
+      aboutSha|=!strcmp(text,expectedSha);
+      obsoleteWarning|=strstr(text,"Un firmware malveillant peut")!=nullptr ||
+                       strstr(text,"aucune attestation")!=nullptr;
+    }
+  }
+  assert(aboutDescription);
+  assert(aboutProtection);
+  assert(aboutVersion);
+  assert(aboutTarget);
+  assert(aboutSha);
+  assert(!obsoleteWarning);
+  auto *aboutBack=actionButton(ui,BACK_MODE);
+  assert(aboutBack && lv_obj_get_x(aboutBack)==48 && lv_obj_get_y(aboutBack)==720);
+  assertDisplayReplaced(ui);
+  snapshot(ui,"about.ppm"); click(ui,BACK_MODE); assert(ui.screen_==Screen::Mode);
   fixture(ui); ui.mnemonicPage_=0; ui.show(Screen::Mnemonic);
   lv_obj_update_layout(ui.root_);
   assert(!actionButton(ui,MNEMONIC_PREVIOUS));
@@ -1085,6 +1132,9 @@ int main() {
   assert(!strcmp(ui.wallet_.path,"m/84'/0'/0'/0/0"));
   assert(actionButton(ui,UMBREL_SCOPE_49) && actionButton(ui,UMBREL_SCOPE_84) &&
          actionButton(ui,UMBREL_SCOPE_86));
+  assert(!strcmp(actionButtonText(ui,UMBREL_SCOPE_49),"Nested SegWit"));
+  assert(!strcmp(actionButtonText(ui,UMBREL_SCOPE_84),"Native SegWit"));
+  assert(!strcmp(actionButtonText(ui,UMBREL_SCOPE_86),"Taproot"));
   click(ui,UMBREL_SCOPE_49);
   assert(ui.wallet_.kind==AddressKind::NestedSegwit &&
          !strcmp(ui.wallet_.address,"3-public-umbrel-bip49-address-fixture"));
@@ -1094,7 +1144,8 @@ int main() {
   click(ui,UMBREL_SCOPE_84);
   assert(ui.wallet_.kind==AddressKind::NativeSegwit);
   assert(actionButton(ui,TO_QR_ADDRESS));
-  snapshot(ui,"umbrel-result.png");
+  snapshot(ui,"umbrel-result.ppm");
+  assert(!hasLabelSubstring(ui.root_,"Clé publique dérivée"));
   click(ui,TO_QR_ADDRESS); assert(ui.screen_==Screen::Qr && ui.qrContent_==AuroraUI::QrContent::Address);
   assert(ui.umbrelScopeDropdown_ && ui.umbrelIndexDropdown_);
   assert(lv_dropdown_get_selected(ui.umbrelScopeDropdown_)==1);
@@ -1117,25 +1168,12 @@ int main() {
   assert(ui.wallet_.kind==AddressKind::NativeSegwit && ui.umbrelAddressIndex_==0 &&
          !strcmp(ui.wallet_.path,"m/84'/0'/0'/0/0") &&
          !strcmp(ui.wallet_.address,"bc1q-public-umbrel-first-address-fixture"));
-  snapshot(ui,"umbrel-address.png");
-  click(ui,TO_QR_FIRST_PUBLIC); assert(ui.qrContent_==AuroraUI::QrContent::FirstPublicKey);
-  lv_obj_update_layout(ui.root_);
-  {
-    bool titleFound=false,brandFound=false;
-    for(uint32_t i=0;i<lv_obj_get_child_cnt(ui.root_);++i) {
-      auto *child=lv_obj_get_child(ui.root_,i);
-      if(!lv_obj_check_type(child,&lv_label_class)) continue;
-      const char *text=lv_label_get_text(child);
-      if(!strcmp(text,"Clé publique BIP84")) {
-        assert(lv_obj_get_x(child)==157 && lv_obj_get_y(child)==30);titleFound=true;
-      } else if(!strcmp(text,"AURORA")) brandFound=true;
-    }
-    assert(titleFound && brandFound);
-  }
-  snapshot(ui,"umbrel-public-key.png");
+  snapshot(ui,"umbrel-address.ppm");
+  assert(!actionButton(ui,TO_QR_FIRST_PUBLIC) && actionButton(ui,TO_QR_PUBLIC));
   click(ui,TO_QR_PUBLIC); assert(ui.qrContent_==AuroraUI::QrContent::AccountXpub);
-  assert(ui.umbrelScopeDropdown_ && !ui.umbrelIndexDropdown_);
-  snapshot(ui,"umbrel-account-xpub.png");
+  assert(!ui.umbrelScopeDropdown_ && !ui.umbrelIndexDropdown_);
+  assert(hasLabelSubstring(ui.root_,"Clé étendue Native SegWit"));
+  snapshot(ui,"umbrel-account-xpub.ppm");
   click(ui,UMBREL_RESULT_BACK); assert(ui.screen_==Screen::UmbrelResult);
   click(ui,UMBREL_SHOW_XPRV); assert(ui.screen_==Screen::UmbrelQr);
   strlcpy(ui.umbrelRootXprv_,
@@ -1184,12 +1222,16 @@ int main() {
   assert(!strcmp(ui.wallet_.accountXpub,"zpub-public-umbrel-account-fixture"));
   assert(actionButton(ui,UMBREL_SCOPE_49) && actionButton(ui,UMBREL_SCOPE_84) &&
          actionButton(ui,UMBREL_SCOPE_86));
+  assert(!strcmp(actionButtonText(ui,UMBREL_SCOPE_49),"Nested SegWit"));
+  assert(!strcmp(actionButtonText(ui,UMBREL_SCOPE_84),"Native SegWit"));
+  assert(!strcmp(actionButtonText(ui,UMBREL_SCOPE_86),"Taproot"));
   click(ui,UMBREL_SCOPE_49);
   assert(ui.wallet_.kind==AddressKind::NestedSegwit && !ui.privateLoaded_);
   click(ui,UMBREL_SCOPE_86);
   assert(ui.wallet_.kind==AddressKind::Taproot && !ui.privateLoaded_);
   click(ui,UMBREL_SCOPE_84);
-  snapshot(ui,"umbrel-file-info.png");
+  snapshot(ui,"umbrel-file-info.ppm");
+  assert(!hasLabelSubstring(ui.root_,"Clé publique dérivée"));
   assertPublicFileSession(ui); assert(!ui.umbrelRootXprv_[0]);
   assert(lv_obj_has_state(actionButton(ui,SHOW_WORDS),LV_STATE_DISABLED));
   assert(lv_obj_has_state(actionButton(ui,SHOW_LOADED_PASSPHRASE),LV_STATE_DISABLED));
@@ -1203,9 +1245,9 @@ int main() {
          !strcmp(ui.wallet_.path,"m/86'/0'/0'/0/19"));
   assert(sessionReadCalls==publicSelectionReads);
   assertPublicFileSession(ui);assert(!ui.umbrelRootXprv_[0]);
-  click(ui,TO_QR_FIRST_PUBLIC); assert(ui.qrContent_==AuroraUI::QrContent::FirstPublicKey && !ui.privateLoaded_);
   click(ui,TO_QR_PUBLIC); assert(ui.qrContent_==AuroraUI::QrContent::AccountXpub && !ui.privateLoaded_);
-  assert(ui.umbrelScopeDropdown_ && !ui.umbrelIndexDropdown_);
+  assert(!ui.umbrelScopeDropdown_ && !ui.umbrelIndexDropdown_);
+  assert(hasLabelSubstring(ui.root_,"Clé étendue Taproot"));
   click(ui,TO_INFO); click(ui,UMBREL_SHOW_XPRV);
   assert(ui.screen_==Screen::PrivatePassword); enterPrivatePassword(ui);
   assert(ui.screen_==Screen::UmbrelQr && ui.privateLoaded_ && ui.umbrelRootXprv_[0]);

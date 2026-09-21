@@ -37,11 +37,14 @@ result = subprocess.run(base + ["/DAURORA_DEBUG=2", "/Felogging-invalid.exe"],
 assert result.returncode != 0 and "AURORA_DEBUG must be" in result.stdout + result.stderr
 print("PASS: invalid diagnostic flag rejected")
 
-# Application-owned sources only: SDK/ROM/precompiled framework logs are a
-# separate surface, NOT claimed silent by this check. Do not match snprintf.
+# Application-owned sources only. The isolated benchmark is reviewed separately:
+# it is never a production profile and prints public timing vectors by design.
+benchmark = root / "targets/waveshare_p4/main/p4_kdf_benchmark.h"
 for folder in (root / "src", root / "targets/waveshare_p4/main"):
     for source in folder.rglob("*"):
         if source.suffix not in (".c", ".cpp", ".h"):
+            continue
+        if source == benchmark:
             continue
         code = source.read_text(encoding="utf-8")
         code = re.sub(r"//[^\n]*|/\*.*?\*/", "", code, flags=re.S)
@@ -53,3 +56,13 @@ assert "selfTestResult_ = engine_.selfTest();" in ui and "!auroraWalletCryptoSel
 cyd = (root / "src/main.cpp").read_text(encoding="utf-8")
 assert "#if AURORA_DEBUG\n  Serial.begin(115200);\n#endif" in cyd
 print("PASS: owned sources use diagnostic gate; CYD serial init gated; self-tests preserved")
+
+defaults = (root / "targets/waveshare_p4/sdkconfig.defaults").read_text(encoding="utf-8")
+required_silence = {
+    "CONFIG_BOOTLOADER_LOG_LEVEL_NONE=y",
+    "CONFIG_LOG_DEFAULT_LEVEL_NONE=y",
+    "CONFIG_LOG_MAXIMUM_EQUALS_DEFAULT=y",
+}
+assert required_silence.issubset(set(defaults.splitlines()))
+assert "CONFIG_ESP_SYSTEM_PANIC_SILENT_REBOOT=y" in defaults
+print("PASS: P4 production defaults compile out bootloader/ESP-IDF logs and keep silent panics")

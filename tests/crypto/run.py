@@ -11,7 +11,7 @@ parser.add_argument('--cyd', action='store_true', help='CYD policy/backend on ho
 args = parser.parse_args()
 
 root = Path(__file__).resolve().parents[2]
-output = root / ("tmp/crypto-native-cyd" if args.cyd else "tmp/crypto-native")
+output = root / ("tmp/crypto-native-cyd" if args.cyd else "tmp/crypto-native-p4")
 output.mkdir(parents=True, exist_ok=True)
 env = {k.upper(): v for k, v in os.environ.items()}
 vswhere = Path(env["PROGRAMFILES(X86)"]) / "Microsoft Visual Studio/Installer/vswhere.exe"
@@ -28,7 +28,17 @@ subprocess.run([sys.executable, str(root / "tools/prepare_p4_crypto_overlay.py")
     "--components", str(mbed.parents[1]), "--output", str(crypto_overlay)], check=True)
 includes = [root / "tests/crypto", root / "tests/crypto/stubs", root / "tests/ui/stubs",
             root / "tests/native/stubs", root / "include", mbed / "include", mbed / "library"]
-ubitcoin = root / ".pio/libdeps/esp32-2432S028R/uBitcoin/src"
+ubitcoin_override = os.environ.get("AURORA_TEST_UBITCOIN_LIB")
+if ubitcoin_override:
+    ubitcoin = Path(ubitcoin_override).expanduser().resolve()
+else:
+    p4_candidates = (
+        root / "targets/waveshare_p4/.pio/build/waveshare-p4/_deps/ubitcoin-src/src",
+        root / "targets/waveshare_p4/.pio/build/waveshare-p4-rev1/_deps/ubitcoin-src/src",
+    )
+    ubitcoin = next((path for path in p4_candidates if (path / "HDWallet.cpp").is_file()), None)
+    if ubitcoin is None:
+        raise SystemExit("Configurez d'abord un profil P4 pour rendre uBitcoin disponible aux tests hote.")
 subprocess.run([sys.executable, str(root / "tools/patch_ubitcoin_p4.py"),
     "--lib-root", str(ubitcoin)], check=True)
 includes.append(ubitcoin)

@@ -8,7 +8,7 @@
 | Carte exacte | Versions proposées |
 | --- | --- |
 | **ESP32-2432S028R — Cheap Yellow Display (CYD)** | **1.9.9**, version finale ; **1.7.5**, version historique conservée. |
-| **Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3** | **2.0.9** (dernière), **2.0.5** et **2.0.3**, images distinctes pour silicium **1.x** et **3.x**. |
+| **Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3** | **2.0.11** (dernière), **2.0.9**, **2.0.5** et **2.0.3**, images distinctes pour silicium **1.x** et **3.x**. |
 
 La branche ESP32-2432S028R est terminée en 1.9.9.
 Depuis la v2.0.0, les nouvelles fonctionnalités se développent sur la
@@ -41,9 +41,8 @@ L’image complète CYD inclut la table de partitions requise.
 Les en-têtes P4 limitent chaque image à la famille silicium prévue :
 **ne remplacez pas rev1 par rev3, ou inversement**. Le modèle Waveshare `-C`
 n’est pas la cible. L’image 3.x est contrôlée par logiciel mais n’a pas été
-testée sur carte 3.x. Le profil P4 silicium 1.x a été validé sur une carte
-révision 1.3 avec la 2.0.5 ; les binaires 2.0.9 restent à soumettre à une nouvelle
-recette matérielle.
+testée sur carte 3.x. Le profil P4 silicium 1.x 2.0.11 a été validé sur une
+carte révision 1.3.
 
 ## Vérifier le téléchargement
 
@@ -75,7 +74,7 @@ Choisissez la 1.9.9 pour la version finale de l’ESP32-2432S028R.
 - `tools/prepare_releases.py` : paquets locaux à liste de fichiers autorisés ; aucun secret ni rapport.
 - Le [workflow Pages](../.github/workflows/deploy-webflasher-pages.yml) publie uniquement
   `webflasher/`, après validation, lors d’un push sur `main`.
-- Releases : `v1.7.5`, `v1.9.9`, `v2.0.3`, `v2.0.5`, `v2.0.9`.
+- Releases : `v1.7.5`, `v1.9.9`, `v2.0.3`, `v2.0.5`, `v2.0.9`, `v2.0.11`.
 - ESP Web Tools `10.4.0` est intégré localement en un bundle, dialogues et modules
   de flash inclus. Aucun CDN n'est autorisé par la politique de scripts du site.
   Le navigateur vérifie aussi son empreinte SRI SHA-384. Licences conservées dans

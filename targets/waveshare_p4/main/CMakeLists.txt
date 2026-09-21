@@ -30,6 +30,7 @@ file(GLOB_RECURSE BITCOIN_SOURCES "${ubitcoin_SOURCE_DIR}/src/*.cpp" "${ubitcoin
 file(GLOB AURORA_ASSETS "${AURORA_ROOT}/src/assets/*.c")
 file(GLOB PORTRAIT_ASSETS "${CMAKE_CURRENT_LIST_DIR}/assets/*.c")
 idf_component_register(SRCS "main.cpp" "sensors.cpp" "storage.cpp" "ui_portrait.cpp" "security_memory.c" "kdf_sha256.c"
+    "p4_stack_health.cpp"
     "${AURORA_ROOT}/src/wallet.cpp" "${AURORA_ROOT}/src/sd_export.cpp"
     "${AURORA_ROOT}/src/hardware_rng.cpp"
     "${AURORA_ROOT}/src/wallet_kdf.cpp"
@@ -37,7 +38,8 @@ idf_component_register(SRCS "main.cpp" "sensors.cpp" "storage.cpp" "ui_portrait.
     "${AURORA_ROOT}/src/secure_lvgl_memory.c"
     "${AURORA_ROOT}/src/ui.cpp" ${AURORA_ASSETS} ${PORTRAIT_ASSETS} ${BITCOIN_SOURCES}
     INCLUDE_DIRS "." "${AURORA_ROOT}/include" "${ubitcoin_SOURCE_DIR}/src"
-    REQUIRES mbedtls esp_timer bootloader_support fatfs esp_driver_gpio esp_mm esp_security)
+    REQUIRES mbedtls esp_timer bootloader_support fatfs esp_driver_gpio esp_mm esp_security
+             app_update esp_partition)
 target_compile_definitions(${COMPONENT_LIB} PUBLIC AURORA_BOARD_P4=1 USE_STDONLY=1)
 # Scoped optimization for the pinned software SHA/PBKDF2; explicit volatile
 # cleanup remains mandatory and is tested in optimized builds.

@@ -6,6 +6,13 @@
 #include "splash_img.h"
 #include "version.h"
 #include "aurora_log.h"
+#if defined(AURORA_BOARD_P4) && !defined(AURORA_NATIVE_TEST)
+#include "esp_ota_ops.h"
+#include "esp_partition.h"
+#endif
+#if defined(AURORA_P4_STACK_HEALTH)
+#include "p4_stack_health.h"
+#endif
 #include "platform/ui_layout.h"
 #if defined(AURORA_BOARD_P4)
 #include "sensors.h"
@@ -58,11 +65,15 @@ unsigned umbrelPurpose(AddressKind kind) {
 }
 
 const char *umbrelAddressName(AddressKind kind) {
-  return kind==AddressKind::NestedSegwit?"Nested SegWit":
-         (kind==AddressKind::Taproot?"Taproot":"Native SegWit");
+  return kind==AddressKind::Legacy?"Legacy":
+         (kind==AddressKind::NestedSegwit?"Nested SegWit":
+         (kind==AddressKind::Taproot?"Taproot":"Native SegWit"));
 }
 
 enum Action : uint8_t { START, OPEN_WALLET, NEW_WALLET, RESTORE_WALLET, RECOVER_UMBREL,
+#if defined(AURORA_BOARD_P4)
+                        SHOW_ABOUT,
+#endif
                         TO_IMPORT_PASSWORD,
                         REFRESH_AURORA_FILES, UNLOCK_WALLET,
                         TO_PASSPHRASE, TO_ENTROPY, GENERATE,
@@ -140,6 +151,45 @@ lv_obj_t *createKeyboard(lv_obj_t *parent) {
 #endif
   return keyboard;
 }
+
+#if defined(AURORA_BOARD_P4)
+const char *p4FirmwareTarget() {
+#if defined(AURORA_NATIVE_TEST) || defined(CONFIG_ESP32P4_REV_MIN_100)
+  return "ESP32-P4 rev1.x";
+#elif defined(CONFIG_ESP32P4_REV_MIN_300)
+  return "ESP32-P4 rev3.x";
+#else
+#error "The P4 firmware identity requires an explicit silicon revision profile"
+#endif
+}
+
+bool p4ApplicationSha256(char out[66]) {
+  if (!out) return false;
+  uint8_t digest[32]{};
+#if defined(AURORA_NATIVE_TEST)
+  for (uint8_t i = 0; i < sizeof(digest); ++i) digest[i] = i;
+  const bool ok = true;
+#else
+  const esp_partition_t *running = esp_ota_get_running_partition();
+  const bool ok = running && esp_partition_get_sha256(running, digest) == ESP_OK;
+#endif
+  if (!ok) {
+    strlcpy(out, "INDISPONIBLE", 66);
+    secureZero(digest, sizeof(digest));
+    return false;
+  }
+  static constexpr char HEX[] = "0123456789ABCDEF";
+  size_t position = 0;
+  for (size_t i = 0; i < sizeof(digest); ++i) {
+    if (i == 18) out[position++] = '\n';
+    out[position++] = HEX[digest[i] >> 4];
+    out[position++] = HEX[digest[i] & 0x0F];
+  }
+  out[position] = 0;
+  secureZero(digest, sizeof(digest));
+  return true;
+}
+#endif
 
 
 void wipeObjectTree(lv_obj_t *object) {
@@ -450,7 +500,11 @@ lv_obj_t *AuroraUI::header(const char *title, const char *step, bool showBrand) 
 
 void AuroraUI::show(Screen s) {
   // Navigation at the deadline must not revive an expired view before tick().
-  if(s!=Screen::Splash && s!=Screen::Mode && s!=Screen::Wipe && s!=Screen::SecurityError &&
+  if(s!=Screen::Splash && s!=Screen::Mode && s!=Screen::Wipe && s!=Screen::SecurityError
+#if defined(AURORA_BOARD_P4)
+      && s!=Screen::About
+#endif
+      &&
       visibleSecret_!=Access::None &&
       millis()-visibleSecretStartedMs_>=accessDurationMs(visibleSecret_)) s=Screen::Mode;
   // A blocking crypto/SD call may consume the idle deadline while tick() is
@@ -459,7 +513,11 @@ void AuroraUI::show(Screen s) {
   if (s != Screen::SecurityError && visibleSecret_==Access::None && sensitiveStateActive_ &&
       lv_disp_get_inactive_time(nullptr) >= SESSION_IDLE_MS) s = Screen::Mode;
   const bool clearedScreen = s == Screen::Splash || s == Screen::Mode ||
-      s == Screen::Wipe || s == Screen::SecurityError;
+      s == Screen::Wipe || s == Screen::SecurityError
+#if defined(AURORA_BOARD_P4)
+      || s == Screen::About
+#endif
+      ;
   if (clearedScreen) {
     wipeSession();
 #if defined(AURORA_BOARD_P4)
@@ -529,6 +587,9 @@ void AuroraUI::show(Screen s) {
   screen_ = s; clear();
   switch (s) {
     case Screen::Splash: buildSplash(); break; case Screen::Mode: buildMode(); break;
+#if defined(AURORA_BOARD_P4)
+    case Screen::About: buildAbout(); break;
+#endif
     case Screen::ImportName: buildImportName(); break;
     case Screen::ImportPassword: buildImportPassword(); break;
     case Screen::RestoreSetup: buildRestoreSetup(); break;
@@ -686,6 +747,13 @@ void AuroraUI::buildSplash() {
 void AuroraUI::buildMode() {
   header("Choisissez une action");
 #if defined(AURORA_BOARD_P4)
+  lv_obj_t *about=lv_btn_create(root_); lv_obj_set_pos(about,412,18); lv_obj_set_size(about,52,52);
+  lv_obj_set_style_radius(about,LV_RADIUS_CIRCLE,0); lv_obj_set_style_bg_opa(about,LV_OPA_TRANSP,0);
+  lv_obj_set_style_border_color(about,ORANGE,0); lv_obj_set_style_border_width(about,2,0);
+  lv_obj_set_style_shadow_width(about,0,0); lv_obj_set_user_data(about,(void*)SHOW_ABOUT);
+  lv_obj_add_event_cb(about,event,LV_EVENT_CLICKED,nullptr);
+  lv_obj_t *aboutIcon=label(about,"i",&aurora_font_30);
+  lv_obj_set_style_text_color(aboutIcon,lv_color_white(),0); lv_obj_center(aboutIcon);
   lv_obj_t *logo=lv_img_create(root_); lv_img_set_src(logo,&aurora_bitcoin_logo);
   // Keep the artwork entirely below the header divider (y=113..115 on P4).
   lv_obj_align(logo,LV_ALIGN_TOP_MID,0,136);
@@ -712,6 +780,102 @@ void AuroraUI::buildMode() {
   AuroraLayout::pos(logo,200,43);
 #endif
 }
+
+#if defined(AURORA_BOARD_P4)
+void AuroraUI::buildAbout() {
+  lv_obj_clear_flag(root_,LV_OBJ_FLAG_SCROLLABLE);
+#if defined(AURORA_P4_STACK_HEALTH)
+  auroraStackHealthSample();
+  const AuroraStackHealthSnapshot stack=auroraStackHealthSnapshot();
+  header("Diagnostic marge de pile");
+
+  lv_obj_t *temporary=label(root_,"IMAGE TEMPORAIRE — REV1 UNIQUEMENT",&aurora_font_20);
+  lv_obj_set_style_text_color(temporary,ORANGE,0); lv_obj_set_pos(temporary,15,142);
+
+  lv_obj_t *purpose=explanation(root_,
+      "Mesure du minimum de pile libre depuis le démarrage.\n"
+      "Utilisez les parcours publics de test, puis revenez ici.",&aurora_font_14);
+  lv_obj_set_pos(purpose,15,184); lv_obj_set_size(purpose,450,70);
+
+  char values[256]{};
+  snprintf(values,sizeof(values),
+      "Tâche principale : %lu / %lu octets libres\n"
+      "Tâche LVGL : %s%lu / %lu octets libres\n"
+      "Échantillons : %lu",
+      static_cast<unsigned long>(stack.mainFreeBytes),
+      static_cast<unsigned long>(stack.mainStackBytes),
+      stack.lvglTaskFound?"":"introuvable — ",
+      static_cast<unsigned long>(stack.lvglFreeBytes),
+      static_cast<unsigned long>(stack.lvglStackBytes),
+      static_cast<unsigned long>(stack.sampleCount));
+  lv_obj_t *metrics=explanation(root_,values,&aurora_font_16);
+  lv_obj_set_pos(metrics,15,286); lv_obj_set_size(metrics,450,118);
+
+  lv_obj_t *verdict=label(root_,stack.pass?"RÉSULTAT PROVISOIRE : PASS":"RÉSULTAT PROVISOIRE : ÉCHEC",
+                          &aurora_font_24);
+  lv_obj_set_style_text_color(verdict,stack.pass?SUCCESS:DANGER,0);
+  lv_obj_set_pos(verdict,15,438); lv_obj_set_size(verdict,450,40);
+
+  char threshold[160]{};
+  snprintf(threshold,sizeof(threshold),
+      "Seuil d'ingénierie : au moins 25 %% libres\n"
+      "Principal ≥ %lu octets — LVGL ≥ %lu octets",
+      static_cast<unsigned long>(stack.mainThresholdBytes),
+      static_cast<unsigned long>(stack.lvglThresholdBytes));
+  lv_obj_t *thresholdLabel=explanation(root_,threshold,&aurora_font_14);
+  lv_obj_set_pos(thresholdLabel,15,500); lv_obj_set_size(thresholdLabel,450,72);
+
+  lv_obj_t *privacy=explanation(root_,
+      "Aucun secret, journal ou fichier n'est créé.\n"
+      "Valeurs affichées uniquement; ce test n'est pas une certification.",
+      &aurora_font_14);
+  lv_obj_set_style_text_color(privacy,MUTED,0); lv_obj_set_pos(privacy,15,610);
+  lv_obj_set_size(privacy,450,64);
+
+  lv_obj_t *back=button(root_,"RETOUR",event,256); lv_obj_set_user_data(back,(void*)BACK_MODE);
+  lv_obj_set_pos(back,48,720); lv_obj_set_size(back,384,64);
+#else
+  header("À propos d'AURORA");
+  lv_obj_t *name=label(root_,"AURORA",&aurora_font_24);
+  lv_obj_set_style_text_color(name,ORANGE,0); lv_obj_set_pos(name,15,142);
+
+  lv_obj_t *description=explanation(root_,
+      "Portefeuille Bitcoin hors ligne.\n"
+      "Créer, restaurer, consulter et exporter\n"
+      "vos portefeuilles sans réseau.",&aurora_font_14);
+  lv_obj_set_pos(description,15,184); lv_obj_set_size(description,450,88);
+
+  lv_obj_t *protection=label(root_,"PROTECTION",&aurora_font_24);
+  lv_obj_set_style_text_color(protection,ORANGE,0); lv_obj_set_pos(protection,15,282);
+  lv_obj_t *protectionText=explanation(root_,
+      "• Aucune connexion réseau utilisée\n"
+      "• Fichiers .aurora chiffrés par mot de passe\n"
+      "• Secrets effacés à la fermeture\n"
+      "  et au démarrage",&aurora_font_14);
+  lv_obj_set_pos(protectionText,15,322); lv_obj_set_size(protectionText,450,108);
+
+  lv_obj_t *identity=label(root_,"IDENTITÉ DU FIRMWARE",&aurora_font_24);
+  lv_obj_set_style_text_color(identity,ORANGE,0); lv_obj_set_pos(identity,15,448);
+  char version[96]{};
+  snprintf(version,sizeof(version),"Version installée : AURORA v%s\nCible : %s",
+           AURORA_FIRMWARE_VERSION,p4FirmwareTarget());
+  lv_obj_t *versionLabel=explanation(root_,version,&aurora_font_16);
+  lv_obj_set_pos(versionLabel,15,490); lv_obj_set_size(versionLabel,450,58);
+
+  lv_obj_t *shaTitle=explanation(root_,"SHA-256 application installée :",&aurora_font_16);
+  lv_obj_set_pos(shaTitle,15,558); lv_obj_set_size(shaTitle,450,28);
+  char sha256[66]{};
+  const bool hashReady=p4ApplicationSha256(sha256);
+  lv_obj_t *sha=label(root_,sha256,&aurora_font_14);
+  lv_obj_set_style_text_color(sha,hashReady?lv_color_white():DANGER,0);
+  lv_obj_set_pos(sha,15,598); lv_obj_set_size(sha,450,54);
+  secureZero(sha256,sizeof(sha256));
+
+  lv_obj_t *back=button(root_,"RETOUR",event,256); lv_obj_set_user_data(back,(void*)BACK_MODE);
+  lv_obj_set_pos(back,48,720); lv_obj_set_size(back,384,64);
+#endif
+}
+#endif
 
 void AuroraUI::buildImportName() {
   header("Ouvrir Aurora Wallet");
@@ -1171,7 +1335,7 @@ void AuroraUI::selectBip39Scope(uint8_t index) {
 
 void AuroraUI::buildUmbrelScopeSelector() {
 #if defined(AURORA_BOARD_P4)
-  static constexpr const char *NAMES[3]={"BIP49","BIP84","BIP86"};
+  static constexpr const char *NAMES[3]={"Nested SegWit","Native SegWit","Taproot"};
   static constexpr Action ACTIONS[3]={UMBREL_SCOPE_49,UMBREL_SCOPE_84,UMBREL_SCOPE_86};
   for(uint8_t i=0;i<3;++i) {
     lv_obj_t *choice=button(root_,NAMES[i],event,96);
@@ -1234,12 +1398,11 @@ void AuroraUI::buildUmbrelResult() {
   lv_obj_clear_flag(panel,LV_OBJ_FLAG_SCROLLABLE);
   char text[800];snprintf(text,sizeof(text),
       "Adresse de réception n°%u — BIP%u %s\n%s\n\nChemin\n%s\n\n"
-      "Clé publique dérivée\n%s\n\n"
       "Clé publique étendue du compte\n%s\n\n"
       "Anniversaire LND : jour %u depuis Genesis",
       static_cast<unsigned>(umbrelAddressIndex_),umbrelPurpose(wallet_.kind),
       umbrelAddressName(wallet_.kind),
-      wallet_.address,wallet_.path,wallet_.publicKey,wallet_.accountXpub,
+      wallet_.address,wallet_.path,wallet_.accountXpub,
       static_cast<unsigned>(umbrelBirthdayDays_));
   lv_obj_t *info=label(panel,text,&aurora_font_18);lv_label_set_long_mode(info,LV_LABEL_LONG_WRAP);
   lv_obj_set_pos(info,12,14);lv_obj_set_size(info,426,400);
@@ -1759,11 +1922,10 @@ void AuroraUI::buildInfo() {
 #if defined(AURORA_BOARD_P4)
   if(umbrelWallet_)
     snprintf(txt,sizeof(txt),"Adresse de réception n°%u — BIP%u %s\n%s\n\nChemin\n%s\n\n"
-             "Clé publique dérivée\n%s\n\n"
              "Clé publique étendue du compte\n%s\n\nAnniversaire LND : jour %u",
              static_cast<unsigned>(umbrelAddressIndex_),umbrelPurpose(wallet_.kind),
              umbrelAddressName(wallet_.kind),
-             wallet_.address,wallet_.path,wallet_.publicKey,wallet_.accountXpub,
+             wallet_.address,wallet_.path,wallet_.accountXpub,
              static_cast<unsigned>(umbrelBirthdayDays_));
   else
     snprintf(txt,sizeof(txt),"Adresse\n%s\n\nChemin : %s\n\nClé publique étendue du compte\n%s",wallet_.address,wallet_.path,wallet_.accountXpub);
@@ -1866,29 +2028,36 @@ bool AuroraUI::renderQr(lv_obj_t *parent,const char *data,int size,int x,int y) 
 void AuroraUI::buildQr() {
   const bool restoreView=manualRestore_;
   const bool privateKey = qrContent_ == QrContent::PrivateKey;
+#if defined(AURORA_BOARD_P4)
+  // The P4 exposes receive addresses and the account extended public key.
+  // The individual compressed child key (02/03...) remains an internal
+  // derivation detail and is never offered as a display screen.
+  const bool firstPublicKey = false;
+#else
   const bool firstPublicKey = qrContent_ == QrContent::FirstPublicKey;
+#endif
 #if defined(AURORA_BOARD_P4)
   const bool bip39FilePublic=fileSession_ && bip39PublicReady_ && !umbrelWallet_;
 #else
   const bool bip39FilePublic=false;
 #endif
   const bool indexedPublic=!privateKey && (umbrelWallet_ || bip39FilePublic);
+  const bool indexedAddress=indexedPublic && qrContent_==QrContent::Address;
   char publicTitle[48]{};
   const char *title=nullptr;
   if(privateKey) title="Clé privée - DANGER";
   else if(indexedPublic) {
-    const char *category=firstPublicKey?"Clé publique":
-        (qrContent_==QrContent::AccountXpub?"Clé étendue":"Adresse");
-    snprintf(publicTitle,sizeof(publicTitle),"%s BIP%u",category,
-             umbrelPurpose(wallet_.kind));
+    const char *category=qrContent_==QrContent::AccountXpub?"Clé étendue":"Adresse";
+    snprintf(publicTitle,sizeof(publicTitle),"%s %s",category,
+             umbrelAddressName(wallet_.kind));
     title=publicTitle;
   } else {
     title=firstPublicKey?"Clé publique":
         (qrContent_==QrContent::AccountXpub?"Clé publique étendue":"Première adresse");
   }
   const char *data = privateKey ? wallet_.privateWif :
-                     (firstPublicKey ? wallet_.publicKey :
-                      (qrContent_ == QrContent::AccountXpub ? wallet_.accountXpub : wallet_.address));
+                     (qrContent_ == QrContent::AccountXpub ? wallet_.accountXpub :
+                      (firstPublicKey ? wallet_.publicKey : wallet_.address));
   lv_obj_t *titleLabel=header(title); if(privateKey) lv_obj_set_style_text_color(titleLabel,DANGER,0);
 
 #if defined(AURORA_BOARD_P4)
@@ -1907,19 +2076,18 @@ void AuroraUI::buildQr() {
     lv_obj_add_event_cb(restoreDerivationDropdown_,event,LV_EVENT_VALUE_CHANGED,nullptr);
   }
 
-  if(indexedPublic) {
+  if(indexedAddress) {
     static constexpr char UMBREL_SCOPES[] =
         "BIP49 - Nested SegWit\nBIP84 - Native SegWit\nBIP86 - Taproot";
     static constexpr char UMBREL_INDICES[] =
         "0\n1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n16\n17\n18\n19";
-    const bool indexSelectable=qrContent_!=QrContent::AccountXpub;
     lv_obj_t *scopeLabel=label(root_,umbrelWallet_?"TYPE":"TYPE ENREGISTRÉ",&aurora_font_18);
     lv_obj_set_style_text_color(scopeLabel,MUTED,0);lv_obj_set_pos(scopeLabel,15,120);
 
     if(umbrelWallet_) {
       umbrelScopeDropdown_=lv_dropdown_create(root_);
       lv_obj_set_pos(umbrelScopeDropdown_,15,143);
-      lv_obj_set_size(umbrelScopeDropdown_,indexSelectable?300:450,50);
+      lv_obj_set_size(umbrelScopeDropdown_,300,50);
       lv_obj_set_style_text_font(umbrelScopeDropdown_,&aurora_font_18,0);
       lv_dropdown_set_options(umbrelScopeDropdown_,UMBREL_SCOPES);
       lv_dropdown_set_selected(umbrelScopeDropdown_,umbrelScope_);
@@ -1933,36 +2101,31 @@ void AuroraUI::buildQr() {
       lv_obj_set_pos(typeValue,15,155);
     }
 
-    if(indexSelectable) {
-      lv_obj_t *indexLabel=label(root_,"NUMÉRO",&aurora_font_18);
-      lv_obj_set_style_text_color(indexLabel,MUTED,0);lv_obj_set_pos(indexLabel,326,120);
-      umbrelIndexDropdown_=lv_dropdown_create(root_);
-      lv_obj_set_pos(umbrelIndexDropdown_,326,143);lv_obj_set_size(umbrelIndexDropdown_,139,50);
-      lv_obj_set_style_text_font(umbrelIndexDropdown_,&aurora_font_18,0);
-      lv_dropdown_set_options(umbrelIndexDropdown_,UMBREL_INDICES);
-      lv_dropdown_set_selected(umbrelIndexDropdown_,
-                               umbrelWallet_?umbrelAddressIndex_:bip39AddressIndex_);
-      lv_obj_set_user_data(umbrelIndexDropdown_,(void*)UMBREL_QR_INDEX_CHANGED);
-      lv_obj_add_event_cb(umbrelIndexDropdown_,event,LV_EVENT_VALUE_CHANGED,nullptr);
-    }
+    lv_obj_t *indexLabel=label(root_,"NUMÉRO",&aurora_font_18);
+    lv_obj_set_style_text_color(indexLabel,MUTED,0);lv_obj_set_pos(indexLabel,326,120);
+    umbrelIndexDropdown_=lv_dropdown_create(root_);
+    lv_obj_set_pos(umbrelIndexDropdown_,326,143);lv_obj_set_size(umbrelIndexDropdown_,139,50);
+    lv_obj_set_style_text_font(umbrelIndexDropdown_,&aurora_font_18,0);
+    lv_dropdown_set_options(umbrelIndexDropdown_,UMBREL_INDICES);
+    lv_dropdown_set_selected(umbrelIndexDropdown_,
+                             umbrelWallet_?umbrelAddressIndex_:bip39AddressIndex_);
+    lv_obj_set_user_data(umbrelIndexDropdown_,(void*)UMBREL_QR_INDEX_CHANGED);
+    lv_obj_add_event_cb(umbrelIndexDropdown_,event,LV_EVENT_VALUE_CHANGED,nullptr);
 
-    char shownPath[32]{};
-    if(qrContent_==QrContent::AccountXpub)
-      snprintf(shownPath,sizeof(shownPath),"m/%u'/0'/0'",umbrelPurpose(wallet_.kind));
-    else strlcpy(shownPath,wallet_.path,sizeof(shownPath));
+    char shownPath[32]{};strlcpy(shownPath,wallet_.path,sizeof(shownPath));
     lv_obj_t *pathLabel=label(root_,shownPath,&aurora_font_18);
     lv_obj_set_style_text_color(pathLabel,ORANGE,0);lv_obj_set_pos(pathLabel,24,204);
   }
 
-  const int qrTop=restoreView?190:(indexedPublic?240:130);
-  if(!renderQr(root_,data,224,48,restoreView?57:(indexedPublic?72:39))) {
+  const int qrTop=restoreView?190:(indexedAddress?240:130);
+  if(!renderQr(root_,data,224,48,restoreView?57:(indexedAddress?72:39))) {
     lv_obj_t *error=label(root_,"QR impossible",&aurora_font_20);
     lv_obj_set_style_text_color(error,DANGER,0);lv_obj_set_pos(error,24,qrTop+130);
   }
   lv_obj_t *value=label(root_,data,&aurora_font_20);
   lv_label_set_long_mode(value,LV_LABEL_LONG_WRAP);
-  lv_obj_set_pos(value,24,restoreView?540:(indexedPublic?590:480));
-  lv_obj_set_size(value,432,restoreView?160:(indexedPublic?110:190));
+  lv_obj_set_pos(value,24,restoreView?540:(indexedAddress?590:480));
+  lv_obj_set_size(value,432,restoreView?160:(indexedAddress?110:190));
 
   const int buttonWidth=210;
   bool hasAlternate=false;
@@ -1973,16 +2136,10 @@ void AuroraUI::buildQr() {
     lv_obj_set_style_bg_color(alternate,privateKey?SUCCESS:(protectedSession_?DANGER:ORANGE),0);
     hasAlternate=true;
   } else if(qrContent_==QrContent::Address) {
-    lv_obj_t *alternate=button(root_,indexedPublic?"CLÉ PUBLIQUE":"CLÉ ÉTENDUE",event,140);
-    lv_obj_set_user_data(alternate,(void*)(indexedPublic?TO_QR_FIRST_PUBLIC:TO_QR_PUBLIC));
-    lv_obj_set_pos(alternate,24,720);lv_obj_set_size(alternate,buttonWidth,64);
-    if(indexedPublic) lv_obj_set_style_bg_color(alternate,SUCCESS,0);
-    hasAlternate=true;
-  } else if(qrContent_==QrContent::FirstPublicKey && indexedPublic) {
     lv_obj_t *alternate=button(root_,"CLÉ ÉTENDUE",event,140);
     lv_obj_set_user_data(alternate,(void*)TO_QR_PUBLIC);
     lv_obj_set_pos(alternate,24,720);lv_obj_set_size(alternate,buttonWidth,64);
-    lv_obj_set_style_bg_color(alternate,SUCCESS,0);
+    if(indexedPublic) lv_obj_set_style_bg_color(alternate,SUCCESS,0);
     hasAlternate=true;
   } else if(qrContent_==QrContent::AccountXpub) {
     lv_obj_t *alternate=button(root_,"ADRESSE",event,140);
@@ -2632,6 +2789,9 @@ void AuroraUI::event(lv_event_t *e) {
   const Action selectedAction=static_cast<Action>(a);
   switch(selectedAction){
     case START: if(!g_ui->selfTestPending_) g_ui->show(Screen::Mode); break;
+#if defined(AURORA_BOARD_P4)
+    case SHOW_ABOUT: g_ui->show(Screen::About); break;
+#endif
     case OPEN_WALLET:
       g_ui->wipeSession();
       g_ui->engine_.wipe(g_ui->wallet_); secureZero(g_ui->passphrase_,sizeof(g_ui->passphrase_));
@@ -2795,7 +2955,13 @@ void AuroraUI::event(lv_event_t *e) {
       break;
     case TO_INFO: g_ui->qrContent_=QrContent::Address; g_ui->show(Screen::Info); break;
     case TO_QR_ADDRESS: g_ui->qrContent_=QrContent::Address; g_ui->show(Screen::Qr); break;
-    case TO_QR_FIRST_PUBLIC: g_ui->qrContent_=QrContent::FirstPublicKey; g_ui->show(Screen::Qr); break;
+    case TO_QR_FIRST_PUBLIC:
+#if defined(AURORA_BOARD_P4)
+      g_ui->qrContent_=QrContent::AccountXpub;
+#else
+      g_ui->qrContent_=QrContent::FirstPublicKey;
+#endif
+      g_ui->show(Screen::Qr); break;
     case TO_QR_PUBLIC: g_ui->qrContent_=QrContent::AccountXpub; g_ui->show(Screen::Qr); break;
     case REVEAL_PRIVATE: g_ui->qrContent_=QrContent::PrivateKey; g_ui->show(Screen::Qr); break;
     case TO_BACKUP: g_ui->show(Screen::Backup); break;

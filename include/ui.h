@@ -21,6 +21,9 @@ class AuroraUI {
  private:
   enum class Screen : uint8_t {
     Splash, Mode, ImportName, ImportPassword,
+#if defined(AURORA_BOARD_P4)
+    About,
+#endif
     RestoreSetup, RestoreWords, RestorePassphrase, Restoring,
     UmbrelWarning, UmbrelPassphrase, UmbrelProcessing, UmbrelResult, UmbrelQr,
     Setup, Passphrase, Entropy, Generating, FileProcessing, GenerationError,
@@ -39,6 +42,9 @@ class AuroraUI {
   lv_obj_t *explanation(lv_obj_t *parent, const char *text,
                         const lv_font_t *font = &aurora_font_10);
   void buildSplash(); void buildMode(); void buildImportName(); void buildImportPassword();
+#if defined(AURORA_BOARD_P4)
+  void buildAbout();
+#endif
   void buildRestoreSetup(); void buildRestoreWords(); void buildRestorePassphrase();
   void buildRestoring(); void updateRestoreSuggestions(); bool acceptRestoreWord(const char *word);
   bool restoreEnteredWallet(); bool rederiveManualWallet(AddressKind kind);

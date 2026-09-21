@@ -1,4 +1,6 @@
 CONFIG_IDF_TARGET="esp32p4"
+# Remove build time and host paths from application/bootloader images.
+CONFIG_APP_REPRODUCIBLE_BUILD=y
 CONFIG_ESP32P4_REV_MIN_300=y
 CONFIG_ESPTOOLPY_FLASHSIZE_32MB=y
 CONFIG_SPIRAM=y
@@ -7,12 +9,19 @@ CONFIG_ESP_MAIN_TASK_STACK_SIZE=24576
 CONFIG_FREERTOS_HZ=1000
 CONFIG_COMPILER_CXX_EXCEPTIONS=n
 CONFIG_COMPILER_CXX_RTTI=n
+# Protect local arrays and frame-address references against stack smashing.
+CONFIG_COMPILER_STACK_CHECK_MODE_STRONG=y
 # Keep assertion checks, but never print exception registers/stack memory.
 CONFIG_COMPILER_OPTIMIZATION_ASSERTIONS_ENABLE=n
 CONFIG_COMPILER_OPTIMIZATION_ASSERTIONS_SILENT=y
 CONFIG_ESP_SYSTEM_PANIC_PRINT_REBOOT=n
 CONFIG_ESP_SYSTEM_PANIC_SILENT_REBOOT=y
 CONFIG_ESP_SYSTEM_PANIC_REBOOT_DELAY_SECONDS=0
+# Production firmware emits no ESP-IDF or second-stage bootloader logs. The ROM
+# banner is earlier than our code and is not disabled with irreversible eFuses.
+CONFIG_BOOTLOADER_LOG_LEVEL_NONE=y
+CONFIG_LOG_DEFAULT_LEVEL_NONE=y
+CONFIG_LOG_MAXIMUM_EQUALS_DEFAULT=y
 # A debugger must not change a panic into a halt with secrets retained.
 CONFIG_ESP_DEBUG_OCDAWARE=n
 CONFIG_FREERTOS_DEBUG_OCDAWARE=n

@@ -9,6 +9,8 @@ const code = fs.readFileSync(path.join(web, 'assets/app.js'), 'utf8');
 const allVariants = [
   ['cyd-1.9.9', '1.9.9', 'manifest.json'],
   ['cyd-1.7.5', '1.7.5', 'manifests/cyd-1.7.5.json'],
+  ['p4-rev1-2.0.11', '2.0.11', 'manifests/p4-rev1-2.0.11.json'],
+  ['p4-rev3-2.0.11', '2.0.11', 'manifests/p4-rev3-2.0.11.json'],
   ['p4-rev1-2.0.9', '2.0.9', 'manifests/p4-rev1-2.0.9.json'],
   ['p4-rev3-2.0.9', '2.0.9', 'manifests/p4-rev3-2.0.9.json'],
   ['p4-rev1-2.0.5', '2.0.5', 'manifests/p4-rev1-2.0.5.json'],

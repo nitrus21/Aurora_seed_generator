@@ -5,6 +5,15 @@
 #include "version.h"
 #include "security_memory.h"
 #include "aurora_log.h"
+#if defined(AURORA_P4_KDF_BENCHMARK)
+#include "p4_kdf_benchmark.h"
+#endif
+#if defined(AURORA_P4_ENTROPY_HEALTH)
+#include "p4_entropy_health.h"
+#endif
+#if defined(AURORA_P4_STACK_HEALTH)
+#include "p4_stack_health.h"
+#endif
 
 namespace { AuroraUI ui; }
 
@@ -31,6 +40,15 @@ extern "C" void app_main() {
   AURORA_DIAG("AURORA: startup scrub verified %u internal / %u external bytes\n",
          (unsigned)internalCleaned, (unsigned)externalCleaned);
 
+#if defined(AURORA_P4_KDF_BENCHMARK)
+  // Isolated F51-07 image: public constants only, no UI, wallet or microSD.
+  auroraRunP4KdfBenchmark();
+#elif defined(AURORA_P4_ENTROPY_HEALTH)
+  // Isolated F51-05 image: aggregate health counters on screen only. No SD,
+  // wallet, serial report, raw random value or conditioned digest is exported.
+  auroraRunP4EntropyHealth();
+#endif
+
   lv_display_t *display = bsp_display_start();
   if (!display || lv_display_get_horizontal_resolution(display) != 480 ||
       lv_display_get_vertical_resolution(display) != 800) {
@@ -43,6 +61,9 @@ extern "C" void app_main() {
     AURORA_DIAG("AURORA P4: display startup lock timed out; startup stopped\n");
     return;
   }
+#if defined(AURORA_P4_STACK_HEALTH)
+  auroraStackHealthBegin(xTaskGetCurrentTaskHandle());
+#endif
   ui.begin();
   // The adapter's framebuffer ISR wakes the LVGL worker, so render from its
   // timer context. Holding the LVGL lock in app_main alone is not sufficient.
@@ -58,6 +79,9 @@ extern "C" void app_main() {
       ui.tick();
       bsp_display_unlock();
     }
+#if defined(AURORA_P4_STACK_HEALTH)
+    auroraStackHealthSample();
+#endif
     delay(5);
   }
 }

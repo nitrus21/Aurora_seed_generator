@@ -6,7 +6,8 @@
 | [1.9.9](releases/1.9.9.md) | ESP32-2432S028R — Cheap Yellow Display | Version finale de cette carte. |
 | [2.0.3](releases/2.0.3.md) | Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 | Version P4, images silicium 1.x et 3.x. |
 | [2.0.5](releases/2.0.5.md) | Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 | Sauvegarde Umbrel et export Sparrow. |
-| [2.0.9](releases/2.0.9.md) | Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 | Dernière version P4, navigation publique multi-comptes et dérivations verrouillées. |
+| [2.0.11](releases/2.0.11.md) | Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 | Dernière version P4 : durcissement sécurité, builds reproductibles et identité du firmware à l’écran. |
+| [2.0.9](releases/2.0.9.md) | Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 | Navigation publique multi-comptes et dérivations verrouillées. |
 
 ## ESP32-2432S028R : 1.7.5 → 1.9.9
 
@@ -23,6 +24,17 @@
 
 La branche ESP32-2432S028R est terminée en **1.9.9**. Les futures fonctionnalités
 sont développées pour la Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3.
+
+## Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 : 2.0.11
+
+- Toutes les fonctions de la 2.0.9.
+- Journaux de production ESP-IDF et second bootloader désactivés, sans eFuse.
+- Protection de pile forte et builds reproductibles Windows/Linux.
+- Page d’identification : version, profil silicium et SHA-256 de l’application.
+- Libellés Legacy/SegWit/Taproot explicites et suppression de l’écran de clé
+  publique enfant au profit de la clé étendue de compte.
+- Validation physique complète du profil 1.x sur P4 révision 1.3 ; profil 3.x
+  contrôlé par logiciel uniquement.
 
 ## Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 : 2.0.9
 

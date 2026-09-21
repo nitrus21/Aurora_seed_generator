@@ -96,9 +96,6 @@ static void testFileNavigation(AuroraUI &ui, const char *password) {
   }
   // Public QR needs no password and returns to the same dashboard.
   tap(TO_QR_ADDRESS); assert(ui.screen_==Screen::Qr); publicOnly();
-#if defined(AURORA_BOARD_P4)
-  tap(TO_QR_FIRST_PUBLIC); assert(ui.screen_==Screen::Qr); publicOnly();
-#endif
   tap(TO_QR_PUBLIC); assert(ui.screen_==Screen::Qr); publicOnly();
   tap(TO_INFO); assert(ui.screen_==Screen::Info); publicOnly();
 

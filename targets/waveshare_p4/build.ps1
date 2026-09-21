@@ -1,4 +1,8 @@
-param([ValidateSet('waveshare-p4', 'waveshare-p4-rev1')][string] $Target = 'waveshare-p4')
+param([ValidateSet('waveshare-p4', 'waveshare-p4-rev1',
+                   'waveshare-p4-rev1-kdf-benchmark',
+                   'waveshare-p4-rev1-entropy-health',
+                   'waveshare-p4-rev1-stack-health')]
+      [string] $Target = 'waveshare-p4')
 $ErrorActionPreference = 'Stop'
 # Get the existing 8.3 alias of THIS folder. No copy, junction, or other workspace.
 $auroraFolder = (New-Object -ComObject Scripting.FileSystemObject).GetFolder($PSScriptRoot)

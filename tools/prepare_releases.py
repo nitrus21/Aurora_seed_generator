@@ -29,6 +29,8 @@ def main():
         'aurora-2.0.5-esp32-p4-rev3.factory.bin': '2BC03AAC78FBF9583B6B4918C9A89D807A55D96B554909B21FE486C67CA77884',
         'aurora-2.0.9-esp32-p4-rev1.factory.bin': 'F4F10C4D9D9204C949FCF544EFD1469F9225814C1C17B57B48AAC6E971C7B384',
         'aurora-2.0.9-esp32-p4-rev3.factory.bin': '128CB229102C4FCD45416574C2DF08B954EE1DE4DF1311FA8D3A67AE1CA94F4D',
+        'aurora-2.0.11-esp32-p4-rev1.factory.bin': '962A04E1FF65D0CE38FD13E3700F74E15852315999C031E972761497D3E0994E',
+        'aurora-2.0.11-esp32-p4-rev3.factory.bin': '7B6F2C69988862233341413677AD866131AABEC82F319A7DBF3F891962F2B0A7',
     }
     for name, checksum in expected.items():
         if digest(FIRMWARE / name) != checksum:
@@ -57,7 +59,8 @@ def main():
         (OUT / f'SHA256SUMS-v{version}.txt').write_text(
             checksums + f'{digest(archive)}  {archive.name}\n', encoding='ascii', newline='\n')
         print(f'{archive.name}: {digest(archive)}')
-    print('Local candidates only. Run tests/release/verify.ps1 before publication.')
+    print('Local candidates only. Use prepare_p4_2_0_11_candidate.py for the signed 2.0.11 package.')
+    print('Run tests/release/verify.ps1 before publication.')
 
 
 if __name__ == '__main__':

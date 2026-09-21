@@ -36,6 +36,10 @@ WITHDRAWN_RELEASES = {
     "2.0.1",
     "2.0.2",
 }
+WITHDRAWN_RELEASE_PATTERNS = tuple(
+    re.compile(rf"(?<!\d){re.escape(version)}(?!\d)")
+    for version in WITHDRAWN_RELEASES
+)
 
 # These two frozen CYD images predate the public-tree policy and contain a
 # compiler source path. They remain byte-for-byte identical to the published
@@ -91,7 +95,7 @@ def main() -> int:
         if path.parent == FIRMWARE:
             if basename != "sha256sums.txt" and not basename.endswith(".factory.bin"):
                 errors.append(f"raw Web Flasher artifact is tracked: {name}")
-            if any(version in lower for version in WITHDRAWN_RELEASES):
+            if any(pattern.search(lower) for pattern in WITHDRAWN_RELEASE_PATTERNS):
                 errors.append(f"withdrawn firmware is tracked: {name}")
 
         data = file.read_bytes()

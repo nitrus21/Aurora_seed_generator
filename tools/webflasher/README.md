@@ -30,7 +30,7 @@ n'a besoin ni de Node ni de npm lorsqu'un visiteur l'utilise.
 
 Le contrôle statique teste aussi une altération en mémoire. Le test navigateur
 `node tests/release/test_vendor_browser.cjs` nécessite Playwright et son Chromium
-(résolution Node standard ou `NODE_PATH`) : huit choix, absence de requête
+(résolution Node standard ou `NODE_PATH`) : dix choix, absence de requête
 externe, dialogue sans port, refus SRI d'un bundle altéré. Il **simule l'annulation
 du sélecteur USB**, ne connecte aucun appareil et ne remplace pas un flash réel.
 `AURORA_TEST_CHROMIUM` peut désigner un exécutable Chromium local de test ;

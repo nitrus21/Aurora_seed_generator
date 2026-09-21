@@ -7,7 +7,6 @@ root = Path(__file__).resolve().parents[2]
 packages = Path(os.environ.get("PLATFORMIO_CORE_DIR", str(Path.home() / ".platformio"))) / "packages"
 exe = ".exe" if os.name == "nt" else ""
 profiles = (
-    ("CYD", root / ".pio/build/esp32-2432S028R", "xtensa-esp32"),
     ("P4 rev3", root / "targets/waveshare_p4/.pio/build/waveshare-p4", "riscv32-esp"),
     ("P4 rev1", root / "targets/waveshare_p4/.pio/build/waveshare-p4-rev1", "riscv32-esp"),
 )

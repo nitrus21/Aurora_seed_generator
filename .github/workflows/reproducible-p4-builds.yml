@@ -1,0 +1,104 @@
+name: Reproducible P4 builds
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "include/**"
+      - "src/**"
+      - "targets/waveshare_p4/**"
+      - "tools/patch_lvgl.py"
+      - "tools/patch_ubitcoin_p4.py"
+      - "tools/prepare_p4_crypto_overlay.py"
+      - "tools/reproducible_build.py"
+      - "tests/reproducible_build/**"
+      - ".github/workflows/reproducible-p4-builds.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: reproducible-p4-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.profile }} / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - windows-latest
+          - ubuntu-latest
+        profile:
+          - waveshare-p4-rev1
+          - waveshare-p4
+    steps:
+      - name: Récupérer le dépôt
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Installer Python 3.11
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.11.9"
+
+      - name: Installer PlatformIO verrouillé
+        run: python -m pip install --disable-pip-version-check platformio==6.1.19
+
+      - name: Compiler le profil P4
+        shell: pwsh
+        env:
+          IDF_COMPONENT_CHECK_NEW_VERSION: "0"
+        run: |
+          pio run --project-dir targets/waveshare_p4 --environment "${{ matrix.profile }}"
+          if ($LASTEXITCODE -ne 0) {
+            pio run --verbose --project-dir targets/waveshare_p4 --environment "${{ matrix.profile }}"
+            exit $LASTEXITCODE
+          }
+
+      - name: Collecter les preuves binaires
+        shell: pwsh
+        run: >-
+          python tools/reproducible_build.py collect
+          --repo-root .
+          --project-dir targets/waveshare_p4
+          --profile "${{ matrix.profile }}"
+          --runner "${{ matrix.os }}"
+          --source-revision "${{ github.sha }}"
+          --output-dir repro-output
+
+      - name: Conserver les composants et le manifeste
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: repro-${{ matrix.profile }}-${{ matrix.os }}
+          path: repro-output
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+  compare:
+    name: Comparer Windows et Linux
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Récupérer le dépôt
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Télécharger les quatre constructions
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          pattern: repro-*
+          path: repro-results
+
+      - name: Tester le comparateur
+        run: python tests/reproducible_build/run.py
+
+      - name: Exiger des octets identiques
+        run: >-
+          python tools/reproducible_build.py compare-tree
+          --root repro-results
+          --expected-runner windows-latest
+          --expected-runner ubuntu-latest
