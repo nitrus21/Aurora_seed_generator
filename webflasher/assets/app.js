@@ -14,14 +14,14 @@ const releases = {
   "cyd-1.9.9": {
     target: "ESP32-2432S028R (CYD)",
     version: "1.9.9",
-    state: "DERNIÈRE VERSION",
+    state: "VERSION FINALE CYD",
     flash: "4 Mo",
     hash: "34A7928985AA88D0E79F2D48EB5143A839E69106B2322DB78D2404EAB03DAD1E",
     applicationHash: "56AEC31DD77CA056E6D9843BA756C70D83765A1522A41078EA943472B3E3EEFD",
     applicationHashDisplayed: false,
     notes: "./releases/1.9.9.md",
     changes: ["Sauvegarde et ouverture .aurora sur microSD, avec mot de passe redemandé pour chaque consultation privée.", "Mots : 3 min ; clé privée : 1 min ; retour au portefeuille public après consultation.", "Boutons publics en vert, actions privées en rouge ; interface compacte et clavier classique."],
-    help: "Version finale pour l’ESP32-2432S028R.",
+    help: "Branche CYD terminée : version finale 1.9.9 conservée.",
     description: "Image ESP32-2432S028R fusionnée : flash 4 Mo, mode DIO, fréquence 40 MHz.",
     releaseDescription: "ESP32-2432S028R · Image fusionnée 4 Mo · DIO 40 MHz",
     warning: "Cette image est réservée à l’ESP32-2432S028R. Une nouvelle installation peut effacer le contenu existant de la mémoire flash."
@@ -111,7 +111,7 @@ const releases = {
     applicationHashDisplayed: false,
     notes: "./releases/2.0.9.md",
     changes: ["Navigation publique BIP44/49/84/86 et vingt adresses après un parcours BIP39.", "Navigation publique BIP49/84/86 après récupération Umbrel/LND.", "Les fichiers ouverts restent liés à leur dérivation enregistrée et authentifiée."],
-    help: "Dernière version, réservée au silicium P4 révision 1.x, notamment 1.3.",
+    help: "Ancienne version, réservée au silicium P4 révision 1.x, notamment 1.3.",
     description: "Image Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3, silicium 1.x fusionnée : flash 32 Mo, bootloader à 0x2000 et application à 0x10000.",
     releaseDescription: "Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 · Silicium 1.x · 2.0.9",
     warning: "DANGER : utilisez cette image uniquement avec un Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3, silicium 1.x. Ne la flashez jamais sur un ESP32-2432S028R ni sur le silicium 3.x. Ce binaire 2.0.9 attend encore sa recette matérielle."
@@ -126,7 +126,7 @@ const releases = {
     applicationHashDisplayed: false,
     notes: "./releases/2.0.9.md",
     changes: ["Navigation publique BIP44/49/84/86 et vingt adresses après un parcours BIP39.", "Navigation publique BIP49/84/86 après récupération Umbrel/LND.", "Les fichiers ouverts restent liés à leur dérivation enregistrée et authentifiée."],
-    help: "Dernière version pour le silicium P4 révision 3.x ; contrôlée par logiciel, non testée sur carte 3.x.",
+    help: "Ancienne version pour le silicium P4 révision 3.x ; contrôlée par logiciel, non testée sur carte 3.x.",
     description: "Image Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3, silicium 3.x fusionnée : flash 32 Mo, bootloader à 0x2000 et application à 0x10000.",
     releaseDescription: "Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 · Silicium 3.x · 2.0.9",
     warning: "DANGER : utilisez cette image uniquement avec un Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3, silicium 3.x. Ne la flashez jamais sur un ESP32-2432S028R ni sur le silicium 1.x. Image contrôlée par logiciel, non testée sur carte 3.x."
@@ -201,13 +201,7 @@ function updateSelection() {
   document.querySelectorAll("esp-web-install-button").forEach((button) => {
     button.hidden = button.dataset.release !== releaseId;
   });
-  document.querySelector("#header-target").textContent = release.target;
-  document.querySelector("#header-version").textContent = `v${release.version}`;
-  document.querySelector("#detail-target").textContent = release.target;
   document.querySelector("#selected-board").textContent = release.target;
-  document.querySelector("#detail-version").textContent = release.version;
-  document.querySelector("#detail-flash").textContent = release.flash;
-  document.querySelector("#build-description").textContent = release.description;
   document.querySelector("#target-warning").textContent = release.warning;
   document.querySelector("#release-version").textContent = `v${release.version}`;
   document.querySelector("#release-state").textContent = release.state;

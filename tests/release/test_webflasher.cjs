@@ -23,6 +23,10 @@ const allVariants = [
 const variants = process.env.AURORA_P4_ONLY === '1'
   ? allVariants.filter(([id]) => id.startsWith('p4-'))
   : allVariants;
+assert.match(html, /<option value="p4-rev1-2\.0\.12" selected>/);
+assert.doesNotMatch(html, /<option value="cyd-1\.9\.9" selected>/);
+assert.match(html, /<esp-web-install-button id="install-button" data-release="p4-rev1-2\.0\.12"/);
+assert.ok(!html.includes('id="header-target"') && !html.includes('id="header-version"'));
 function element() {
   return { textContent: '', listeners: {}, classes: [], children: [], dataset: {},
     classList: {add() {}}, addEventListener(name, cb) {this.listeners[name] = cb;},
@@ -45,13 +49,13 @@ async function test(secure, serial) {
     elements['#firmware-selection'].listeners.change();
     assert.equal(installers.filter(b => !b.hidden).length, 1);
     assert.equal(installers.find(b => !b.hidden).dataset.release, id);
-    assert.equal(elements['#detail-version'].textContent, version);
+    assert.equal(elements['#release-version'].textContent, `v${version}`);
     assert.equal(elements['#changes-title'].textContent, version === '1.7.5' ? 'Version conservée' : 'Nouveautés de cette version');
     const board = id.startsWith('cyd-') ? 'ESP32-2432S028R' : 'Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3';
-    for (const selector of ['#header-target', '#detail-target', '#selected-board', '#release-description', '#target-warning']) {
+    for (const selector of ['#selected-board', '#release-description', '#target-warning']) {
       assert.ok(elements[selector].textContent.includes(board), `${selector} must show the complete board reference`);
     }
-    assert.ok(html.includes(`value="${id}"${id === 'cyd-1.9.9' ? ' selected' : ''}>${board}`));
+    assert.ok(html.includes(`value="${id}"${id === 'p4-rev1-2.0.12' ? ' selected' : ''}>${board}`));
     const config = JSON.parse(fs.readFileSync(path.join(web, manifest), 'utf8'));
     const binary = path.resolve(web, path.dirname(manifest), config.builds[0].parts[0].path);
     const digest = require('node:crypto').createHash('sha256').update(fs.readFileSync(binary)).digest('hex').toUpperCase();

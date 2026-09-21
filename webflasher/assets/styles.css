@@ -700,8 +700,8 @@ h2 {
 
 .details {
   display: grid;
-  grid-template-columns: 1fr 0.9fr;
-  gap: 28px 60px;
+  grid-template-columns: 1fr;
+  gap: 0;
   padding: 38px;
   border: 1px solid var(--border);
   border-radius: 24px;
@@ -710,24 +710,7 @@ h2 {
   backdrop-filter: blur(16px);
 }
 
-.details > div > p:last-child { max-width: 54ch; margin: 0; color: var(--muted); }
-
-.details dl {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  margin: 0;
-}
-
-.details dl div {
-  padding: 13px;
-  border: 1px solid var(--border);
-  border-radius: 13px;
-  background: rgba(255, 255, 255, 0.025);
-}
-
-.details dt { color: var(--muted); font-size: 0.68rem; text-transform: uppercase; }
-.details dd { margin: 3px 0 0; color: var(--orange-light); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+.selected-verification > p:last-child { max-width: 72ch; margin: 0; color: var(--muted); }
 
 .hash-card {
   grid-column: 1 / -1;
@@ -872,7 +855,7 @@ footer {
   .step-grid { grid-template-columns: 1fr; }
   .step-grid li { min-height: 0; }
   .step-number { margin-bottom: 24px; }
-  .details { grid-template-columns: 1fr; padding: 28px; }
+  .details { padding: 28px; }
   .hash-card { grid-column: auto; grid-template-columns: 1fr; }
   .sha-explanations { grid-template-columns: 1fr; }
 }
@@ -888,7 +871,6 @@ footer {
   .product-intro { gap: 34px; }
   h1 { font-size: 2.5rem; }
   .image-caption { font-size: 0.55rem; }
-  .details dl { grid-template-columns: 1fr; }
   footer { flex-direction: column; }
 }
 

@@ -50,7 +50,7 @@ $factoryHash = $checksums[$factoryName]
 $appJs = Get-Content -Raw -LiteralPath (Join-Path $webRoot 'assets\app.js')
 $index = Get-Content -Raw -LiteralPath (Join-Path $webRoot 'index.html')
 $readme = Get-Content -Raw -LiteralPath (Join-Path $taskRoot 'README.md')
-Assert-Release ($appJs.Contains($factoryHash) -and $index.Contains($factoryHash)) 'Website factory hash mismatch.'
+Assert-Release ($appJs.Contains($factoryHash)) 'Website factory hash mismatch.'
 Assert-Release ($index.Contains("Installer AURORA ESP32-2432S028R v$version")) 'Website version mismatch.'
 Assert-Release ($readme.Contains('webflasher/README.md')) 'README must link to installation and checksum guidance.'
 Assert-Release (Test-Path -LiteralPath (Join-Path $webRoot 'CHANGELOG.md')) 'Missing release notes.'
