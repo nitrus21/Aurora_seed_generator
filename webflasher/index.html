@@ -317,9 +317,51 @@
           <div><dt>Image Web</dt><dd>offset 0x0000</dd></div>
         </dl>
         <div class="hash-card">
-          <span>SHA-256 de l’image fusionnée</span>
+          <span>SHA-256 du fichier complet Web Flasher</span>
           <code id="firmware-hash">Calculé lors de la préparation…</code>
           <button id="copy-hash" type="button">Copier l’empreinte</button>
+        </div>
+        <div class="hash-card application-hash-card">
+          <span>SHA-256 de l’application / appareil</span>
+          <div>
+            <code id="application-hash">Calculé lors de la préparation…</code>
+            <small id="application-hash-note">Référence de l’application installée.</small>
+          </div>
+          <button id="copy-application-hash" type="button">Copier le SHA appareil</button>
+        </div>
+      </section>
+
+      <section class="sha-catalog" aria-labelledby="sha-catalog-title">
+        <div class="section-heading sha-heading">
+          <div>
+            <p class="eyebrow">EMPREINTES DE TOUTES LES VERSIONS</p>
+            <h2 id="sha-catalog-title">Deux SHA-256, deux vérifications différentes</h2>
+          </div>
+        </div>
+        <div class="sha-explanations">
+          <article>
+            <strong>SHA image Web Flasher</strong>
+            <p>Empreinte du fichier <code>.factory.bin</code> complet téléchargé et écrit à partir de l’adresse 0x0000 : bootloader, table de partitions et application.</p>
+          </article>
+          <article>
+            <strong>SHA application / appareil</strong>
+            <p>Empreinte de l’image applicative exécutée. Sur les P4 en version 2.0.11 ou 2.0.12, c’est exactement la valeur visible dans <strong>À propos d’AURORA</strong>.</p>
+          </article>
+        </div>
+        <p class="sha-legacy-note">Les versions antérieures contiennent aussi une empreinte d’application vérifiable dans leur binaire, mais elles ne l’affichent pas à l’écran.</p>
+        <div class="sha-table-wrap">
+          <table class="sha-table">
+            <thead>
+              <tr>
+                <th scope="col">Version</th>
+                <th scope="col">Cible</th>
+                <th scope="col">SHA image Web Flasher</th>
+                <th scope="col">SHA application / appareil</th>
+                <th scope="col">Affichage appareil</th>
+              </tr>
+            </thead>
+            <tbody id="sha-table-body"></tbody>
+          </table>
         </div>
       </section>
 

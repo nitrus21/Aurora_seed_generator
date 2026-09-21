@@ -89,6 +89,13 @@ def main():
         image(data, boot, chip, revisions)
         end = image(data, 0x10000, chip, revisions)
         assert end == len(data), 'Unexpected tail in factory image'
+        application_digest = data[end - 32:end].hex().upper()
+        app_source = (WEB / 'assets/app.js').read_text(encoding='utf-8')
+        block = re.search(rf'"{re.escape(release)}": \{{(.*?)\n  \}}', app_source, re.S)
+        assert block, f'Missing Web Flasher release metadata: {release}'
+        published = re.search(r'applicationHash: "([0-9A-F]{64})"', block.group(1))
+        assert published and published.group(1) == application_digest, \
+            f'Wrong application/device SHA in Web Flasher: {release}'
         assert data[0x8000:0x8002] == b'\xaa\x50', 'Missing partition table'
         if chip:
             # ESP-IDF app descriptor begins in the first app segment.

@@ -24,7 +24,7 @@ const variants = process.env.AURORA_P4_ONLY === '1'
   ? allVariants.filter(([id]) => id.startsWith('p4-'))
   : allVariants;
 function element() {
-  return { textContent: '', listeners: {}, classes: [], children: [],
+  return { textContent: '', listeners: {}, classes: [], children: [], dataset: {},
     classList: {add() {}}, addEventListener(name, cb) {this.listeners[name] = cb;},
     replaceChildren(...items) {this.children = items;} };
 }
@@ -55,17 +55,30 @@ async function test(secure, serial) {
     const config = JSON.parse(fs.readFileSync(path.join(web, manifest), 'utf8'));
     const binary = path.resolve(web, path.dirname(manifest), config.builds[0].parts[0].path);
     const digest = require('node:crypto').createHash('sha256').update(fs.readFileSync(binary)).digest('hex').toUpperCase();
+    const applicationDigest = fs.readFileSync(binary).subarray(-32).toString('hex').toUpperCase();
     assert.equal(elements['#firmware-hash'].textContent, digest);
+    assert.equal(elements['#application-hash'].textContent, applicationDigest);
     assert.equal(elements['#release-hash'].textContent, digest);
     assert.ok(elements['#release-changes'].children.length >= 2);
     assert.ok(fs.existsSync(path.resolve(web, elements['#release-notes'].href)));
     await elements['#copy-hash'].listeners.click();
     assert.equal(clipboard, digest);
+    await elements['#copy-application-hash'].listeners.click();
+    assert.equal(clipboard, applicationDigest);
+    assert.ok(elements['#application-hash-note'].textContent.includes(
+      ['2.0.11', '2.0.12'].includes(version) ? 'affichée' : 'ne l’affiche pas'
+    ));
     if (id.includes('p4')) assert.ok(elements['#target-warning'].textContent.includes(id.includes('rev1') ? '1.x' : '3.x'));
+  }
+  assert.equal(elements['#sha-table-body'].children.length, allVariants.length);
+  for (const row of elements['#sha-table-body'].children) {
+    assert.equal(row.children.length, 5);
+    assert.match(row.children[2].children[0].textContent, /^[0-9A-F]{64}$/);
+    assert.match(row.children[3].children[0].textContent, /^[0-9A-F]{64}$/);
   }
   assert.ok(elements['#compatibility-text'].textContent.includes(!secure ? 'HTTPS' : serial ? 'compatible' : 'indisponible'));
 }
 (async () => {
   for (const [secure, serial] of [[true, true], [true, false], [false, true]]) await test(secure, serial);
-  console.log(`PASS: ${variants.length} selections, single installer, versions, warnings, hashes, notes, copy and browser compatibility`);
+  console.log(`PASS: ${variants.length} selections, both SHA-256 values, full table, notes, copy and browser compatibility`);
 })().catch(error => {console.error(error); process.exitCode = 1;});
