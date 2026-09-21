@@ -7,18 +7,9 @@ const web = path.resolve(__dirname, '../../webflasher');
 const html = fs.readFileSync(path.join(web, 'index.html'), 'utf8');
 const code = fs.readFileSync(path.join(web, 'assets/app.js'), 'utf8');
 const allVariants = [
-  ['cyd-1.9.9', '1.9.9', 'manifest.json'],
-  ['cyd-1.7.5', '1.7.5', 'manifests/cyd-1.7.5.json'],
   ['p4-rev1-2.0.12', '2.0.12', 'manifests/p4-rev1-2.0.12.json'],
   ['p4-rev3-2.0.12', '2.0.12', 'manifests/p4-rev3-2.0.12.json'],
-  ['p4-rev1-2.0.11', '2.0.11', 'manifests/p4-rev1-2.0.11.json'],
-  ['p4-rev3-2.0.11', '2.0.11', 'manifests/p4-rev3-2.0.11.json'],
-  ['p4-rev1-2.0.9', '2.0.9', 'manifests/p4-rev1-2.0.9.json'],
-  ['p4-rev3-2.0.9', '2.0.9', 'manifests/p4-rev3-2.0.9.json'],
-  ['p4-rev1-2.0.5', '2.0.5', 'manifests/p4-rev1-2.0.5.json'],
-  ['p4-rev3-2.0.5', '2.0.5', 'manifests/p4-rev3-2.0.5.json'],
-  ['p4-rev1-2.0.3', '2.0.3', 'manifests/p4-rev1-2.0.3.json'],
-  ['p4-rev3-2.0.3', '2.0.3', 'manifests/p4-rev3-2.0.3.json'],
+  ['cyd-1.9.9', '1.9.9', 'manifest.json'],
 ];
 const variants = process.env.AURORA_P4_ONLY === '1'
   ? allVariants.filter(([id]) => id.startsWith('p4-'))
@@ -49,10 +40,8 @@ async function test(secure, serial) {
     elements['#firmware-selection'].listeners.change();
     assert.equal(installers.filter(b => !b.hidden).length, 1);
     assert.equal(installers.find(b => !b.hidden).dataset.release, id);
-    assert.equal(elements['#release-version'].textContent, `v${version}`);
-    assert.equal(elements['#changes-title'].textContent, version === '1.7.5' ? 'Version conservée' : 'Nouveautés de cette version');
     const board = id.startsWith('cyd-') ? 'ESP32-2432S028R' : 'Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3';
-    for (const selector of ['#selected-board', '#release-description', '#target-warning']) {
+    for (const selector of ['#selected-board', '#target-warning']) {
       assert.ok(elements[selector].textContent.includes(board), `${selector} must show the complete board reference`);
     }
     assert.ok(html.includes(`value="${id}"${id === 'p4-rev1-2.0.12' ? ' selected' : ''}>${board}`));
@@ -62,15 +51,12 @@ async function test(secure, serial) {
     const applicationDigest = fs.readFileSync(binary).subarray(-32).toString('hex').toUpperCase();
     assert.equal(elements['#firmware-hash'].textContent, digest);
     assert.equal(elements['#application-hash'].textContent, applicationDigest);
-    assert.equal(elements['#release-hash'].textContent, digest);
-    assert.ok(elements['#release-changes'].children.length >= 2);
-    assert.ok(fs.existsSync(path.resolve(web, elements['#release-notes'].href)));
     await elements['#copy-hash'].listeners.click();
     assert.equal(clipboard, digest);
     await elements['#copy-application-hash'].listeners.click();
     assert.equal(clipboard, applicationDigest);
     assert.ok(elements['#application-hash-note'].textContent.includes(
-      ['2.0.11', '2.0.12'].includes(version) ? 'affichée' : 'ne l’affiche pas'
+      version === '2.0.12' ? 'affichée' : 'ne l’affiche pas'
     ));
     if (id.includes('p4')) assert.ok(elements['#target-warning'].textContent.includes(id.includes('rev1') ? '1.x' : '3.x'));
   }
@@ -84,5 +70,5 @@ async function test(secure, serial) {
 }
 (async () => {
   for (const [secure, serial] of [[true, true], [true, false], [false, true]]) await test(secure, serial);
-  console.log(`PASS: ${variants.length} selections, both SHA-256 values, full table, notes, copy and browser compatibility`);
+  console.log(`PASS: ${variants.length} current selections, both SHA-256 values, full table, copy and browser compatibility`);
 })().catch(error => {console.error(error); process.exitCode = 1;});

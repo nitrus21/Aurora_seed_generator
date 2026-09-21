@@ -44,7 +44,7 @@ sauvegarde chiffrée sur microSD. Pas de compte à ouvrir, pas de cloud à confi
 
 | Carte exacte | Expérience | Version à installer |
 | --- | --- | --- |
-| **ESP32-2432S028R — Cheap Yellow Display (CYD)** | Tactile résistif 2,8″, 320 × 240 ; interface compacte et clavier classique. | **1.9.9**, version finale ; **1.7.5** conservée. |
+| **ESP32-2432S028R — Cheap Yellow Display (CYD)** | Tactile résistif 2,8″, 320 × 240 ; interface compacte et clavier classique. | **1.9.9**, version finale proposée par le Web Flasher. |
 | **Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3** | Tactile capacitif 4,3″, 480 × 800 portrait ; 12 mots par page, grands QR et clavier sombre. | **2.0.12**, image adaptée au silicium **1.x** ou **3.x**. |
 
 La **1.9.9 clôt la branche ESP32-2432S028R**. Depuis la version 2.0.0, les nouvelles

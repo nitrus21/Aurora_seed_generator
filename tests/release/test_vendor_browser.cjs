@@ -25,8 +25,7 @@ const server = http.createServer((req, res) => {
   try {
     browser = await chromium.launch({headless:true,
       ...(process.env.AURORA_TEST_CHROMIUM ? {executablePath:process.env.AURORA_TEST_CHROMIUM} : {})});
-    const allVariants = ['cyd-1.9.9','cyd-1.7.5','p4-rev1-2.0.12','p4-rev3-2.0.12',
-      'p4-rev1-2.0.3','p4-rev3-2.0.3'];
+    const allVariants = ['cyd-1.9.9','p4-rev1-2.0.12','p4-rev3-2.0.12'];
     const variants = process.env.AURORA_P4_ONLY === '1'
       ? allVariants.filter(variant => variant.startsWith('p4-'))
       : allVariants;

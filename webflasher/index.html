@@ -78,7 +78,7 @@
             ESP32-2432S028R : 320 × 240 · Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 : 480 × 800 · Bitcoin Mainnet
           </p>
           <p class="lifecycle-note">
-            Le développement de l’ESP32-2432S028R se termine en <strong>1.9.9</strong> ; la 1.7.5 reste disponible.
+            Le développement de l’ESP32-2432S028R se termine en <strong>1.9.9</strong>.
             À partir de la <strong>v2.0.0</strong>, AURORA évolue sur le Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 pour davantage de fonctionnalités.
           </p>
         </div>
@@ -114,18 +114,9 @@
               <optgroup label="Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3">
                 <option value="p4-rev1-2.0.12" selected>Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 — 2.0.12 · silicium 1.x</option>
                 <option value="p4-rev3-2.0.12">Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 — 2.0.12 · silicium 3.x</option>
-                <option value="p4-rev1-2.0.11">Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 — 2.0.11 · silicium 1.x</option>
-                <option value="p4-rev3-2.0.11">Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 — 2.0.11 · silicium 3.x</option>
-                <option value="p4-rev1-2.0.9">Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 — 2.0.9 · silicium 1.x</option>
-                <option value="p4-rev3-2.0.9">Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 — 2.0.9 · silicium 3.x</option>
-                <option value="p4-rev1-2.0.5">Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 — 2.0.5 · silicium 1.x</option>
-                <option value="p4-rev3-2.0.5">Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 — 2.0.5 · silicium 3.x</option>
-                <option value="p4-rev1-2.0.3">Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 — 2.0.3 · silicium 1.x</option>
-                <option value="p4-rev3-2.0.3">Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 — 2.0.3 · silicium 3.x</option>
               </optgroup>
               <optgroup label="ESP32-2432S028R (CYD) — branche terminée">
                 <option value="cyd-1.9.9">ESP32-2432S028R — 1.9.9 (version finale CYD)</option>
-                <option value="cyd-1.7.5">ESP32-2432S028R — 1.7.5 (conservée)</option>
               </optgroup>
             </select>
             <p id="selected-board">Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 · silicium 1.x</p>
@@ -150,15 +141,6 @@
             </div>
           </esp-web-install-button>
 
-          <esp-web-install-button data-release="cyd-1.7.5" manifest="./manifests/cyd-1.7.5.json" hidden>
-            <button class="flash-button" slot="activate" type="button">
-              <span>Installer AURORA ESP32-2432S028R v1.7.5</span>
-              <span class="button-arrow" aria-hidden="true">→</span>
-            </button>
-            <div class="unsupported" slot="unsupported">Utilisez Chrome ou Microsoft Edge sur ordinateur avec une connexion HTTPS.</div>
-            <div class="unsupported" slot="not-allowed">L’accès au port série est bloqué. Ouvrez cette page en HTTPS.</div>
-          </esp-web-install-button>
-
           <esp-web-install-button id="install-button" data-release="p4-rev1-2.0.12" manifest="./manifests/p4-rev1-2.0.12.json">
             <button class="flash-button" slot="activate" type="button">
               <span>Installer AURORA v2.0.12 — Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 · silicium 1.x</span>
@@ -171,78 +153,6 @@
           <esp-web-install-button data-release="p4-rev3-2.0.12" manifest="./manifests/p4-rev3-2.0.12.json" hidden>
             <button class="flash-button" slot="activate" type="button">
               <span>Installer AURORA v2.0.12 — Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 · silicium 3.x</span>
-              <span class="button-arrow" aria-hidden="true">→</span>
-            </button>
-            <div class="unsupported" slot="unsupported">Utilisez Chrome ou Microsoft Edge sur ordinateur avec une connexion HTTPS.</div>
-            <div class="unsupported" slot="not-allowed">L’accès au port série est bloqué. Ouvrez cette page en HTTPS.</div>
-          </esp-web-install-button>
-
-          <esp-web-install-button data-release="p4-rev1-2.0.11" manifest="./manifests/p4-rev1-2.0.11.json" hidden>
-            <button class="flash-button" slot="activate" type="button">
-              <span>Installer AURORA v2.0.11 — Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 · silicium 1.x</span>
-              <span class="button-arrow" aria-hidden="true">→</span>
-            </button>
-            <div class="unsupported" slot="unsupported">Utilisez Chrome ou Microsoft Edge sur ordinateur avec une connexion HTTPS.</div>
-            <div class="unsupported" slot="not-allowed">L’accès au port série est bloqué. Ouvrez cette page en HTTPS.</div>
-          </esp-web-install-button>
-
-          <esp-web-install-button data-release="p4-rev3-2.0.11" manifest="./manifests/p4-rev3-2.0.11.json" hidden>
-            <button class="flash-button" slot="activate" type="button">
-              <span>Installer AURORA v2.0.11 — Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 · silicium 3.x</span>
-              <span class="button-arrow" aria-hidden="true">→</span>
-            </button>
-            <div class="unsupported" slot="unsupported">Utilisez Chrome ou Microsoft Edge sur ordinateur avec une connexion HTTPS.</div>
-            <div class="unsupported" slot="not-allowed">L’accès au port série est bloqué. Ouvrez cette page en HTTPS.</div>
-          </esp-web-install-button>
-
-          <esp-web-install-button data-release="p4-rev1-2.0.9" manifest="./manifests/p4-rev1-2.0.9.json" hidden>
-            <button class="flash-button" slot="activate" type="button">
-              <span>Installer AURORA v2.0.9 — Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 · silicium 1.x</span>
-              <span class="button-arrow" aria-hidden="true">→</span>
-            </button>
-            <div class="unsupported" slot="unsupported">Utilisez Chrome ou Microsoft Edge sur ordinateur avec une connexion HTTPS.</div>
-            <div class="unsupported" slot="not-allowed">L’accès au port série est bloqué. Ouvrez cette page en HTTPS.</div>
-          </esp-web-install-button>
-
-          <esp-web-install-button data-release="p4-rev3-2.0.9" manifest="./manifests/p4-rev3-2.0.9.json" hidden>
-            <button class="flash-button" slot="activate" type="button">
-              <span>Installer AURORA v2.0.9 — Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 · silicium 3.x</span>
-              <span class="button-arrow" aria-hidden="true">→</span>
-            </button>
-            <div class="unsupported" slot="unsupported">Utilisez Chrome ou Microsoft Edge sur ordinateur avec une connexion HTTPS.</div>
-            <div class="unsupported" slot="not-allowed">L’accès au port série est bloqué. Ouvrez cette page en HTTPS.</div>
-          </esp-web-install-button>
-
-          <esp-web-install-button data-release="p4-rev1-2.0.5" manifest="./manifests/p4-rev1-2.0.5.json" hidden>
-            <button class="flash-button" slot="activate" type="button">
-              <span>Installer AURORA v2.0.5 — Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 · silicium 1.x</span>
-              <span class="button-arrow" aria-hidden="true">→</span>
-            </button>
-            <div class="unsupported" slot="unsupported">Utilisez Chrome ou Microsoft Edge sur ordinateur avec une connexion HTTPS.</div>
-            <div class="unsupported" slot="not-allowed">L’accès au port série est bloqué. Ouvrez cette page en HTTPS.</div>
-          </esp-web-install-button>
-
-          <esp-web-install-button data-release="p4-rev3-2.0.5" manifest="./manifests/p4-rev3-2.0.5.json" hidden>
-            <button class="flash-button" slot="activate" type="button">
-              <span>Installer AURORA v2.0.5 — Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 · silicium 3.x</span>
-              <span class="button-arrow" aria-hidden="true">→</span>
-            </button>
-            <div class="unsupported" slot="unsupported">Utilisez Chrome ou Microsoft Edge sur ordinateur avec une connexion HTTPS.</div>
-            <div class="unsupported" slot="not-allowed">L’accès au port série est bloqué. Ouvrez cette page en HTTPS.</div>
-          </esp-web-install-button>
-
-          <esp-web-install-button data-release="p4-rev1-2.0.3" manifest="./manifests/p4-rev1-2.0.3.json" hidden>
-            <button class="flash-button" slot="activate" type="button">
-              <span>Installer AURORA v2.0.3 — Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 · silicium 1.x</span>
-              <span class="button-arrow" aria-hidden="true">→</span>
-            </button>
-            <div class="unsupported" slot="unsupported">Utilisez Chrome ou Microsoft Edge sur ordinateur avec une connexion HTTPS.</div>
-            <div class="unsupported" slot="not-allowed">L’accès au port série est bloqué. Ouvrez cette page en HTTPS.</div>
-          </esp-web-install-button>
-
-          <esp-web-install-button data-release="p4-rev3-2.0.3" manifest="./manifests/p4-rev3-2.0.3.json" hidden>
-            <button class="flash-button" slot="activate" type="button">
-              <span>Installer AURORA v2.0.3 — Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 · silicium 3.x</span>
               <span class="button-arrow" aria-hidden="true">→</span>
             </button>
             <div class="unsupported" slot="unsupported">Utilisez Chrome ou Microsoft Edge sur ordinateur avec une connexion HTTPS.</div>
@@ -307,7 +217,7 @@
         <div class="selected-verification">
           <p class="eyebrow">VÉRIFICATION DE L’INSTALLATION</p>
           <h2 id="details-title">Comparez les deux empreintes de la version choisie.</h2>
-          <p>Le premier SHA contrôle le fichier complet téléchargé. Le second est celui de l’application et, pour les P4 2.0.11 et 2.0.12, celui affiché dans À propos d’AURORA.</p>
+          <p>Le premier SHA contrôle le fichier complet téléchargé. Le second est celui de l’application et, pour le P4 2.0.12, celui affiché dans À propos d’AURORA.</p>
         </div>
         <div class="hash-card">
           <span>SHA-256 du fichier complet Web Flasher</span>
@@ -338,10 +248,10 @@
           </article>
           <article>
             <strong>SHA application / appareil</strong>
-            <p>Empreinte de l’image applicative exécutée. Sur les P4 en version 2.0.11 ou 2.0.12, c’est exactement la valeur visible dans <strong>À propos d’AURORA</strong>.</p>
+            <p>Empreinte de l’image applicative exécutée. Sur le P4 2.0.12, c’est exactement la valeur visible dans <strong>À propos d’AURORA</strong>.</p>
           </article>
         </div>
-        <p class="sha-legacy-note">Les versions antérieures contiennent aussi une empreinte d’application vérifiable dans leur binaire, mais elles ne l’affichent pas à l’écran.</p>
+        <p class="sha-legacy-note">La version CYD 1.9.9 contient une empreinte d’application vérifiable dans son binaire, mais ne l’affiche pas à l’écran.</p>
         <div class="sha-table-wrap">
           <table class="sha-table">
             <thead>
@@ -420,48 +330,6 @@
         </p>
       </section>
 
-      <section class="releases" aria-labelledby="releases-title">
-        <div class="release-intro">
-          <p class="eyebrow">RELEASES OFFICIELLES</p>
-          <h2 id="releases-title">Versions, binaires et empreintes</h2>
-          <p>
-            Téléchargez les paquets, les notes courtes et les empreintes depuis le dépôt officiel.
-          </p>
-          <a
-            class="release-button"
-            href="https://github.com/nitrus21/Aurora_seed_generator/releases"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Voir toutes les releases <span aria-hidden="true">→</span>
-          </a>
-        </div>
-
-        <article class="current-release">
-          <div class="release-topline">
-            <span class="release-version" id="release-version">v2.0.12</span>
-            <span class="release-state" id="release-state">DERNIÈRE VERSION</span>
-          </div>
-          <strong>AURORA Seed Generator</strong>
-          <p id="release-description">Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 · Silicium 1.x · 2.0.12</p>
-          <p id="changes-title">Nouveautés de cette version</p>
-          <ul id="release-changes">
-            <li>Collecte renforcée : 512 mouvements, durée active et couverture de la zone.</li>
-            <li>Aperçu figé lorsque le doigt reste immobile, puis validation explicite avec TERMINER.</li>
-            <li>Microphone calibré avec seuil adaptatif ; aucune donnée audio brute affichée ou stockée.</li>
-          </ul>
-          <span class="release-hash-label">SHA-256</span>
-          <code id="release-hash">5C27560D7E021CA38BA9C8FABB59EF217E5E2536F22AF5AB9B4171ABBDB6F90A</code>
-          <a
-            id="release-notes"
-            href="./releases/2.0.12.md"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Notes de cette version
-          </a>
-        </article>
-      </section>
       <aside class="warning" aria-label="Limites de sécurité">
         <span class="warning-mark" aria-hidden="true">!</span>
         <div>

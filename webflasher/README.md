@@ -3,12 +3,12 @@
 ### Votre carte devient un générateur Bitcoin hors ligne
 
 [**Ouvrir le Web Flasher**](https://nitrus21.github.io/Aurora_seed_generator/) ·
-[Découvrir AURORA](../README.md) · [Comparer les versions](CHANGELOG.md)
+[Découvrir AURORA](../README.md) · [Versions proposées](CHANGELOG.md)
 
 | Carte exacte | Versions proposées |
 | --- | --- |
-| **ESP32-2432S028R — Cheap Yellow Display (CYD)** | **1.9.9**, version finale ; **1.7.5**, version historique conservée. |
-| **Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3** | **2.0.12** (dernière), **2.0.11**, **2.0.9**, **2.0.5** et **2.0.3**, images distinctes pour silicium **1.x** et **3.x**. |
+| **ESP32-2432S028R — Cheap Yellow Display (CYD)** | **1.9.9**, version finale. |
+| **Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3** | **2.0.12**, images distinctes pour silicium **1.x** et **3.x**. |
 
 La branche ESP32-2432S028R est terminée en 1.9.9.
 Depuis la v2.0.0, les nouvelles fonctionnalités se développent sur la
@@ -74,7 +74,7 @@ Choisissez la 1.9.9 pour la version finale de l’ESP32-2432S028R.
 - `tools/prepare_releases.py` : paquets locaux à liste de fichiers autorisés ; aucun secret ni rapport.
 - Le [workflow Pages](../.github/workflows/deploy-webflasher-pages.yml) publie uniquement
   `webflasher/`, après validation, lors d’un push sur `main`.
-- Releases : `v1.7.5`, `v1.9.9`, `v2.0.3`, `v2.0.5`, `v2.0.9`, `v2.0.11`, `v2.0.12`.
+- Le Web Flasher conserve uniquement les firmwares `v1.9.9` (CYD) et `v2.0.12` (P4). Les anciennes versions restent consultables dans l’historique des releases GitHub.
 - ESP Web Tools `10.4.0` est intégré localement en un bundle, dialogues et modules
   de flash inclus. Aucun CDN n'est autorisé par la politique de scripts du site.
   Le navigateur vérifie aussi son empreinte SRI SHA-384. Licences conservées dans

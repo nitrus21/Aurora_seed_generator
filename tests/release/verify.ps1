@@ -57,17 +57,8 @@ Assert-Release (Test-Path -LiteralPath (Join-Path $webRoot 'CHANGELOG.md')) 'Mis
 
 $variants = @(
     @{ Id = 'cyd-1.9.9'; Manifest = 'manifest.json'; Chip = 'ESP32'; Image = 'aurora-1.9.9-esp32-2432s028r.factory.bin' },
-    @{ Id = 'cyd-1.7.5'; Manifest = 'manifests\cyd-1.7.5.json'; Chip = 'ESP32'; Image = 'aurora-1.7.5-esp32-2432s028r.factory.bin' },
     @{ Id = 'p4-rev1-2.0.12'; Manifest = 'manifests\p4-rev1-2.0.12.json'; Chip = 'ESP32-P4'; Image = 'aurora-2.0.12-esp32-p4-rev1.factory.bin' },
-    @{ Id = 'p4-rev3-2.0.12'; Manifest = 'manifests\p4-rev3-2.0.12.json'; Chip = 'ESP32-P4'; Image = 'aurora-2.0.12-esp32-p4-rev3.factory.bin' },
-    @{ Id = 'p4-rev1-2.0.11'; Manifest = 'manifests\p4-rev1-2.0.11.json'; Chip = 'ESP32-P4'; Image = 'aurora-2.0.11-esp32-p4-rev1.factory.bin' },
-    @{ Id = 'p4-rev3-2.0.11'; Manifest = 'manifests\p4-rev3-2.0.11.json'; Chip = 'ESP32-P4'; Image = 'aurora-2.0.11-esp32-p4-rev3.factory.bin' },
-    @{ Id = 'p4-rev1-2.0.5'; Manifest = 'manifests\p4-rev1-2.0.5.json'; Chip = 'ESP32-P4'; Image = 'aurora-2.0.5-esp32-p4-rev1.factory.bin' },
-    @{ Id = 'p4-rev3-2.0.5'; Manifest = 'manifests\p4-rev3-2.0.5.json'; Chip = 'ESP32-P4'; Image = 'aurora-2.0.5-esp32-p4-rev3.factory.bin' },
-    @{ Id = 'p4-rev1-2.0.9'; Manifest = 'manifests\p4-rev1-2.0.9.json'; Chip = 'ESP32-P4'; Image = 'aurora-2.0.9-esp32-p4-rev1.factory.bin' },
-    @{ Id = 'p4-rev3-2.0.9'; Manifest = 'manifests\p4-rev3-2.0.9.json'; Chip = 'ESP32-P4'; Image = 'aurora-2.0.9-esp32-p4-rev3.factory.bin' },
-    @{ Id = 'p4-rev1-2.0.3'; Manifest = 'manifests\p4-rev1-2.0.3.json'; Chip = 'ESP32-P4'; Image = 'aurora-2.0.3-esp32-p4-rev1.factory.bin' },
-    @{ Id = 'p4-rev3-2.0.3'; Manifest = 'manifests\p4-rev3-2.0.3.json'; Chip = 'ESP32-P4'; Image = 'aurora-2.0.3-esp32-p4-rev3.factory.bin' }
+    @{ Id = 'p4-rev3-2.0.12'; Manifest = 'manifests\p4-rev3-2.0.12.json'; Chip = 'ESP32-P4'; Image = 'aurora-2.0.12-esp32-p4-rev3.factory.bin' }
 )
 foreach ($variant in $variants) {
     $variantManifest = Get-Content -Raw -LiteralPath (Join-Path $webRoot $variant.Manifest) | ConvertFrom-Json
@@ -85,4 +76,4 @@ Assert-Release ($LASTEXITCODE -eq 0) 'Embedded image/revision verification faile
 Assert-Release ($LASTEXITCODE -eq 0) 'Web Flasher selection tests failed.'
 & node (Join-Path $PSScriptRoot 'test_vendor.cjs')
 Assert-Release ($LASTEXITCODE -eq 0) 'Web Flasher vendor integrity tests failed.'
-Write-Output "PASS: CYD 1.9.9/1.7.5 and P4 2.0.3/2.0.5/2.0.9/2.0.11/2.0.12 (1.x/3.x): manifests, images, offsets, hashes and selection"
+Write-Output "PASS: Web Flasher retains only CYD 1.9.9 and P4 2.0.12 (1.x/3.x): manifests, images, offsets, hashes and selection"

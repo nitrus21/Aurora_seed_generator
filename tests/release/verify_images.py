@@ -12,15 +12,6 @@ WEB = ROOT / 'webflasher'
 FW = WEB / 'firmware'
 CATALOG = {
     'cyd-1.9.9': ('manifest.json', '1.9.9', 0, 0x1000, None),
-    'cyd-1.7.5': ('manifests/cyd-1.7.5.json', '1.7.5', 0, 0x1000, None),
-    'p4-rev1-2.0.3': ('manifests/p4-rev1-2.0.3.json', '2.0.3', 18, 0x2000, (100, 199)),
-    'p4-rev3-2.0.3': ('manifests/p4-rev3-2.0.3.json', '2.0.3', 18, 0x2000, (300, 399)),
-    'p4-rev1-2.0.5': ('manifests/p4-rev1-2.0.5.json', '2.0.5', 18, 0x2000, (100, 199)),
-    'p4-rev3-2.0.5': ('manifests/p4-rev3-2.0.5.json', '2.0.5', 18, 0x2000, (300, 399)),
-    'p4-rev1-2.0.9': ('manifests/p4-rev1-2.0.9.json', '2.0.9', 18, 0x2000, (100, 199)),
-    'p4-rev3-2.0.9': ('manifests/p4-rev3-2.0.9.json', '2.0.9', 18, 0x2000, (300, 399)),
-    'p4-rev1-2.0.11': ('manifests/p4-rev1-2.0.11.json', '2.0.11', 18, 0x2000, (100, 199)),
-    'p4-rev3-2.0.11': ('manifests/p4-rev3-2.0.11.json', '2.0.11', 18, 0x2000, (300, 399)),
     'p4-rev1-2.0.12': ('manifests/p4-rev1-2.0.12.json', '2.0.12', 18, 0x2000, (100, 199)),
     'p4-rev3-2.0.12': ('manifests/p4-rev3-2.0.12.json', '2.0.12', 18, 0x2000, (300, 399)),
 }
@@ -65,7 +56,8 @@ class Page(HTMLParser):
 
 def main():
     # Withdrawn releases must not remain downloadable through direct site URLs.
-    for withdrawn in ('1.9.2', '1.9.3', '1.9.4', '1.9.5', '1.9.6', '1.9.7', '1.9.8', '2.0.0', '2.0.1', '2.0.2'):
+    for withdrawn in ('1.7.5', '1.9.2', '1.9.3', '1.9.4', '1.9.5', '1.9.6', '1.9.7', '1.9.8',
+                      '2.0.0', '2.0.1', '2.0.2', '2.0.3', '2.0.5', '2.0.9', '2.0.11'):
         version = re.compile(rf'(?<!\d){re.escape(withdrawn)}(?!\d)')
         assert not [path for path in WEB.rglob('*') if version.search(path.name)], \
             f'Withdrawn release still present: {withdrawn}'
@@ -104,8 +96,6 @@ def main():
             assert actual == version, (release, actual)
         else:
             assert version.encode() + b'\0' in data[0x10000:]
-        if release == 'cyd-1.7.5':
-            assert hashlib.sha256(data[0x10000:]).hexdigest() == 'ba275c95507a713335a15c2452d5ae47f70d95f077f3f624f93a96f83beb6bf4'
         if release == 'cyd-1.9.9':
             assert b'aurora_scrub\0' in data[0x8000:0x8c00]
             assert b'coredump' not in data[0x8000:0x8c00]
@@ -113,12 +103,7 @@ def main():
     assert {p.name for p in FW.glob('*.factory.bin')} == names
     # Optional locally prepared ZIPs: strictly allowlist public release inputs.
     for version, device, images in (
-        ('1.7.5', 'CYD', ['aurora-1.7.5-esp32-2432s028r.factory.bin']),
         ('1.9.9', 'CYD', ['aurora-1.9.9-esp32-2432s028r.factory.bin']),
-        ('2.0.3', 'P4', [f'aurora-2.0.3-esp32-p4-rev{r}.factory.bin' for r in (1, 3)]),
-        ('2.0.5', 'P4', [f'aurora-2.0.5-esp32-p4-rev{r}.factory.bin' for r in (1, 3)]),
-        ('2.0.9', 'P4', [f'aurora-2.0.9-esp32-p4-rev{r}.factory.bin' for r in (1, 3)]),
-        ('2.0.11', 'P4', [f'aurora-2.0.11-esp32-p4-rev{r}.factory.bin' for r in (1, 3)]),
         ('2.0.12', 'P4', [f'aurora-2.0.12-esp32-p4-rev{r}.factory.bin' for r in (1, 3)]),
     ):
         path = ROOT / f'tmp/release-candidates/AURORA-v{version}-{device}.zip'

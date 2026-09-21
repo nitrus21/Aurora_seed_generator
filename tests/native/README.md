@@ -27,6 +27,6 @@ Pour contrôler les binaires de la version finale inclus dans le dépôt, sans c
 .\tests\release\verify.ps1 -ReleasedArtifactsOnly
 ```
 
-Ce contrôle vérifie les manifestes, les octets de chaque composant aux offsets prévus dans les images fusionnées, les empreintes SHA-256 et celles affichées dans le Web Flasher. Sans l’option, les versions finales des sources et des images doivent correspondre. La distribution conserve ESP32-2432S028R 1.7.5 / 1.9.9 et Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 2.0.3.
+Ce contrôle vérifie les manifestes, les octets de chaque composant aux offsets prévus dans les images fusionnées, les empreintes SHA-256 et celles affichées dans le Web Flasher. Sans l’option, les versions finales des sources et des images doivent correspondre. Le Web Flasher conserve uniquement ESP32-2432S028R 1.9.9 et Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 2.0.12.
 
 À vérifier manuellement avant tout usage réel : fluidité tactile, réaction de la photorésistance lorsqu’on la couvre puis l’éclaire, bandeau défilant, rouge avant 50 %, orange jusqu’à 99 %, vert pendant une seconde à 320 échantillons, retour pendant la collecte et pendant l’état vert, puis parcours complet d’un portefeuille de test sans fonds. Les tests natifs et E00 ne mesurent pas l’entropie physique et ne constituent pas un audit de sécurité.
