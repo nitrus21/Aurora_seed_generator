@@ -22,6 +22,9 @@ concurrency:
 
 jobs:
   deploy:
+    # Aurora-dev is private and deliberately has no Pages site. The workflow is
+    # promoted unchanged to the public distribution repository, where it runs.
+    if: github.event.repository.visibility == 'public'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

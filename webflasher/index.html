@@ -117,6 +117,8 @@
                 <option value="cyd-1.7.5">ESP32-2432S028R — 1.7.5 (conservée)</option>
               </optgroup>
               <optgroup label="Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3">
+                <option value="p4-rev1-2.0.12">Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 — 2.0.12 · silicium 1.x</option>
+                <option value="p4-rev3-2.0.12">Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 — 2.0.12 · silicium 3.x</option>
                 <option value="p4-rev1-2.0.11">Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 — 2.0.11 · silicium 1.x</option>
                 <option value="p4-rev3-2.0.11">Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 — 2.0.11 · silicium 3.x</option>
                 <option value="p4-rev1-2.0.9">Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 — 2.0.9 · silicium 1.x</option>
@@ -152,6 +154,24 @@
           <esp-web-install-button data-release="cyd-1.7.5" manifest="./manifests/cyd-1.7.5.json" hidden>
             <button class="flash-button" slot="activate" type="button">
               <span>Installer AURORA ESP32-2432S028R v1.7.5</span>
+              <span class="button-arrow" aria-hidden="true">→</span>
+            </button>
+            <div class="unsupported" slot="unsupported">Utilisez Chrome ou Microsoft Edge sur ordinateur avec une connexion HTTPS.</div>
+            <div class="unsupported" slot="not-allowed">L’accès au port série est bloqué. Ouvrez cette page en HTTPS.</div>
+          </esp-web-install-button>
+
+          <esp-web-install-button data-release="p4-rev1-2.0.12" manifest="./manifests/p4-rev1-2.0.12.json" hidden>
+            <button class="flash-button" slot="activate" type="button">
+              <span>Installer AURORA v2.0.12 — Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 · silicium 1.x</span>
+              <span class="button-arrow" aria-hidden="true">→</span>
+            </button>
+            <div class="unsupported" slot="unsupported">Utilisez Chrome ou Microsoft Edge sur ordinateur avec une connexion HTTPS.</div>
+            <div class="unsupported" slot="not-allowed">L’accès au port série est bloqué. Ouvrez cette page en HTTPS.</div>
+          </esp-web-install-button>
+
+          <esp-web-install-button data-release="p4-rev3-2.0.12" manifest="./manifests/p4-rev3-2.0.12.json" hidden>
+            <button class="flash-button" slot="activate" type="button">
+              <span>Installer AURORA v2.0.12 — Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 · silicium 3.x</span>
               <span class="button-arrow" aria-hidden="true">→</span>
             </button>
             <div class="unsupported" slot="unsupported">Utilisez Chrome ou Microsoft Edge sur ordinateur avec une connexion HTTPS.</div>

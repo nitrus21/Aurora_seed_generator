@@ -101,7 +101,11 @@ enum Action : uint8_t { START, OPEN_WALLET, NEW_WALLET, RESTORE_WALLET, RECOVER_
                         UMBREL_RESULT_BACK, UMBREL_SCOPE_49, UMBREL_SCOPE_84, UMBREL_SCOPE_86,
                         UMBREL_QR_SCOPE_CHANGED, UMBREL_QR_INDEX_CHANGED,
                         PRIVATE_PASSWORD_CHECK, PRIVATE_PASSWORD_CANCEL,
-                        BACK_EXPORT_WARNING };
+                        BACK_EXPORT_WARNING
+#if defined(AURORA_BOARD_P4)
+                        , FINISH_ENTROPY = AURORA_ACTION_FINISH_ENTROPY
+#endif
+                        };
 
 void styleRoot(lv_obj_t *o) {
   lv_obj_set_style_bg_color(o, BLACK, 0); lv_obj_set_style_bg_opa(o, LV_OPA_COVER, 0);
@@ -256,6 +260,7 @@ void AuroraUI::tick() {
   if (screen_ == Screen::Entropy && !entropyReadyPending_) {
     AuroraSensors::drain(entropy_);
     updatePortraitSensors();
+    updatePortraitEntropyReadyState();
   }
 #endif
   if (protectedSession_ && access_ != Access::None && !authorized(access_)) {
@@ -406,7 +411,7 @@ void AuroraUI::clear() {
     secureZero(cameraPixels_, AuroraSensors::PREVIEW_WIDTH * AuroraSensors::PREVIEW_HEIGHT * sizeof(uint16_t));
     free(cameraPixels_); cameraPixels_ = nullptr;
   }
-  microphoneStatus_ = microphoneLevel_ = cameraStatus_ = cameraPreview_ = nullptr;
+  microphoneStatus_ = microphoneLevel_ = cameraStatus_ = cameraPreview_ = entropyFinishButton_ = nullptr;
   cameraImage_ = {}; cameraPreviewSequence_ = 0;
 #endif
   secureZero(entropyPreviewText_, sizeof(entropyPreviewText_));
@@ -1610,24 +1615,48 @@ void AuroraUI::onTouchSample(int16_t x, int16_t y, uint16_t pressure) {
 #else
   if (x < 18 || x >= 302 || y < 62 || y >= 134) return;
 #endif
+#if defined(AURORA_BOARD_P4)
+  const uint16_t previousCount = entropy_.sampleCount();
+#endif
   entropy_.add(x,y,pressure);
   const uint8_t p = entropy_.progress();
   const uint16_t count = entropy_.sampleCount();
+#if defined(AURORA_BOARD_P4)
+  // Unqualified observations still feed the internal SHA-256 pool, but an
+  // immobile finger must not look like a new movement in the public preview.
+  if (count == previousCount) return;
+#endif
   const lv_color_t color = p == 100 ? SUCCESS : (p >= 50 ? ORANGE : DANGER);
   lv_bar_set_value(entropyBar_,p,LV_ANIM_OFF);
   lv_obj_set_style_bg_color(entropyBar_,color,LV_PART_INDICATOR);
   lv_obj_set_style_bg_color(entropyBar_,lv_color_darken(color,LV_OPA_70),LV_PART_MAIN);
   lv_obj_set_style_text_color(entropyStatus_,color,0);
+#if defined(AURORA_BOARD_P4)
+  lv_label_set_text_fmt(entropyStatus_,"%s - %u %%",
+      p == 100 ? "Minimum atteint : continuez ou terminez" :
+      (p >= 50 ? "Collecte en cours" : "Collecte insuffisante"),
+      static_cast<unsigned>(p));
+  if (p == 100)
+    lv_label_set_text_fmt(entropyCount_,"%u mouvements qualifiés (minimum %u)",
+        static_cast<unsigned>(count),static_cast<unsigned>(TouchEntropy::REQUIRED_SAMPLES));
+  else
+    lv_label_set_text_fmt(entropyCount_,"%u / %u mouvements qualifiés",
+        static_cast<unsigned>(count),static_cast<unsigned>(TouchEntropy::REQUIRED_SAMPLES));
+#else
   lv_label_set_text_fmt(entropyStatus_,"%s - %u %%",
       p == 100 ? "Collecte terminée" : (p >= 50 ? "Collecte en cours" : "Collecte insuffisante"),
       static_cast<unsigned>(p));
   lv_label_set_text_fmt(entropyCount_,"%u / %u échantillons",
       static_cast<unsigned>(count),static_cast<unsigned>(TouchEntropy::REQUIRED_SAMPLES));
+#endif
   const uint32_t now = millis();
   if (count == 1 || p == 100 || now - entropyPreviewUpdatedMs_ >= 100) {
     updateEntropyPreview(entropy_.previewToken());
     entropyPreviewUpdatedMs_ = now;
   }
+#if defined(AURORA_BOARD_P4)
+  updatePortraitEntropyReadyState();
+#else
   if (entropy_.ready()) {
     if (entropy_.finish(mixedEntropy_)) {
       entropyCollected_ = true;
@@ -1637,6 +1666,7 @@ void AuroraUI::onTouchSample(int16_t x, int16_t y, uint16_t pressure) {
     }
     else entropyFailurePending_ = true;
   }
+#endif
 }
 
 void AuroraUI::buildGenerating() {
@@ -2791,6 +2821,7 @@ void AuroraUI::event(lv_event_t *e) {
     case START: if(!g_ui->selfTestPending_) g_ui->show(Screen::Mode); break;
 #if defined(AURORA_BOARD_P4)
     case SHOW_ABOUT: g_ui->show(Screen::About); break;
+    case FINISH_ENTROPY: g_ui->finishPortraitEntropy(); break;
 #endif
     case OPEN_WALLET:
       g_ui->wipeSession();

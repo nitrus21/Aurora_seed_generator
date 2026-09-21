@@ -46,7 +46,8 @@ includes = [root / "tests/ui", lvgl, root / "tests/ui/stubs", root / "tests/nati
 if cyd: includes.insert(0,root / "tests/ui/cyd")
 mbed = Path.home() / ".platformio/packages/framework-espidf/components/mbedtls/mbedtls"
 includes += [mbed / "include", root / "tests/crypto"]
-crypto_objects = [root / "tmp/crypto-native" / (name + ".obj") for name in
+crypto_output = root / ("tmp/crypto-native" if cyd else "tmp/crypto-native-p4")
+crypto_objects = [crypto_output / (name + ".obj") for name in
                  ["aes", "gcm", "md", "pkcs5", "sha256", "sha512", "platform_util", "constant_time", "cipher", "cipher_wrap", "block_cipher"]]
 assert all(p.exists() for p in crypto_objects), "Run tests/crypto/run.py first"
 common = ["/nologo", "/utf-8", "/DLV_CONF_INCLUDE_SIMPLE", "/DLV_KCONFIG_IGNORE",

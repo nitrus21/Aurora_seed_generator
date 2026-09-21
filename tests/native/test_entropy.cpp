@@ -5,6 +5,7 @@
 #include <new>
 #include "Arduino.h"
 #include "Hash.h"
+#include "audio_entropy_gate.h"
 #include "wallet_file_format.h"
 
 // Match GCC's packed sample layout when exercising the real header under MSVC.
@@ -26,6 +27,24 @@ constexpr bool HAS_LIGHT_PRESSURE = false;
 constexpr bool HAS_LIGHT_PRESSURE = true;
 #endif
 
+static int16_t touchX(int16_t base, unsigned index) {
+#if defined(AURORA_BOARD_P4)
+  return static_cast<int16_t>(24 + (static_cast<unsigned>(base) + index * 37) % 432);
+#else
+  (void)index;
+  return base;
+#endif
+}
+
+static int16_t touchY(int16_t base, unsigned index) {
+#if defined(AURORA_BOARD_P4)
+  return static_cast<int16_t>(152 + (static_cast<unsigned>(base) + index * 29) % 188);
+#else
+  (void)index;
+  return base;
+#endif
+}
+
 Result collect(uint16_t light = 1234, int16_t x = 25, int16_t y = 70,
                uint16_t pressure = 300, uint32_t timeOffset = 0,
                uint32_t rngSalt = 0, uint8_t previewSalt = 0, bool inspect = false,
@@ -42,7 +61,7 @@ Result collect(uint16_t light = 1234, int16_t x = 25, int16_t y = 70,
   }
   for (unsigned i = 0; i < TouchEntropy::REQUIRED_SAMPLES; ++i) {
     mock.time = 40000 + i * 20000 + timeOffset;
-    entropy.add(x, y, pressure);
+    entropy.add(touchX(x, i), touchY(y, i), pressure);
     if (inspect) for (unsigned j = 0; j < 20; ++j) (void)entropy.previewToken();
   }
   Result result{};
@@ -64,6 +83,30 @@ static void append32(std::vector<uint8_t> &bytes, uint32_t value) {
 
 int main() {
   using namespace AuroraWalletFormat;
+  {
+    AudioEntropyGate gate;
+    for (uint32_t i = 0; i < AudioEntropyGate::CALIBRATION_BLOCKS; ++i) {
+      const auto result = gate.observe(400);
+      assert(!result.qualified && result.threshold == AudioEntropyGate::MIN_ACTIVITY);
+    }
+    assert(!gate.observe(AudioEntropyGate::MIN_ACTIVITY - 1).qualified);
+    const auto event = gate.observe(AudioEntropyGate::MIN_ACTIVITY);
+    assert(event.qualified && event.level == 50);
+    assert(gate.noiseFloor() < AudioEntropyGate::MIN_ACTIVITY);
+
+    AudioEntropyGate noisy;
+    for (uint32_t i = 0; i < AudioEntropyGate::CALIBRATION_BLOCKS; ++i)
+      assert(!noisy.observe(2000).qualified);
+    const auto belowAmbientThreshold = noisy.observe(5999);
+    assert(!belowAmbientThreshold.qualified && belowAmbientThreshold.threshold == 6000);
+    assert(noisy.observe(7000).qualified);
+
+    AudioEntropyGate capped;
+    for (uint32_t i = 0; i < AudioEntropyGate::CALIBRATION_BLOCKS; ++i)
+      assert(capped.observe(10000).threshold == AudioEntropyGate::MAX_ACTIVITY);
+    assert(capped.observe(AudioEntropyGate::MAX_ACTIVITY).qualified);
+  }
+  puts("PASS: dual-microphone activity gate calibration, adaptive floor, minimum threshold and cap");
   static_assert(HEADER_SIZE == 46 && SALT_OFFSET == 16 && SALT_SIZE == 16);
   static_assert(NONCE_OFFSET == 32 && NONCE_SIZE == 12 && TAG_SIZE == 16 && KEY_SIZE == 32);
   static_assert(FILE_VERSION == 1 && KDF_PBKDF2_HMAC_SHA256 == 1 && CIPHER_AES_256_GCM == 1);
@@ -76,7 +119,11 @@ int main() {
   static_assert(offsetof(AuroraPayloadV1, privateWif) == 770 && offsetof(AuroraPayloadV1, receiveDescriptor) == 834);
   assert(memcmp(FILE_MAGIC, "AURORAW1", 8) == 0 && memcmp(PAYLOAD_MAGIC, "AURDAT01", 8) == 0);
   puts("PASS: frozen Aurora Wallet V1 identifiers, cryptographic parameters, sizes and all field offsets");
-  static_assert(TouchEntropy::REQUIRED_SAMPLES == 320, "Collection threshold must be 320 samples");
+#if defined(AURORA_BOARD_P4)
+  static_assert(TouchEntropy::REQUIRED_SAMPLES == 512, "P4 collection threshold must be 512 qualified movements");
+#else
+  static_assert(TouchEntropy::REQUIRED_SAMPLES == 320, "Archived threshold must remain 320 samples");
+#endif
   {
     TouchEntropy entropy;
     Digest untouched;
@@ -86,8 +133,18 @@ int main() {
     assert(mock.lightReads == 0 && !entropy.finish(untouched.data()));
     assert(std::all_of(untouched.begin(), untouched.end(), [](uint8_t b) { return b == 0xA5; }));
     entropy.begin();
+#if defined(AURORA_BOARD_P4)
+    mock.time += 30000000;
+    assert(entropy.progress() == 0 && entropy.activeCollectionMs() == 0 && !entropy.ready());
+    entropy.cancel();
+    mock = {};
+    entropy.begin();
+#endif
     for (unsigned i = 1; i <= TouchEntropy::REQUIRED_SAMPLES; ++i) {
-      entropy.add(25, 70, 300);
+#if defined(AURORA_BOARD_P4)
+      mock.time = 40000 + (i - 1) * 20000;
+#endif
+      entropy.add(touchX(25, i - 1), touchY(70, i - 1), 300);
       assert(entropy.sampleCount() == i && mock.lightReads == (HAS_LIGHT_PRESSURE ? i : 0));
       assert(entropy.ready() == (i == TouchEntropy::REQUIRED_SAMPLES));
       if (i == TouchEntropy::REQUIRED_SAMPLES / 2 - 1) assert(entropy.progress() == 49);
@@ -99,9 +156,18 @@ int main() {
       }
     }
     assert(entropy.progress() == 100);
-    entropy.add(26, 71, 301);
+    entropy.add(touchX(26, TouchEntropy::REQUIRED_SAMPLES),
+                touchY(71, TouchEntropy::REQUIRED_SAMPLES), 301);
+#if defined(AURORA_BOARD_P4)
+    assert(entropy.sampleCount() == TouchEntropy::REQUIRED_SAMPLES);
+    mock.time += 20000;
+    entropy.add(touchX(26, TouchEntropy::REQUIRED_SAMPLES + 1),
+                touchY(71, TouchEntropy::REQUIRED_SAMPLES + 1), 301);
+    assert(entropy.sampleCount() == TouchEntropy::REQUIRED_SAMPLES + 1 && entropy.ready());
+#else
     assert(entropy.sampleCount() == TouchEntropy::REQUIRED_SAMPLES &&
            mock.lightReads == (HAS_LIGHT_PRESSURE ? TouchEntropy::REQUIRED_SAMPLES : 0));
+#endif
     assert(!entropy.finish(nullptr) && entropy.ready());
     assert(entropy.finish(untouched.data()));
     assert(!entropy.ready() && !mock.rngEnabled && entropy.progress() == 0);
@@ -133,8 +199,17 @@ int main() {
     assert(entropy.auxiliaryCount(Source::Camera) == 0 && entropy.auxiliaryCount(Source::Microphone) == 0);
     entropy.begin();
     assert(entropy.addAuxiliary(Source::Camera, 1, block, sizeof(block)));
-    for (unsigned i = 0; i < TouchEntropy::REQUIRED_SAMPLES; ++i) entropy.add(25, 70, 300);
+    for (unsigned i = 0; i < TouchEntropy::REQUIRED_SAMPLES; ++i) {
+#if defined(AURORA_BOARD_P4)
+      mock.time = 40000 + i * 20000;
+#endif
+      entropy.add(touchX(25, i), touchY(70, i), 300);
+    }
+#if defined(AURORA_BOARD_P4)
+    assert(entropy.addAuxiliary(Source::Camera, 2, block, sizeof(block)));
+#else
     assert(!entropy.addAuxiliary(Source::Camera, 2, block, sizeof(block)));
+#endif
   }
   const auto microphone = collect(1234, 25, 70, 300, 0, 0, 0, false, 1);
   const auto camera = collect(1234, 25, 70, 300, 0, 0, 0, false, 2);
@@ -162,17 +237,40 @@ int main() {
 
   // Independently encode all fields and the preserved final timing/RNG tail.
   std::vector<uint8_t> expected;
+#if defined(AURORA_BOARD_P4)
+  uint16_t expectedZones = 0;
+#endif
   for (uint32_t i = 0; i < TouchEntropy::REQUIRED_SAMPLES; ++i) {
-    append16(expected, 25); append16(expected, 70);
+    const int16_t sampleX = touchX(25, i), sampleY = touchY(70, i);
+    append16(expected, static_cast<uint16_t>(sampleX));
+    append16(expected, static_cast<uint16_t>(sampleY));
     if (HAS_LIGHT_PRESSURE) append16(expected, 300);
     append32(expected, 40000 + i * 20000);
     append32(expected, 0x12345678u + 0x01020304u * (i + 1));
     if (HAS_LIGHT_PRESSURE) append16(expected, 1234);
+#if defined(AURORA_BOARD_P4)
+    append32(expected, i + 1);
+    expected.push_back(1);
+    const unsigned column = static_cast<unsigned>(sampleX - 24) * 4 / 432;
+    const unsigned row = static_cast<unsigned>(sampleY - 152) * 3 / 188;
+    expectedZones |= static_cast<uint16_t>(
+        1u << ((row > 2 ? 2 : row) * 4 + (column > 3 ? 3 : column)));
+#endif
   }
   const uint32_t finalTime = 40000 + (TouchEntropy::REQUIRED_SAMPLES - 1) * 20000;
   append32(expected, finalTime / 1000 - 20);
+#if defined(AURORA_BOARD_P4)
+  append32(expected, (TouchEntropy::REQUIRED_SAMPLES - 1) * 20);
+#endif
   append32(expected, finalTime);
   append32(expected, 0x12345678u + 0x01020304u * (TouchEntropy::REQUIRED_SAMPLES + 1));
+#if defined(AURORA_BOARD_P4)
+  append32(expected, TouchEntropy::REQUIRED_SAMPLES);
+  append32(expected, TouchEntropy::REQUIRED_SAMPLES);
+  append32(expected, expectedZones);
+  append32(expected, 0);
+  append32(expected, 0);
+#endif
   Digest expectedDigest{};
   nativeDigest(expected.data(), expected.size(), expectedDigest.data());
   assert(expectedDigest == baseline.digest);

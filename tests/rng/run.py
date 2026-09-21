@@ -1,5 +1,6 @@
-"""Test the real pinned uBitcoin RNG bridge on both build profiles (no device)."""
+"""Test the real pinned uBitcoin RNG bridge without opening a device."""
 from pathlib import Path
+import argparse
 import hashlib
 import importlib.util
 import os
@@ -10,6 +11,11 @@ import sys
 
 sys.dont_write_bytecode = True
 
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("--p4-only", action="store_true",
+                    help="exercise only the active P4 profile and its pinned dependency")
+args = parser.parse_args()
+
 root = Path(__file__).resolve().parents[2]
 base = root / "tmp/rng-tests"
 base.mkdir(parents=True, exist_ok=True)
@@ -17,7 +23,16 @@ out = Path(tempfile.mkdtemp(prefix="run-", dir=base))
 spec = importlib.util.spec_from_file_location("rng_patch", root / "tools/patch_ubitcoin_rng.py")
 patch = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(patch)
-lib = root / ".pio/libdeps/esp32-2432S028R/uBitcoin/src/utility/trezor"
+if args.p4_only:
+    candidates = (
+        root / "targets/waveshare_p4/.pio/build/waveshare-p4-rev1/_deps/ubitcoin-src/src/utility/trezor",
+        root / "targets/waveshare_p4/.pio/build/waveshare-p4/_deps/ubitcoin-src/src/utility/trezor",
+    )
+    lib = next((candidate for candidate in candidates if (candidate / "rand.c").is_file()), None)
+    if lib is None:
+        raise SystemExit("Configurez d'abord un profil P4 pour rendre uBitcoin disponible aux tests hote.")
+else:
+    lib = root / ".pio/libdeps/esp32-2432S028R/uBitcoin/src/utility/trezor"
 text = (lib / "rand.c").read_text(encoding="utf-8").replace(patch.NEW, patch.OLD)
 assert hashlib.sha256(text.encode()).hexdigest() == patch.BASE_SHA256
 copied = out / "utility/trezor"
@@ -49,7 +64,7 @@ for line in subprocess.check_output(f'cmd /d /s /c ""{vcvars}" >nul && set"', en
 cl = shutil.which("cl", path=env["PATH"])
 crypto_names = ("ecdsa", "bignum", "secp256k1", "memzero", "address", "hasher",
                 "rfc6979", "hmac", "sha2", "sha3", "ripemd160")
-for profile in ("CYD", "P4"):
+for profile in (("P4",) if args.p4_only else ("CYD", "P4")):
     flags = ["/nologo", "/O2", "/UNDEBUG", "/DESP_PLATFORM", "/DAURORA_NATIVE_TEST",
              "/DAURORA_BOARD_" + profile, "/I" + str(root / "tests/rng/stubs"),
              "/I" + str(root / "include"), "/I" + str(lib)]

@@ -6,7 +6,8 @@
 | [1.9.9](releases/1.9.9.md) | ESP32-2432S028R — Cheap Yellow Display | Version finale de cette carte. |
 | [2.0.3](releases/2.0.3.md) | Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 | Version P4, images silicium 1.x et 3.x. |
 | [2.0.5](releases/2.0.5.md) | Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 | Sauvegarde Umbrel et export Sparrow. |
-| [2.0.11](releases/2.0.11.md) | Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 | Dernière version P4 : durcissement sécurité, builds reproductibles et identité du firmware à l’écran. |
+| [2.0.12](releases/2.0.12.md) | Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 | Dernière version P4 : collecte renforcée, seuil microphone adaptatif et qualification rev1.3. |
+| [2.0.11](releases/2.0.11.md) | Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 | Durcissement sécurité, builds reproductibles et identité du firmware à l’écran. |
 | [2.0.9](releases/2.0.9.md) | Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 | Navigation publique multi-comptes et dérivations verrouillées. |
 
 ## ESP32-2432S028R : 1.7.5 → 1.9.9
@@ -24,6 +25,18 @@
 
 La branche ESP32-2432S028R est terminée en **1.9.9**. Les futures fonctionnalités
 sont développées pour la Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3.
+
+## Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 : 2.0.12
+
+- Toutes les fonctions et protections de la 2.0.11.
+- 512 mouvements tactiles qualifiés, environ 10 secondes d'activité et au moins
+  6 zones couvertes sur 12.
+- Aucun défilement public lorsque le doigt reste immobile ; validation explicite
+  avec **TERMINER** après le minimum.
+- Calibration du microphone et seuil adaptatif ; aucun audio brut affiché,
+  journalisé ou stocké.
+- Reproductibilité Windows/Linux et qualification de l'application canonique
+  silicium 1.x sur P4 révision 1.3.
 
 ## Waveshare ESP32-P4-WIFI6-Touch-LCD-4.3 : 2.0.11
 

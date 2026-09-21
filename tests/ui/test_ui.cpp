@@ -1335,20 +1335,36 @@ int main() {
   assert(entropySubtitles==1);
   ui.onTouchSample(23, 200, 0); ui.onTouchSample(300, 341, 0);
   assert(ui.entropy_.sampleCount() == 0);
+  assert(ui.entropyFinishButton_ && lv_obj_has_state(ui.entropyFinishButton_,LV_STATE_DISABLED));
+  mock.time += 30000000; ui.tick();
+  assert(ui.entropy_.progress() == 0 && ui.entropy_.activeCollectionMs() == 0);
+  assert(lv_obj_has_state(ui.entropyFinishButton_,LV_STATE_DISABLED));
   snapshot(ui, "entropy-red.ppm");
-  for (unsigned i = 1; i <= 320; ++i) {
-    mock.time += 30000; ui.onTouchSample(50 + i % 300, 170 + i % 150, 0);
-    if (i == 160) { ui.tick(); assert(lv_bar_get_value(ui.entropyBar_) == 50); snapshot(ui, "entropy-orange.ppm"); }
+  for (unsigned i = 1; i <= TouchEntropy::REQUIRED_SAMPLES; ++i) {
+    mock.time += 30000;
+    ui.onTouchSample(28 + (i * 37) % 424, 156 + (i * 29) % 180, 0);
+    if (i == TouchEntropy::REQUIRED_SAMPLES / 2) {
+      ui.tick(); assert(lv_bar_get_value(ui.entropyBar_) == 50); snapshot(ui, "entropy-orange.ppm");
+    }
   }
-  assert(ui.entropyReadyPending_ && lv_bar_get_value(ui.entropyBar_) == 100);
+  assert(!ui.entropyReadyPending_ && !ui.entropyCollected_ && ui.entropy_.ready());
+  assert(!lv_obj_has_state(ui.entropyFinishButton_,LV_STATE_DISABLED) &&
+         lv_bar_get_value(ui.entropyBar_) == 100);
+  const auto minimumCount=ui.entropy_.sampleCount();
+  for(unsigned i=0;i<40;++i) {
+    mock.time+=30000;
+    ui.onTouchSample(30+((i+17)*41)%420,158+((i+13)*31)%178,0);
+  }
+  assert(ui.entropy_.sampleCount()>minimumCount && ui.entropy_.ready() && !ui.entropyCollected_);
   snapshot(ui, "entropy-green.ppm");
   sdReady=false; const unsigned checksBeforeStop=sdChecks;
+  AuroraSensors::acknowledge = false;
+  click(ui,FINISH_ENTROPY);
+  assert(ui.sensorStopPending_ && ui.screen_ == Screen::Entropy && AuroraSensors::requested);
+  assert(ui.entropyCollected_ && !mock.rngEnabled);
   std::array<uint8_t,32> collected{};
   static_assert(sizeof(ui.mixedEntropy_)==collected.size());
   memcpy(collected.data(),ui.mixedEntropy_,collected.size());
-  AuroraSensors::acknowledge = false;
-  mock.time += 1000000; ui.tick();
-  assert(ui.sensorStopPending_ && ui.screen_ == Screen::Entropy && AuroraSensors::requested);
   mock.time += 6000000; ui.tick();
   assert(ui.screen_ == Screen::Entropy && ui.sensorStopPending_);
   assert(sdChecks==checksBeforeStop); // Never mount SD while capture is active.
@@ -1374,9 +1390,14 @@ int main() {
   ui.show(Screen::Entropy); assert(ui.entropy_.sampleCount() == 0);
   lv_obj_update_layout(ui.root_); lv_indev_read(input);
   assert(ui.entropy_.sampleCount() == 1); // Real PRESSING callback, not cached polling.
+  char stationaryPreview[sizeof(ui.entropyPreviewText_)];
+  memcpy(stationaryPreview,ui.entropyPreviewText_,sizeof(stationaryPreview));
   for (int i = 0; i < 10; ++i) ui.tick();
   assert(ui.entropy_.sampleCount() == 1);
   mock.time += 30000; lv_indev_read(input);
+  assert(ui.entropy_.sampleCount() == 1); // Same contact point is not a new movement.
+  assert(!memcmp(stationaryPreview,ui.entropyPreviewText_,sizeof(stationaryPreview)));
+  mock.time += 30000; ui.onTouchSample(120, 220, 0);
   assert(ui.entropy_.sampleCount() == 2);
   ui.show(Screen::Mode); ui.tick();
   ui.show(Screen::RestoreWords); lv_textarea_set_text(ui.restoreWordArea_,"abandon");

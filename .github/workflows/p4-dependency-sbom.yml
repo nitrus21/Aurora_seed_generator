@@ -1,0 +1,65 @@
+name: P4 dependency SBOM
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "include/version.h"
+      - "targets/waveshare_p4/dependencies.lock"
+      - "targets/waveshare_p4/main/idf_component.yml"
+      - "targets/waveshare_p4/platformio.ini"
+      - "targets/waveshare_p4/build.ps1"
+      - "targets/waveshare_p4/tools/image_revision.py"
+      - "targets/waveshare_p4/main/CMakeLists.txt"
+      - "targets/waveshare_p4/sdkconfig*.defaults"
+      - "targets/waveshare_p4/cmake/crypto_hardening.cmake"
+      - "tools/patch_ubitcoin*.py"
+      - "tools/prepare_p4_crypto_overlay.py"
+      - "tools/generate_p4_sbom.py"
+      - "tests/dependencies/**"
+      - ".github/workflows/p4-dependency-sbom.yml"
+      - ".github/workflows/reproducible-p4-builds.yml"
+  pull_request:
+    paths:
+      - "include/version.h"
+      - "targets/waveshare_p4/**"
+      - "tools/patch_ubitcoin*.py"
+      - "tools/prepare_p4_crypto_overlay.py"
+      - "tools/generate_p4_sbom.py"
+      - "tests/dependencies/**"
+      - ".github/workflows/p4-dependency-sbom.yml"
+      - ".github/workflows/reproducible-p4-builds.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Récupérer le dépôt
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Installer Python 3.11
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.11.9"
+
+      - name: Tester l'inventaire P4
+        run: python tests/dependencies/run.py
+
+      - name: Générer le SBOM de release
+        run: >-
+          python tools/generate_p4_sbom.py
+          --output release-sbom/aurora-p4-2.0.12.cdx.json
+
+      - name: Conserver le SBOM CycloneDX
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: aurora-p4-2.0.12-sbom
+          path: release-sbom/aurora-p4-2.0.12.cdx.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0

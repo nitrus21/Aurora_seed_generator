@@ -21,6 +21,8 @@ CATALOG = {
     'p4-rev3-2.0.9': ('manifests/p4-rev3-2.0.9.json', '2.0.9', 18, 0x2000, (300, 399)),
     'p4-rev1-2.0.11': ('manifests/p4-rev1-2.0.11.json', '2.0.11', 18, 0x2000, (100, 199)),
     'p4-rev3-2.0.11': ('manifests/p4-rev3-2.0.11.json', '2.0.11', 18, 0x2000, (300, 399)),
+    'p4-rev1-2.0.12': ('manifests/p4-rev1-2.0.12.json', '2.0.12', 18, 0x2000, (100, 199)),
+    'p4-rev3-2.0.12': ('manifests/p4-rev3-2.0.12.json', '2.0.12', 18, 0x2000, (300, 399)),
 }
 
 
@@ -109,6 +111,8 @@ def main():
         ('2.0.3', 'P4', [f'aurora-2.0.3-esp32-p4-rev{r}.factory.bin' for r in (1, 3)]),
         ('2.0.5', 'P4', [f'aurora-2.0.5-esp32-p4-rev{r}.factory.bin' for r in (1, 3)]),
         ('2.0.9', 'P4', [f'aurora-2.0.9-esp32-p4-rev{r}.factory.bin' for r in (1, 3)]),
+        ('2.0.11', 'P4', [f'aurora-2.0.11-esp32-p4-rev{r}.factory.bin' for r in (1, 3)]),
+        ('2.0.12', 'P4', [f'aurora-2.0.12-esp32-p4-rev{r}.factory.bin' for r in (1, 3)]),
     ):
         path = ROOT / f'tmp/release-candidates/AURORA-v{version}-{device}.zip'
         if not path.exists():

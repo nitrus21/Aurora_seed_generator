@@ -6,6 +6,10 @@
 #include "sd_export.h"
 #include "aezeed.h"
 
+#if defined(AURORA_BOARD_P4)
+inline constexpr uintptr_t AURORA_ACTION_FINISH_ENTROPY = 152;
+#endif
+
 class AuroraUI {
  public:
   void begin();
@@ -102,6 +106,8 @@ class AuroraUI {
 #if defined(AURORA_BOARD_P4)
   void buildPortraitEntropy();
   void updatePortraitSensors();
+  void updatePortraitEntropyReadyState();
+  void finishPortraitEntropy();
   bool displayRefreshPending_ = false;
   bool sensorStopPending_ = false;
   Screen afterSensorStop_ = Screen::Mode;
@@ -112,6 +118,7 @@ class AuroraUI {
   lv_obj_t *microphoneLevel_ = nullptr;
   lv_obj_t *cameraStatus_ = nullptr;
   lv_obj_t *cameraPreview_ = nullptr;
+  lv_obj_t *entropyFinishButton_ = nullptr;
   uint16_t *cameraPixels_ = nullptr;
   lv_image_dsc_t cameraImage_{};
 #endif

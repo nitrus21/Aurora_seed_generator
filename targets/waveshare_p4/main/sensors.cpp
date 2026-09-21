@@ -5,9 +5,11 @@
 #include "esp_video_device.h"
 #include "esp_video_ioctl.h"
 #include "esp_heap_caps.h"
+#include "audio_entropy_gate.h"
 #include "freertos/semphr.h"
 #include <atomic>
 #include <fcntl.h>
+#include <new>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <unistd.h>
@@ -28,10 +30,37 @@ std::atomic<uint32_t> audioCount{0}, cameraCount{0};
 void publish(unsigned index, uint32_t sequence, const void *data, size_t size) {
   if (stopRequested || size > sizeof(packets[index].data)) return;
   if (xSemaphoreTake(mutex, pdMS_TO_TICKS(20)) != pdTRUE) return;
-  secureZero(&packets[index], sizeof(Packet));
   if (!stopRequested) {
-    memcpy(packets[index].data, data, size);
-    packets[index].length = size; packets[index].sequence = sequence;
+    if (packets[index].length) {
+      // Do not discard a contribution merely because the UI has not drained
+      // this bounded slot. Coalesce old and new data with domain separation.
+      const uint8_t domain[] = {'A','U','R','O','R','A','-','Q','U','E','U','E',1,
+                                static_cast<uint8_t>(index)};
+      const uint32_t metadata[] = {packets[index].sequence, sequence,
+                                   static_cast<uint32_t>(packets[index].length),
+                                   static_cast<uint32_t>(size)};
+      uint8_t merged[32]{};
+      SHA256 hash;
+      hash.begin();
+      hash.write(domain, sizeof(domain));
+      hash.write(reinterpret_cast<const uint8_t *>(metadata), sizeof(metadata));
+      hash.write(packets[index].data, packets[index].length);
+      hash.write(static_cast<const uint8_t *>(data), size);
+      hash.end(merged);
+      secureZero(&packets[index], sizeof(Packet));
+      memcpy(packets[index].data, merged, sizeof(merged));
+      packets[index].length = sizeof(merged);
+      packets[index].sequence = sequence;
+      hash.~SHA256();
+      secureZero(&hash, sizeof(hash));
+      new (&hash) SHA256();
+      secureZero(merged, sizeof(merged));
+    } else {
+      secureZero(&packets[index], sizeof(Packet));
+      memcpy(packets[index].data, data, size);
+      packets[index].length = size;
+      packets[index].sequence = sequence;
+    }
   }
   xSemaphoreGive(mutex);
 }
@@ -43,6 +72,9 @@ void audioTask(void *) {
   const audio_codec_if_t *codec = nullptr;
   esp_codec_dev_handle_t device = nullptr;
   int16_t samples[512]{};
+  uint8_t digest[32]{};
+  SHA256 accumulated;
+  accumulated.begin();
   bool opened = false;
   do {
     if (stopRequested) break;
@@ -81,7 +113,8 @@ void audioTask(void *) {
     if (esp_codec_dev_open(device, &info) != ESP_CODEC_DEV_OK) break;
     opened = true;
     if (esp_codec_dev_set_in_gain(device, 24.0f) != ESP_CODEC_DEV_OK) break;
-    uint32_t sequence = 0, lastData = millis();
+    uint32_t sequence = 0, observedBlocks = 0, lastData = millis();
+    AudioEntropyGate gate;
     while (!stopRequested) {
       size_t bytes = 0;
       const esp_err_t result = i2s_channel_read(rx, samples, sizeof(samples), &bytes, 50);
@@ -89,15 +122,34 @@ void audioTask(void *) {
       if (!bytes) { if (millis() - lastData > 1500) break; continue; }
       if (bytes > sizeof(samples) || bytes % sizeof(int16_t)) break;
       lastData = millis();
-      uint32_t peak = 0;
+      int16_t minimum[2] = {INT16_MAX, INT16_MAX};
+      int16_t maximum[2] = {INT16_MIN, INT16_MIN};
       for (size_t i = 0; i < bytes / sizeof(int16_t); ++i) {
-        const int32_t value = samples[i];
-        const uint32_t amplitude = value < 0 ? -value : value;
-        if (amplitude > peak) peak = amplitude;
+        const unsigned channel = i & 1u;
+        if (samples[i] < minimum[channel]) minimum[channel] = samples[i];
+        if (samples[i] > maximum[channel]) maximum[channel] = samples[i];
       }
-      audioLevel = static_cast<uint8_t>(peak * 100 / 32768);
-      audioState = State::Active; audioCount = ++sequence;
-      publish(0, sequence, samples, bytes);
+      const uint32_t activity0 = static_cast<uint32_t>(static_cast<int32_t>(maximum[0]) - minimum[0]);
+      const uint32_t activity1 = static_cast<uint32_t>(static_cast<int32_t>(maximum[1]) - minimum[1]);
+      const uint32_t activity = activity0 > activity1 ? activity0 : activity1;
+      const uint32_t observedAt = micros();
+      const uint8_t domain[] = {'A','U','R','O','R','A','-','M','I','C',1};
+      accumulated.write(domain, sizeof(domain));
+      accumulated.write(reinterpret_cast<const uint8_t *>(&observedBlocks), sizeof(observedBlocks));
+      accumulated.write(reinterpret_cast<const uint8_t *>(&observedAt), sizeof(observedAt));
+      accumulated.write(reinterpret_cast<const uint8_t *>(samples), bytes);
+
+      ++observedBlocks;
+      const auto gateResult = gate.observe(activity);
+      audioLevel = gateResult.level;
+      audioState = State::Active;
+      if (gateResult.qualified) {
+        accumulated.end(digest);
+        publish(0, ++sequence, digest, sizeof(digest));
+        audioCount = sequence;
+        secureZero(digest, sizeof(digest));
+        accumulated.begin();
+      }
       secureZero(samples, sizeof(samples));
     }
   } while (false);
@@ -115,6 +167,10 @@ void audioTask(void *) {
     if (disabled != ESP_OK && disabled != ESP_ERR_INVALID_STATE) stopFailed = true;
     if (i2s_del_channel(rx) != ESP_OK) stopFailed = true;
   }
+  accumulated.~SHA256();
+  secureZero(&accumulated, sizeof(accumulated));
+  new (&accumulated) SHA256();
+  secureZero(digest, sizeof(digest));
   secureZero(samples, sizeof(samples)); audioLevel = 0;
   audioAlive = false;
   vTaskDelete(nullptr);
@@ -183,6 +239,7 @@ void cameraTask(void *) {
         lastProcessed = lastData;
         const auto *pixels = static_cast<const uint8_t *>(buffers[buffer.index]);
         SHA256 hash; hash.begin(); hash.write(pixels, stride * height); hash.end(digest);
+        hash.~SHA256(); secureZero(&hash, sizeof(hash)); new (&hash) SHA256();
         cameraCount = ++sequence; cameraState = State::Active;
         publish(1, sequence, digest, sizeof(digest));
         secureZero(digest, sizeof(digest));

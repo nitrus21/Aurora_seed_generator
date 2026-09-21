@@ -42,7 +42,7 @@ void AuroraUI::buildPortraitEntropy() {
   entropyReadyPending_ = entropyFailurePending_ = false;
   entropyCompleteDueMs_ = entropyPreviewUpdatedMs_ = sensorUiUpdated_ = 0;
   entropy_.begin();
-  text(root_, "Bougez votre doigt dans le cadre", 24, 122, &aurora_font_18);
+  text(root_, "Parcourez le cadre : ~10 s d'activité minimum", 24, 122, &aurora_font_18);
   lv_obj_t *pad = lv_obj_create(root_);
   lv_obj_set_pos(pad, 24, 152); lv_obj_set_size(pad, 432, 188);
   lv_obj_remove_flag(pad, LV_OBJ_FLAG_SCROLLABLE);
@@ -67,7 +67,7 @@ void AuroraUI::buildPortraitEntropy() {
   lv_obj_set_style_bg_color(microphoneLevel_, rgb(0xF7931A), LV_PART_INDICATOR);
   text(root_, "Sources complémentaires\nAucun enregistrement\nAucune transmission", 24, 430, &aurora_font_14);
   text(root_, "Le compteur mesure la collecte,\npas des bits d'entropie certifiés.", 24, 505, &aurora_font_14);
-  cameraStatus_ = text(root_, "Caméra : détection...", 266, 349, &aurora_font_14);
+  cameraStatus_ = text(root_, "Caméra : détection...", 266, 344, &aurora_font_14);
   lv_obj_set_width(cameraStatus_, 190); lv_label_set_long_mode(cameraStatus_, LV_LABEL_LONG_WRAP);
   cameraPixels_ = static_cast<uint16_t *>(heap_caps_calloc(
       AuroraSensors::PREVIEW_WIDTH * AuroraSensors::PREVIEW_HEIGHT, sizeof(uint16_t), MALLOC_CAP_SPIRAM));
@@ -80,31 +80,66 @@ void AuroraUI::buildPortraitEntropy() {
     cameraImage_.data_size = AuroraSensors::PREVIEW_WIDTH * AuroraSensors::PREVIEW_HEIGHT * sizeof(uint16_t);
     cameraImage_.data = reinterpret_cast<const uint8_t *>(cameraPixels_);
     cameraPreview_ = lv_image_create(root_); lv_image_set_src(cameraPreview_, &cameraImage_);
-    lv_obj_set_pos(cameraPreview_, 306, 392);
+    lv_obj_set_pos(cameraPreview_, 306, 380);
   }
-  text(root_, "Aperçu cryptographique défilant", 24, 644, &aurora_font_18);
+  text(root_, "Aperçu cryptographique défilant", 24, 580, &aurora_font_18);
   strlcpy(entropyPreviewText_, "-------- -------- -------- --------", sizeof(entropyPreviewText_));
-  entropyPreview_ = text(root_, "", 24, 670, &aurora_font_18);
+  entropyPreview_ = text(root_, "", 24, 625, &aurora_font_18);
   lv_label_set_text_static(entropyPreview_, entropyPreviewText_);
   // Reserve the full lower width for progress, below the camera view.
-  entropyStatus_ = text(root_, "Collecte insuffisante - 0 %", 24, 700, &aurora_font_18);
+  entropyStatus_ = text(root_, "Collecte insuffisante - 0 %", 24, 650, &aurora_font_18);
   lv_obj_set_style_text_color(entropyStatus_, rgb(0xFF3B30), 0);
   lv_obj_set_width(entropyStatus_, 432);
   entropyBar_ = lv_bar_create(root_);
-  lv_obj_set_pos(entropyBar_, 24, 737); lv_obj_set_size(entropyBar_, 432, 16);
+  lv_obj_set_pos(entropyBar_, 24, 677); lv_obj_set_size(entropyBar_, 432, 16);
   lv_bar_set_range(entropyBar_, 0, 100); lv_bar_set_value(entropyBar_, 0, LV_ANIM_OFF);
   lv_obj_set_style_bg_color(entropyBar_, rgb(0x47110E), LV_PART_MAIN);
   lv_obj_set_style_bg_color(entropyBar_, rgb(0xFF3B30), LV_PART_INDICATOR);
-  entropyCount_ = text(root_, "", 24, 768, &aurora_font_14);
-  lv_label_set_text_fmt(entropyCount_, "0 / %u échantillons", TouchEntropy::REQUIRED_SAMPLES);
+  entropyCount_ = text(root_, "", 24, 699, &aurora_font_14);
+  lv_label_set_text_fmt(entropyCount_, "0 / %u mouvements qualifiés", TouchEntropy::REQUIRED_SAMPLES);
+  entropyFinishButton_ = button(root_, "TERMINER", event, 240);
+  lv_obj_set_pos(entropyFinishButton_, 120, 724); lv_obj_set_size(entropyFinishButton_, 240, 50);
+  lv_obj_set_user_data(entropyFinishButton_, reinterpret_cast<void *>(AURORA_ACTION_FINISH_ENTROPY));
+  lv_obj_add_state(entropyFinishButton_, LV_STATE_DISABLED);
+  lv_obj_set_style_bg_color(entropyFinishButton_, rgb(0x303238), LV_STATE_DISABLED);
+  lv_obj_set_style_bg_opa(entropyFinishButton_, LV_OPA_COVER, LV_STATE_DISABLED);
+  lv_obj_set_style_text_color(lv_obj_get_child(entropyFinishButton_, 0), rgb(0x8B8D93), 0);
   if (!AuroraSensors::start()) entropyFailurePending_ = true;
+}
+
+void AuroraUI::updatePortraitEntropyReadyState() {
+  if (!entropyFinishButton_ || !entropy_.ready()) return;
+  lv_obj_remove_state(entropyFinishButton_, LV_STATE_DISABLED);
+  lv_obj_set_style_bg_color(entropyFinishButton_, rgb(0xF7931A), 0);
+  lv_obj_set_style_text_color(lv_obj_get_child(entropyFinishButton_, 0), rgb(0x090909), 0);
+  lv_bar_set_value(entropyBar_, 100, LV_ANIM_OFF);
+  lv_obj_set_style_bg_color(entropyBar_, rgb(0x27D17F), LV_PART_INDICATOR);
+  lv_obj_set_style_text_color(entropyStatus_, rgb(0x27D17F), 0);
+  lv_label_set_text(entropyStatus_, "Minimum atteint : continuez ou terminez");
+  lv_label_set_text_fmt(entropyCount_, "%u mouvements qualifiés (minimum %u)",
+      static_cast<unsigned>(entropy_.sampleCount()),
+      static_cast<unsigned>(TouchEntropy::REQUIRED_SAMPLES));
+}
+
+void AuroraUI::finishPortraitEntropy() {
+  if (screen_ != Screen::Entropy || sensorStopPending_ || !entropy_.ready()) return;
+  AuroraSensors::drain(entropy_);
+  if (!entropy_.finish(mixedEntropy_)) {
+    entropyFailurePending_ = true;
+    return;
+  }
+  entropyCollected_ = true;
+  lv_disp_trig_activity(nullptr);
+  if (entropyFinishButton_) lv_obj_add_state(entropyFinishButton_, LV_STATE_DISABLED);
+  if (entropyStatus_) lv_label_set_text(entropyStatus_, "Finalisation de la collecte...");
+  show(Screen::Passphrase);
 }
 
 void AuroraUI::updatePortraitSensors() {
   if (!microphoneStatus_ || millis() - sensorUiUpdated_ < 100) return;
   sensorUiUpdated_ = millis();
   const auto state = AuroraSensors::status();
-  lv_label_set_text_fmt(microphoneStatus_, "Microphones : %s\n%lu blocs intégrés",
+  lv_label_set_text_fmt(microphoneStatus_, "Microphones : %s, seuil adaptatif\n%lu événements intégrés",
       stateName(state.microphone), static_cast<unsigned long>(entropy_.auxiliaryCount(TouchEntropy::Source::Microphone)));
   lv_bar_set_value(microphoneLevel_, state.level, LV_ANIM_OFF);
   lv_label_set_text_fmt(cameraStatus_, "Caméra : %s\n%lu images intégrées", stateName(state.camera),

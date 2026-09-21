@@ -31,6 +31,8 @@ def main():
         'aurora-2.0.9-esp32-p4-rev3.factory.bin': '128CB229102C4FCD45416574C2DF08B954EE1DE4DF1311FA8D3A67AE1CA94F4D',
         'aurora-2.0.11-esp32-p4-rev1.factory.bin': '962A04E1FF65D0CE38FD13E3700F74E15852315999C031E972761497D3E0994E',
         'aurora-2.0.11-esp32-p4-rev3.factory.bin': '7B6F2C69988862233341413677AD866131AABEC82F319A7DBF3F891962F2B0A7',
+        'aurora-2.0.12-esp32-p4-rev1.factory.bin': '5C27560D7E021CA38BA9C8FABB59EF217E5E2536F22AF5AB9B4171ABBDB6F90A',
+        'aurora-2.0.12-esp32-p4-rev3.factory.bin': '0CD58BA0C18A50A7073BEAB871154AFE622EEB8206F27C7BE5571DC57732F98E',
     }
     for name, checksum in expected.items():
         if digest(FIRMWARE / name) != checksum:
@@ -44,6 +46,8 @@ def main():
         ('2.0.3', 'P4', [f'aurora-2.0.3-esp32-p4-rev{r}.factory.bin' for r in (1, 3)]),
         ('2.0.5', 'P4', [f'aurora-2.0.5-esp32-p4-rev{r}.factory.bin' for r in (1, 3)]),
         ('2.0.9', 'P4', [f'aurora-2.0.9-esp32-p4-rev{r}.factory.bin' for r in (1, 3)]),
+        ('2.0.11', 'P4', [f'aurora-2.0.11-esp32-p4-rev{r}.factory.bin' for r in (1, 3)]),
+        ('2.0.12', 'P4', [f'aurora-2.0.12-esp32-p4-rev{r}.factory.bin' for r in (1, 3)]),
     ):
         checksums = ''.join(f'{digest(FIRMWARE / name)}  {name}\n' for name in images)
         notes = (WEB / f'releases/{version}.md').read_bytes()
@@ -59,7 +63,7 @@ def main():
         (OUT / f'SHA256SUMS-v{version}.txt').write_text(
             checksums + f'{digest(archive)}  {archive.name}\n', encoding='ascii', newline='\n')
         print(f'{archive.name}: {digest(archive)}')
-    print('Local candidates only. Use prepare_p4_2_0_11_candidate.py for the signed 2.0.11 package.')
+    print('Local candidates only. Use prepare_p4_2_0_12_candidate.py for the signed 2.0.12 package.')
     print('Run tests/release/verify.ps1 before publication.')
 
 

@@ -36,8 +36,10 @@ débordement était détecté.
 4. Revenir à l'accueil, ouvrir « À propos », photographier les deux minima, le
    nombre d'échantillons et le verdict. Un échec ou une tâche LVGL introuvable
    interdit de conclure.
-5. Restaurer exactement l'application AURORA 2.0.11, vérifier son SHA-256 sur
-   toute la partition et confirmer visuellement l'écran normal.
+5. Restaurer exactement l'application candidate de la campagne, vérifier son
+   SHA-256 sur toute la partition et confirmer visuellement la version, la
+   cible et le « SHA appareil » attendus. Pour la campagne du 2026-09-21, le
+   candidat est AURORA 2.0.12.
 
 Le résultat qualifie uniquement le P4 rev1.3 et les parcours réellement
 exercés. Il ne qualifie ni le P4 rev3 ni un futur firmware modifié.
